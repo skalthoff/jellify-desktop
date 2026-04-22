@@ -586,6 +586,138 @@ async fn fetch_item_without_session_returns_not_authenticated() {
 }
 
 #[tokio::test]
+async fn search_hints_builds_expected_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Search/Hints"))
+        .and(query_param("userId", "u1"))
+        .and(query_param("searchTerm", "colleen"))
+        .and(query_param(
+            "includeItemTypes",
+            "Audio,MusicAlbum,MusicArtist,Playlist",
+        ))
+        .and(query_param("limit", "24"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "SearchHints": [
+                {
+                    "Id": "artist-1",
+                    "Name": "Colleen",
+                    "Type": "MusicArtist",
+                    "MediaType": "Unknown",
+                    "MatchedTerm": "colleen",
+                    "PrimaryImageTag": "img-artist",
+                    "Artists": []
+                },
+                {
+                    "Id": "album-1",
+                    "Name": "The Weighing of the Heart",
+                    "Type": "MusicAlbum",
+                    "MediaType": "Unknown",
+                    "AlbumArtist": "Colleen",
+                    "Artists": ["Colleen"],
+                    "MatchedTerm": "colleen",
+                    "PrimaryImageTag": "img-album",
+                    "ProductionYear": 2013,
+                    "RunTimeTicks": 18000000000u64
+                },
+                {
+                    "Id": "track-1",
+                    "Name": "Push the Boat Onto the Sand",
+                    "Type": "Audio",
+                    "MediaType": "Audio",
+                    "Album": "The Weighing of the Heart",
+                    "AlbumId": "album-1",
+                    "AlbumArtist": "Colleen",
+                    "Artists": ["Colleen"],
+                    "MatchedTerm": "colleen",
+                    "IndexNumber": 3,
+                    "ParentIndexNumber": 1,
+                    "RunTimeTicks": 2220000000u64,
+                    "PrimaryImageTag": "img-track"
+                }
+            ],
+            "TotalRecordCount": 3
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let results = client.search_hints("colleen", 24).await.unwrap();
+
+    assert_eq!(results.total_record_count, 3);
+    assert_eq!(results.search_hints.len(), 3);
+
+    let artist = &results.search_hints[0];
+    assert_eq!(artist.id, "artist-1");
+    assert_eq!(artist.name, "Colleen");
+    assert_eq!(artist.kind.as_deref(), Some("MusicArtist"));
+    assert_eq!(artist.matched_term.as_deref(), Some("colleen"));
+    assert_eq!(artist.primary_image_tag.as_deref(), Some("img-artist"));
+
+    let album = &results.search_hints[1];
+    assert_eq!(album.kind.as_deref(), Some("MusicAlbum"));
+    assert_eq!(album.album_artist.as_deref(), Some("Colleen"));
+    assert_eq!(album.production_year, Some(2013));
+    assert_eq!(album.run_time_ticks, Some(18_000_000_000));
+
+    let track = &results.search_hints[2];
+    assert_eq!(track.kind.as_deref(), Some("Audio"));
+    assert_eq!(track.media_type.as_deref(), Some("Audio"));
+    assert_eq!(track.album.as_deref(), Some("The Weighing of the Heart"));
+    assert_eq!(track.album_id.as_deref(), Some("album-1"));
+    assert_eq!(track.index_number, Some(3));
+    assert_eq!(track.parent_index_number, Some(1));
+}
+
+#[tokio::test]
+async fn search_hints_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.search_hints("anything", 24).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn search_hints_clamps_zero_limit_to_one() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Search/Hints"))
+        .and(query_param("limit", "1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "SearchHints": [],
+            "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let results = client.search_hints("x", 0).await.unwrap();
+    assert_eq!(results.total_record_count, 0);
+    assert!(results.search_hints.is_empty());
+}
+
+#[tokio::test]
 async fn set_favorite_uses_preferred_endpoint_and_returns_state() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

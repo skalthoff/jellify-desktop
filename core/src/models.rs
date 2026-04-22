@@ -88,6 +88,48 @@ pub struct SearchResults {
     pub tracks: Vec<Track>,
 }
 
+/// A lightweight, typed-heterogeneous search result returned by
+/// `GET /Search/Hints`. Jellyfin trims its `BaseItemDto` down to just the
+/// columns the typeahead UI needs, so `SearchHint` is the preferred shape
+/// for debounced omnibox-style search: cheap to fetch, cheap to render.
+///
+/// `kind` carries the server-supplied `Type` (`Audio`, `MusicAlbum`,
+/// `MusicArtist`, `Playlist`, etc.), so a single flat list can be split
+/// into typed sections client-side without issuing per-type queries.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct SearchHint {
+    pub id: String,
+    pub name: String,
+    /// Server-supplied `Type` field (e.g. `Audio`, `MusicAlbum`,
+    /// `MusicArtist`, `Playlist`). Kept as a raw string so we don't have
+    /// to exhaustively enumerate every `BaseItemKind` the server may return.
+    pub kind: Option<String>,
+    /// The `MediaType` as reported by Jellyfin (`Audio`, `Video`, `Unknown`, ...).
+    pub media_type: Option<String>,
+    pub album: Option<String>,
+    pub album_id: Option<String>,
+    pub album_artist: Option<String>,
+    /// The exact substring from the query that matched this hint. Useful for
+    /// highlighting the matched portion of `name` in the UI.
+    pub matched_term: Option<String>,
+    pub primary_image_tag: Option<String>,
+    pub production_year: Option<i32>,
+    pub index_number: Option<u32>,
+    pub parent_index_number: Option<u32>,
+    pub run_time_ticks: Option<u64>,
+    pub artists: Vec<String>,
+    pub is_folder: Option<bool>,
+}
+
+/// Response envelope for `GET /Search/Hints`:
+/// `{ SearchHints: [...], TotalRecordCount }`. The total is the unpaged
+/// count so clients can show "Showing X of Y" hints in the typeahead.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct SearchHintResults {
+    pub search_hints: Vec<SearchHint>,
+    pub total_record_count: u32,
+}
+
 /// Subset of Jellyfin's `UserItemDataDto` surfaced by favorite mutations so
 /// callers can update UI state without refetching the item. `last_played` is
 /// a raw ISO 8601 string as returned by the server (or `null` when the item
