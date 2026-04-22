@@ -3359,6 +3359,139 @@ final class AppModel {
         // TODO(core-#282): drop the corresponding entry in the core queue
         // once we have an addressable `remove_from_queue` primitive.
     }
+
+    // MARK: - Queue actions (BATCH-07b, #284)
+
+    /// Empty both the user-added "Up Next" overlay and the auto-queue tail.
+    /// The Queue Inspector's Clear action lands here behind a confirmation
+    /// dialog so an accidental click can't wipe a long queue. Does not
+    /// touch the currently-playing track — only what comes after. See #284.
+    ///
+    /// The core queue itself still holds the original list (no primitive
+    /// for truncation yet, tracked as TODO(core-#282)); clearing here means
+    /// the inspector goes empty but the engine can continue auto-advancing
+    /// through the underlying album/playlist. We don't reach into
+    /// `core.setQueue` because truncating on remove would also cancel the
+    /// currently-playing track on most engines.
+    func clearQueue() {
+        upNextUserAdded.removeAll()
+        upNextAutoQueue.removeAll()
+        // TODO(core-#282): when a `truncate_queue` primitive exists, also
+        // drop the engine-side queue tail so auto-advance stops at the end
+        // of the current track.
+    }
+
+    /// Serialize the current queue (currently-playing + user-added + auto
+    /// tail) into a freshly-created playlist on the server. Called from
+    /// the Queue Inspector's Save action (#284) after the user picks a
+    /// name.
+    ///
+    /// Implementation: `core.create_playlist(name:, itemIds:)` accepts an
+    /// initial `itemIds` payload, so we try it in a single FFI hop and
+    /// then chase with `add_to_playlist` to cover older Jellyfin builds
+    /// that rewrite `ItemIds` to empty on create. After a successful save,
+    /// the local `playlists` cache picks up the new entry on next library
+    /// refresh — we don't eagerly fetch it here to keep the action snappy.
+    ///
+    /// Errors surface on `errorMessage` so the caller sheet can stay
+    /// presentation-only. Empty queues short-circuit — creating an empty
+    /// playlist from the queue inspector would be nonsensical.
+    func saveQueueAsPlaylist(name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Build the track id list in the order the user sees: current →
+        // user-added → auto tail. `Set` de-duplicates in case the same
+        // track appears twice (e.g. queued and also present in the auto
+        // tail); first-seen order is preserved for clarity.
+        var seen = Set<String>()
+        var ids: [String] = []
+        if let current = status.currentTrack {
+            if seen.insert(current.id).inserted { ids.append(current.id) }
+        }
+        for entry in upNextUserAdded {
+            if seen.insert(entry.track.id).inserted { ids.append(entry.track.id) }
+        }
+        for entry in upNextAutoQueue {
+            if seen.insert(entry.track.id).inserted { ids.append(entry.track.id) }
+        }
+        guard !ids.isEmpty else { return }
+        do {
+            let newId = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.createPlaylist(name: trimmed, itemIds: ids)
+            }.value
+            // Some older Jellyfin builds ignore the initial `ItemIds` on
+            // `create_playlist` and return an empty playlist. Follow up
+            // with `add_to_playlist` as a best-effort top-up so the saved
+            // queue always lands with its tracks, regardless of server
+            // version. `add_to_playlist` on a server that did honor the
+            // initial ids would duplicate entries — we accept that
+            // tradeoff over silently dropping the saved queue on older
+            // servers.
+            if !newId.isEmpty {
+                _ = await addToPlaylist(trackIds: ids, playlistId: newId)
+            }
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Save queue failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Shuffle the user-added "Up Next" list in place. The Queue
+    /// Inspector's Shuffle action lands here (#284). The currently-playing
+    /// track is not part of `upNextUserAdded` — it lives on
+    /// `status.currentTrack` and is unaffected by this call.
+    ///
+    /// A short-list guard keeps the UI honest: shuffling one item (or
+    /// none) is a no-op, so we don't waste a pass.
+    func shuffleUpNext() {
+        guard upNextUserAdded.count > 1 else { return }
+        upNextUserAdded.shuffle()
+        // TODO(core-#282): when `reorder_queue` / `shuffle_queue` exists,
+        // push the new order down so the engine plays in the shuffled
+        // order rather than its original load order.
+    }
+
+    /// Navigate to the source that started the current auto queue. Wired
+    /// from the PlayerBar's "Playing from {source}" label (#82). No-ops
+    /// when `currentContext` has no navigable id (ad-hoc selections, radio
+    /// seeds) or an unsupported `sourceType`.
+    func goToPlayingFromSource() {
+        guard let context = currentContext, let id = context.id, !id.isEmpty else { return }
+        switch context.sourceType {
+        case .playlist:
+            if let playlist = playlists.first(where: { $0.id == id }) {
+                goToPlaylist(playlist)
+            } else {
+                screen = .playlist(id)
+            }
+        case .album:
+            screen = .album(id)
+        case .artist:
+            screen = .artist(id)
+        case .genre, .search, .radio, .other:
+            // No dedicated surface for these source types yet — do nothing
+            // rather than route to a placeholder. The label itself is
+            // rendered non-clickable when this branch would be hit.
+            break
+        }
+    }
+
+    /// Whether the current playback source has a navigable target. Drives
+    /// the clickable / non-clickable styling on the PlayerBar's "Playing
+    /// from" label (#82). Genre / search / radio / other don't have a
+    /// single detail surface today, so the label reads as plain text on
+    /// those.
+    var currentContextIsNavigable: Bool {
+        guard let context = currentContext, let id = context.id, !id.isEmpty else { return false }
+        switch context.sourceType {
+        case .album, .artist, .playlist: return true
+        case .genre, .search, .radio, .other: return false
+        }
+    }
 }
 
 // MARK: - Queue models (BATCH-07a)

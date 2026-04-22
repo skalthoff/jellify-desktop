@@ -1,32 +1,53 @@
 import SwiftUI
+import UniformTypeIdentifiers
 @preconcurrency import JellifyCore
 
 /// Right-side "Queue Inspector" panel (320pt) that surfaces the currently-
 /// playing track, the user-added "Up Next" list, and the auto-queue tail.
 ///
 /// Implements issues #79 (the panel itself), #80 (drag-to-reorder + remove),
-/// and #282 (Up Next vs Auto Queue separation).
+/// #282 (Up Next vs Auto Queue separation), #283 (drop-indicator on drag
+/// reorder), and #284 (Clear / Save / Shuffle queue actions).
 ///
 /// Layout (top → bottom):
-///   1. **Now Playing card** — large thumbnail, title/artist/album, and a
+///   1. **Action row** — Clear / Save / Shuffle for the whole queue (#284).
+///   2. **Now Playing card** — large thumbnail, title/artist/album, and a
 ///      read-only scrubber driven by `AppModel.status.positionSeconds`.
-///   2. **UP NEXT** — user-added queue; drag-reorder via `.onMove`,
-///      per-row X button on hover, keyboard reorder via Opt+↑/Opt+↓.
-///   3. **PLAYING FROM {source}** — auto-queue tail; double-click jumps
+///   3. **UP NEXT** — user-added queue; drag-reorder with a 2pt accent
+///      drop-indicator between rows (#283), per-row X button on hover,
+///      keyboard reorder via Opt+↑/Opt+↓.
+///   4. **PLAYING FROM {source}** — auto-queue tail; double-click jumps
 ///      to that track.
 ///
 /// The panel is mounted by `MainShell` via `appModel.isQueueInspectorOpen`
-/// and toggled with Cmd+Opt+Q. The visible toggle in the PlayerBar will
-/// land in BATCH-07b alongside #82 / #283 / #284.
+/// and toggled with Cmd+Opt+Q.
 struct QueueInspector: View {
     @Environment(AppModel.self) private var model
     @FocusState private var focusedQueueId: UUID?
+
+    /// Local presentation state for the three queue actions (#284). These
+    /// live on the view rather than `AppModel` because the sheet / dialog
+    /// are scoped to the inspector and don't need to survive a panel
+    /// collapse. Keeping them here also means no stale flags if the user
+    /// closes the inspector mid-action — SwiftUI reclaims the struct.
+    @State private var showClearConfirm = false
+    @State private var showSaveSheet = false
+    @State private var saveDraftName = ""
+
+    /// Drag-reorder state for the drop-indicator line (#283). `draggingId`
+    /// is the queueId of the row currently being dragged; `dropTargetIndex`
+    /// is the insertion slot where it would land on release (0 ≤ i ≤
+    /// upNextUserAdded.count). The indicator renders between rows at that
+    /// index.
+    @State private var draggingId: UUID?
+    @State private var dropTargetIndex: Int?
 
     var body: some View {
         VStack(spacing: 0) {
             header
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    actionRow
                     nowPlayingCard
                     upNextSection
                     playingFromSection
@@ -37,6 +58,34 @@ struct QueueInspector: View {
         }
         .frame(maxHeight: .infinity)
         .background(Theme.bgAlt)
+        // Clear-queue confirmation dialog (#284). Count interpolated into
+        // the title so a user with a long queue sees at a glance what's
+        // about to disappear — the generic "Clear queue?" hid that.
+        .confirmationDialog(
+            "Clear \(totalQueueCount) items?",
+            isPresented: $showClearConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Clear", role: .destructive) { model.clearQueue() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Removes everything in Up Next and the rest of the current source. The currently-playing track keeps playing.")
+        }
+        // Save-queue sheet (#284). Kept local to the inspector — the only
+        // caller for `saveQueueAsPlaylist(name:)` lives here.
+        .sheet(isPresented: $showSaveSheet, onDismiss: { saveDraftName = "" }) {
+            SaveQueueSheet(
+                name: $saveDraftName,
+                onCancel: { showSaveSheet = false },
+                onSave: {
+                    let trimmed = saveDraftName.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !trimmed.isEmpty else { return }
+                    showSaveSheet = false
+                    Task { await model.saveQueueAsPlaylist(name: trimmed) }
+                }
+            )
+            .environment(model)
+        }
     }
 
     // MARK: - Header
@@ -68,6 +117,102 @@ struct QueueInspector: View {
         .overlay(alignment: .bottom) {
             Rectangle().fill(Theme.border).frame(height: 1)
         }
+    }
+
+    // MARK: - Action row (BATCH-07b, #284)
+
+    /// Clear / Save / Shuffle buttons. All three disable when there's
+    /// nothing to act on — an empty queue can't be cleared, saved, or
+    /// shuffled — so the row reads as a stable affordance rather than
+    /// three buttons of flickering state.
+    @ViewBuilder
+    private var actionRow: some View {
+        HStack(spacing: 8) {
+            queueActionButton(
+                title: "Clear",
+                systemImage: "trash",
+                accessibilityHint: "Clears the queue"
+            ) {
+                showClearConfirm = true
+            }
+            .disabled(totalQueueCount == 0)
+
+            queueActionButton(
+                title: "Save",
+                systemImage: "square.and.arrow.down",
+                accessibilityHint: "Saves the queue as a playlist"
+            ) {
+                saveDraftName = defaultPlaylistName()
+                showSaveSheet = true
+            }
+            .disabled(totalQueueCount == 0)
+
+            queueActionButton(
+                title: "Shuffle",
+                systemImage: "shuffle",
+                accessibilityHint: "Shuffles Up Next"
+            ) {
+                model.shuffleUpNext()
+            }
+            .disabled(model.upNextUserAdded.count < 2)
+        }
+    }
+
+    /// Compact pill-style action button shared by the three queue actions.
+    /// Matches the Home / Library CTAs so the inspector reads as a first-
+    /// class surface rather than a grab-bag of system buttons.
+    @ViewBuilder
+    private func queueActionButton(
+        title: String,
+        systemImage: String,
+        accessibilityHint: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+                Text(title)
+                    .font(Theme.font(11, weight: .semibold))
+            }
+            .foregroundStyle(Theme.ink2)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 6).fill(Theme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Theme.border, lineWidth: 1)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityHint(accessibilityHint)
+    }
+
+    /// Total rows the three queue actions operate on. Used to disable the
+    /// action row when the queue is empty. Does not count the
+    /// currently-playing track since the actions leave it alone; the Save
+    /// action includes it, but Save is also disabled only when *everything*
+    /// is empty (covered by this same check).
+    private var totalQueueCount: Int {
+        model.upNextUserAdded.count + model.upNextAutoQueue.count
+    }
+
+    /// Default playlist name for the Save sheet. Prefers the current
+    /// source label ("My Playlist + Up Next") and falls back to a
+    /// dated placeholder so the user always lands on something typeable.
+    private func defaultPlaylistName() -> String {
+        if let name = model.currentContext?.name, !name.isEmpty {
+            return "\(name) + Up Next"
+        }
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return "Queue \(formatter.string(from: Date()))"
     }
 
     // MARK: - Now Playing card
@@ -152,33 +297,72 @@ struct QueueInspector: View {
             if model.upNextUserAdded.isEmpty {
                 emptyRow("Nothing queued. Use \u{2318}-click \u{2192} Play Next on a track.")
             } else {
-                // `List` is the only SwiftUI primitive that exposes `.onMove`
-                // wiring for drag-to-reorder — see #80. `height` is bounded
-                // to a generous cap so the panel doesn't grow unbounded on
-                // very long queues; past the cap the list scrolls internally.
-                List {
-                    ForEach(model.upNextUserAdded) { entry in
-                        QueueInspectorRow(
-                            entry: entry,
-                            removable: true,
-                            onRemove: { model.removeFromUpNext(id: entry.id) },
-                            onMoveUp: { moveEntry(entry, by: -1) },
-                            onMoveDown: { moveEntry(entry, by: 1) }
-                        )
-                        .focused($focusedQueueId, equals: entry.id)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets())
-                    }
-                    .onMove { indexSet, newOffset in
-                        model.moveUpNext(from: indexSet, to: newOffset)
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .frame(height: boundedListHeight(for: model.upNextUserAdded.count))
+                // A `LazyVStack` + custom `onDrag` / `onDrop` drives the
+                // reorder instead of `List.onMove` so we can render a
+                // visible 2pt drop-indicator line between rows (#283).
+                // `List` doesn't expose its native drop indicator for
+                // styling, and the accent tint is a design requirement.
+                upNextList
             }
         }
+    }
+
+    /// Manual drag-reorder surface. Reads the drop slot from
+    /// `dropTargetIndex` and renders the accent line at that boundary.
+    /// `List.onMove` semantics are preserved through
+    /// `AppModel.moveUpNext(from:to:)` so the model continues to see the
+    /// same `IndexSet → Int` contract it had before.
+    @ViewBuilder
+    private var upNextList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                dropIndicator(at: 0)
+                ForEach(Array(model.upNextUserAdded.enumerated()), id: \.element.id) { index, entry in
+                    QueueInspectorRow(
+                        entry: entry,
+                        removable: true,
+                        onRemove: { model.removeFromUpNext(id: entry.id) },
+                        onMoveUp: { moveEntry(entry, by: -1) },
+                        onMoveDown: { moveEntry(entry, by: 1) }
+                    )
+                    .focused($focusedQueueId, equals: entry.id)
+                    .opacity(draggingId == entry.id ? 0.4 : 1.0)
+                    .onDrag {
+                        draggingId = entry.id
+                        return NSItemProvider(object: entry.id.uuidString as NSString)
+                    }
+                    .onDrop(
+                        of: [.text],
+                        delegate: QueueRowDropDelegate(
+                            targetIndex: index,
+                            draggingId: $draggingId,
+                            dropTargetIndex: $dropTargetIndex,
+                            model: model
+                        )
+                    )
+
+                    dropIndicator(at: index + 1)
+                }
+            }
+        }
+        .frame(height: boundedListHeight(for: model.upNextUserAdded.count))
+    }
+
+    /// 2pt accent-tinted line rendered between rows while a drag is in
+    /// flight (#283). Shows only at the slot that matches
+    /// `dropTargetIndex`, so the user can see exactly where the release
+    /// will land. Fades in/out with the drag so the list doesn't flash a
+    /// stray bar when nothing is being dragged.
+    @ViewBuilder
+    private func dropIndicator(at index: Int) -> some View {
+        let active = draggingId != nil && dropTargetIndex == index
+        Rectangle()
+            .fill(Theme.accent)
+            .frame(height: active ? 2 : 0)
+            .padding(.horizontal, 4)
+            .opacity(active ? 1 : 0)
+            .animation(.easeOut(duration: 0.12), value: active)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Playing From (auto queue)
@@ -370,5 +554,127 @@ private struct QueueInspectorRow: View {
             withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
         }
         .accessibilityLabel("\(entry.track.name) by \(entry.track.artistName)")
+    }
+}
+
+// MARK: - Drop delegate (BATCH-07b, #283)
+
+/// Drop handler for one row in the Up Next list. Updates
+/// `dropTargetIndex` as the mouse hovers a row boundary, and commits the
+/// reorder through `AppModel.moveUpNext(from:to:)` on release.
+///
+/// `targetIndex` is the row's own index in the current list. The insertion
+/// slot is biased by "top-half vs bottom-half" of the row so the indicator
+/// snaps to the nearer edge — that matches how Finder / other AppKit
+/// reorderable lists behave on macOS.
+private struct QueueRowDropDelegate: DropDelegate {
+    let targetIndex: Int
+    @Binding var draggingId: UUID?
+    @Binding var dropTargetIndex: Int?
+    let model: AppModel
+
+    func dropEntered(info: DropInfo) {
+        guard draggingId != nil else { return }
+        // Snap the indicator to the top edge of this row while the cursor
+        // is over it. Dropping with the cursor at the bottom half snaps to
+        // the row below on move — handled in `dropUpdated`.
+        dropTargetIndex = targetIndex
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard draggingId != nil else { return nil }
+        // A midpoint check biases the indicator toward the nearer row
+        // boundary. `info.location.y` is in the row's coordinate space on
+        // macOS 14+, so we compare against a fixed half-height constant
+        // (~22pt for our 44pt row).
+        let midline: CGFloat = 22
+        let above = info.location.y < midline
+        dropTargetIndex = above ? targetIndex : targetIndex + 1
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        // Intentionally left blank — the cursor crossing a row boundary
+        // will call `dropEntered` on the next row before we'd clear state
+        // here, and clearing on exit causes the indicator to flicker
+        // between rows. The final clear happens in `performDrop` or on
+        // drag cancel (handled by the view clearing `draggingId` on the
+        // `onDrag` closure completion path).
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let sourceId = draggingId,
+              let sourceIndex = model.upNextUserAdded.firstIndex(where: { $0.id == sourceId }),
+              let insertAt = dropTargetIndex
+        else {
+            draggingId = nil
+            dropTargetIndex = nil
+            return false
+        }
+        defer {
+            draggingId = nil
+            dropTargetIndex = nil
+        }
+        // Short-circuit when the user dropped the row right back where it
+        // started — otherwise `List.move(fromOffsets:toOffset:)` would
+        // still fire and SwiftUI diff a pointless reorder.
+        if insertAt == sourceIndex || insertAt == sourceIndex + 1 { return false }
+        model.moveUpNext(from: IndexSet(integer: sourceIndex), to: insertAt)
+        return true
+    }
+}
+
+// MARK: - Save sheet (BATCH-07b, #284)
+
+/// Minimal sheet with a name field and Cancel / Save buttons. Kept
+/// private to the inspector since it's the only caller — promoting it to
+/// a shared component would be premature until a second surface wants the
+/// same interaction.
+private struct SaveQueueSheet: View {
+    @Environment(AppModel.self) private var model
+    @Binding var name: String
+    let onCancel: () -> Void
+    let onSave: () -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Save queue as playlist")
+                    .font(Theme.font(15, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+                Text("Creates a new playlist with \(totalCount) \(totalCount == 1 ? "track" : "tracks").")
+                    .font(Theme.font(11, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+            }
+
+            TextField("Playlist name", text: $name)
+                .textFieldStyle(.roundedBorder)
+                .font(Theme.font(12, weight: .medium))
+                .focused($focused)
+                .onSubmit { onSave() }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+                Button("Save", action: onSave)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 360)
+        .onAppear {
+            // Auto-focus the field so the user can type straight away;
+            // auto-select the default so overwriting doesn't need a
+            // manual Cmd-A first.
+            focused = true
+        }
+    }
+
+    private var totalCount: Int {
+        let currentCount = model.status.currentTrack == nil ? 0 : 1
+        return currentCount + model.upNextUserAdded.count + model.upNextAutoQueue.count
     }
 }

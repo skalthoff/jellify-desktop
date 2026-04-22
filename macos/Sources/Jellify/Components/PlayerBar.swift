@@ -31,7 +31,11 @@ struct PlayerBar: View {
                 .accessibilitySortPriority(40)
         }
         .padding(.horizontal, 16)
-        .frame(height: 78)
+        // Bar grows a few points taller when a "Playing from {source}"
+        // label is present (#82). Keeping both heights hard-coded preserves
+        // the stable bar chrome so the whole app doesn't shift a pixel
+        // when the label appears or disappears between tracks.
+        .frame(height: model.currentContext == nil ? 78 : 96)
         // HUD-style translucent material for the unified transport bar so
         // the chrome matches Music.app's bottom panel and reads as "system
         // chrome" rather than app content. Brand wash on top keeps Jellify's
@@ -125,55 +129,100 @@ struct PlayerBar: View {
     /// custom `accessibilityValue` we set below.
     @ViewBuilder
     private var scrubber: some View {
-        HStack(spacing: 10) {
-            Text(format(displayPosition))
-                .font(Theme.font(10, weight: .semibold))
-                .foregroundStyle(Theme.ink3)
-                .monospacedDigit()
-                .frame(width: 36, alignment: .trailing)
-                .accessibilityHidden(true)
+        VStack(spacing: 4) {
+            HStack(spacing: 10) {
+                Text(format(displayPosition))
+                    .font(Theme.font(10, weight: .semibold))
+                    .foregroundStyle(Theme.ink3)
+                    .monospacedDigit()
+                    .frame(width: 36, alignment: .trailing)
+                    .accessibilityHidden(true)
 
-            Slider(
-                value: Binding(
-                    get: {
-                        // Clamp `displayPosition` into the Slider's
-                        // domain. The polling loop can briefly report
-                        // a position past duration across a track
-                        // boundary; without clamping SwiftUI logs a
-                        // "value out of range" warning.
-                        min(max(0, displayPosition), sliderMax)
-                    },
-                    set: { scrubPosition = $0 }
-                ),
-                in: 0...sliderMax,
-                onEditingChanged: { editing in
-                    if editing {
-                        // Drag started — freeze the thumb on the user's
-                        // position so the polling loop doesn't fight it.
-                        scrubPosition = model.status.positionSeconds
-                        isScrubbing = true
-                    } else {
-                        // Drag ended — commit the seek and release the
-                        // local position so the next polling tick can
-                        // pull the thumb back to the live position.
-                        model.seek(toSeconds: scrubPosition)
-                        isScrubbing = false
+                Slider(
+                    value: Binding(
+                        get: {
+                            // Clamp `displayPosition` into the Slider's
+                            // domain. The polling loop can briefly report
+                            // a position past duration across a track
+                            // boundary; without clamping SwiftUI logs a
+                            // "value out of range" warning.
+                            min(max(0, displayPosition), sliderMax)
+                        },
+                        set: { scrubPosition = $0 }
+                    ),
+                    in: 0...sliderMax,
+                    onEditingChanged: { editing in
+                        if editing {
+                            // Drag started — freeze the thumb on the user's
+                            // position so the polling loop doesn't fight it.
+                            scrubPosition = model.status.positionSeconds
+                            isScrubbing = true
+                        } else {
+                            // Drag ended — commit the seek and release the
+                            // local position so the next polling tick can
+                            // pull the thumb back to the live position.
+                            model.seek(toSeconds: scrubPosition)
+                            isScrubbing = false
+                        }
                     }
-                }
-            )
-            .tint(Theme.ink)
-            .disabled(model.status.currentTrack == nil)
-            .controlSize(.mini)
-            .accessibilityLabel("Playback position")
-            .accessibilityValue(accessibilityPositionValue)
+                )
+                .tint(Theme.ink)
+                .disabled(model.status.currentTrack == nil)
+                .controlSize(.mini)
+                .accessibilityLabel("Playback position")
+                .accessibilityValue(accessibilityPositionValue)
 
-            Text(format(model.status.durationSeconds))
-                .font(Theme.font(10, weight: .semibold))
-                .foregroundStyle(Theme.ink3)
-                .monospacedDigit()
-                .frame(width: 36, alignment: .leading)
-                .accessibilityHidden(true)
+                Text(format(model.status.durationSeconds))
+                    .font(Theme.font(10, weight: .semibold))
+                    .foregroundStyle(Theme.ink3)
+                    .monospacedDigit()
+                    .frame(width: 36, alignment: .leading)
+                    .accessibilityHidden(true)
+            }
+            playingFromLabel
         }
+    }
+
+    /// Small "Playing from {source}" affordance below the scrubber (#82).
+    /// Clickable when `AppModel.currentContext` has a navigable id — the
+    /// label navigates the main content column to the source playlist /
+    /// album / artist. Reads as plain text for ad-hoc sources (radio,
+    /// genre, search) where there's no single destination to land on.
+    @ViewBuilder
+    private var playingFromLabel: some View {
+        if let context = model.currentContext, !context.name.isEmpty {
+            Group {
+                if model.currentContextIsNavigable {
+                    Button(action: { model.goToPlayingFromSource() }) {
+                        playingFromText(context.name, bold: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Playing from \(context.name)")
+                    .accessibilityHint("Opens source")
+                } else {
+                    playingFromText(context.name, bold: false)
+                        .accessibilityLabel("Playing from \(context.name)")
+                }
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    @ViewBuilder
+    private func playingFromText(_ name: String, bold: Bool) -> some View {
+        // Split "Playing from" from the source name so only the name picks
+        // up the brighter ink color when the label is clickable — mirrors
+        // the link-style treatment used on Album / Artist liner chips.
+        HStack(spacing: 4) {
+            Text("Playing from")
+                .font(Theme.font(10, weight: .medium))
+                .foregroundStyle(Theme.ink3)
+            Text(name)
+                .font(Theme.font(10, weight: bold ? .bold : .medium))
+                .foregroundStyle(bold ? Theme.ink2 : Theme.ink3)
+                .underline(bold, color: Theme.ink2.opacity(0.6))
+        }
+        .lineLimit(1)
     }
 
     @ViewBuilder
