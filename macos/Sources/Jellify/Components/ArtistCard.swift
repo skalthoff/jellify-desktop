@@ -10,11 +10,27 @@ import SwiftUI
 /// `AppModel.playAll(artist:)`, which is a logging stub today pending
 /// `artist_tracks` FFI (#156 / #465). The visual affordance matches the
 /// album card so users have a consistent hover model across the grid.
+///
+/// Hover state is lifted to the parent (`LibraryView`) through the
+/// `.libraryHoverID` environment, so a 5k-artist grid doesn't accumulate
+/// per-cell `@State`. When the env isn't active (stand-alone embedding),
+/// cells fall back to local state so hover keeps working. See #428.
 struct ArtistCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.libraryHoverID) private var hoverTracker
     let artist: Artist
-    @State private var isHovering = false
+    /// Fallback hover flag; inert on the library path.
+    @State private var localHovering = false
+
+    /// True when the shared hover tracker reports this cell as hovered —
+    /// or when we're on the fallback path and the cursor is over the cell.
+    private var isHovering: Bool {
+        if hoverTracker.isActive {
+            return hoverTracker.id.wrappedValue == artist.id
+        }
+        return localHovering
+    }
 
     var body: some View {
         Button {
@@ -26,7 +42,11 @@ struct ArtistCard: View {
                         url: model.imageURL(for: artist.id, tag: artist.imageTag, maxWidth: 400),
                         seed: artist.name,
                         size: 180,
-                        radius: 8
+                        radius: 8,
+                        // 180pt square at 2x = 360px, 3x = 540px. 540 gives
+                        // us Retina-5K headroom without decoding the full
+                        // server image. See #427.
+                        targetPixelSize: CGSize(width: 540, height: 540)
                     )
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
@@ -64,7 +84,17 @@ struct ArtistCard: View {
             )
         }
         .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .onHover { hovering in
+            if hoverTracker.isActive {
+                if hovering {
+                    hoverTracker.id.wrappedValue = artist.id
+                } else if hoverTracker.id.wrappedValue == artist.id {
+                    hoverTracker.id.wrappedValue = nil
+                }
+            } else {
+                localHovering = hovering
+            }
+        }
         .contextMenu { ArtistContextMenu(artist: artist) }
     }
 

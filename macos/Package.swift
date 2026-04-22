@@ -12,6 +12,12 @@ let package = Package(
         .library(name: "JellifyCore", targets: ["JellifyCore"]),
         .library(name: "JellifyAudio", targets: ["JellifyAudio"]),
     ],
+    dependencies: [
+        // Nuke powers artwork loading (disk cache, request coalescing, background
+        // decoding, decode-time downscaling). Replaces SwiftUI.AsyncImage which had
+        // no caching and decoded at source resolution — #426 / #427.
+        .package(url: "https://github.com/kean/Nuke.git", from: "13.0.0"),
+    ],
     targets: [
         .binaryTarget(
             name: "JellifyCoreFFI",
@@ -35,7 +41,12 @@ let package = Package(
         ),
         .executableTarget(
             name: "Jellify",
-            dependencies: ["JellifyCore", "JellifyAudio"],
+            dependencies: [
+                "JellifyCore",
+                "JellifyAudio",
+                .product(name: "Nuke", package: "Nuke"),
+                .product(name: "NukeUI", package: "Nuke"),
+            ],
             path: "Sources/Jellify",
             resources: [
                 .process("Resources")
