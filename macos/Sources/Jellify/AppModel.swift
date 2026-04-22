@@ -39,6 +39,53 @@ final class AppModel {
     var searchResults: SearchResults?
     var searchQuery: String = ""
 
+    // MARK: - Pagination
+    //
+    // `*Total` mirrors the server's `TotalRecordCount` so views can render
+    // "N of M" sublines and decide when to trigger a follow-up page. The
+    // `isLoadingMore*` flags debounce near-end triggers so a fast scroll
+    // through the grid doesn't fan out into duplicate in-flight fetches.
+    //
+    // Size of each page (see `libraryInitialPageSize` and `libraryPageSize`):
+    // first paint uses 100 so the grid shows up fast; subsequent pages fetch
+    // 200 to keep round-trip count low once the user has committed to browsing.
+
+    /// Server-reported total album count for the current library.
+    var albumsTotal: UInt32 = 0
+    /// Server-reported total artist count for the current library.
+    var artistsTotal: UInt32 = 0
+    /// Server-reported total recently-played count (listening history size).
+    var recentlyPlayedTotal: UInt32 = 0
+    /// Server-reported total for the current search query across all item kinds.
+    var searchResultsTotal: UInt32 = 0
+
+    /// A follow-up albums page is in flight. Views check this to suppress
+    /// duplicate near-end triggers and to show a bottom spinner.
+    var isLoadingMoreAlbums: Bool = false
+    /// A follow-up artists page is in flight. See `isLoadingMoreAlbums`.
+    var isLoadingMoreArtists: Bool = false
+    /// A follow-up search page is in flight for the current query.
+    var isLoadingMoreSearch: Bool = false
+
+    /// First-paint size for library lists. Tuned smaller than subsequent
+    /// pages so the grid renders quickly on login; raising this increases
+    /// time-to-first-paint without measurable benefit.
+    private let libraryInitialPageSize: UInt32 = 100
+    /// Follow-up page size for library lists. Larger than the initial page
+    /// to keep round-trip count down once the user has committed to scrolling.
+    private let libraryPageSize: UInt32 = 200
+    /// Initial page size for recently-played on the Home screen.
+    private let recentlyPlayedInitialPageSize: UInt32 = 20
+    /// Page size when walking `playlist_tracks` to completion.
+    private let playlistPageSize: UInt32 = 200
+    /// Hard cap on total tracks pulled from a single playlist to keep a
+    /// pathological 50k-track playlist from holding the UI hostage. Callers
+    /// that hit this see up to this many tracks; beyond that the rest is
+    /// silently dropped. Easy to raise once a real use case complains.
+    private let playlistSafetyCap: Int = 5000
+    /// Page size for the "Show all results" affordance in search.
+    private let searchPageSize: UInt32 = 50
+
     // MARK: - Player
     var status: PlayerStatus
     var pollTimer: Timer?
@@ -118,6 +165,9 @@ final class AppModel {
         artists = []
         albumTracks = [:]
         recentlyPlayed = []
+        searchResults = nil
+        searchQuery = ""
+        resetPaginationState()
         stopPolling()
     }
 
@@ -133,7 +183,23 @@ final class AppModel {
         artists = []
         albumTracks = [:]
         recentlyPlayed = []
+        searchResults = nil
+        searchQuery = ""
+        resetPaginationState()
         stopPolling()
+    }
+
+    /// Clear all pagination counters and in-flight flags. Kept in one place
+    /// so the two clear-the-session entry points (`logout`, `forgetToken`)
+    /// stay in sync.
+    private func resetPaginationState() {
+        albumsTotal = 0
+        artistsTotal = 0
+        recentlyPlayedTotal = 0
+        searchResultsTotal = 0
+        isLoadingMoreAlbums = false
+        isLoadingMoreArtists = false
+        isLoadingMoreSearch = false
     }
 
     /// Flag the session as expired. The UI surfaces this via the auth-expired
@@ -170,14 +236,24 @@ final class AppModel {
         isLoadingLibrary = true
         defer { isLoadingLibrary = false }
         do {
-            let albums = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.listAlbums(offset: 0, limit: 200)
+            // Fetch albums and artists in parallel. Previously the two calls
+            // were sequential, doubling time-to-first-paint on every fresh
+            // session. `async let` lets both round-trips overlap; the
+            // `await` below resolves when both complete. The smaller
+            // `libraryInitialPageSize` (100 vs. the old 200) is a further
+            // first-paint win — the grid fills the viewport with 100 and
+            // `loadMoreAlbums` takes over when the user scrolls.
+            async let albumsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+                try core.listAlbums(offset: 0, limit: libraryInitialPageSize)
             }.value
-            let artists = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.listArtists(offset: 0, limit: 200)
+            async let artistsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+                try core.listArtists(offset: 0, limit: libraryInitialPageSize)
             }.value
-            self.albums = albums
-            self.artists = artists
+            let (albums, artists) = try await (albumsPage, artistsPage)
+            self.albums = albums.items
+            self.albumsTotal = albums.totalCount
+            self.artists = artists.items
+            self.artistsTotal = artists.totalCount
             serverReachability.noteSuccess()
         } catch {
             if handleAuthError(error) { return }
@@ -189,21 +265,115 @@ final class AppModel {
         await refreshRecentlyPlayed()
     }
 
+    /// Fetch the next page of albums and append to `albums`. No-op when a
+    /// page is already in flight or when the local count has caught up to
+    /// `albumsTotal`. Called from `LibraryView`'s near-end `.onAppear`
+    /// trigger — see `LibraryView.swift`.
+    func loadMoreAlbums() async {
+        guard !isLoadingMoreAlbums else { return }
+        guard albumsTotal == 0 || albums.count < Int(albumsTotal) else { return }
+        isLoadingMoreAlbums = true
+        defer { isLoadingMoreAlbums = false }
+        let offset = UInt32(albums.count)
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core, libraryPageSize] in
+                try core.listAlbums(offset: offset, limit: libraryPageSize)
+            }.value
+            self.albums.append(contentsOf: page.items)
+            self.albumsTotal = page.totalCount
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Fetch the next page of artists and append to `artists`. Mirror of
+    /// `loadMoreAlbums` — see its docs for the trigger contract.
+    func loadMoreArtists() async {
+        guard !isLoadingMoreArtists else { return }
+        guard artistsTotal == 0 || artists.count < Int(artistsTotal) else { return }
+        isLoadingMoreArtists = true
+        defer { isLoadingMoreArtists = false }
+        let offset = UInt32(artists.count)
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core, libraryPageSize] in
+                try core.listArtists(offset: offset, limit: libraryPageSize)
+            }.value
+            self.artists.append(contentsOf: page.items)
+            self.artistsTotal = page.totalCount
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+        }
+    }
+
     /// Fetch the user's recently played tracks for the Home screen carousel
     /// (#206). Passes `nil` for the music library id so the core returns
     /// tracks across all music libraries the user can see. Failures are
     /// swallowed silently — an empty carousel is preferable to an error
     /// banner for a best-effort Home widget.
+    ///
+    /// Stores `totalCount` alongside the page so a future "See all" view can
+    /// expand the carousel without issuing another count query.
     func refreshRecentlyPlayed() async {
         do {
-            let tracks = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.recentlyPlayed(musicLibraryId: nil, offset: 0, limit: 20)
+            let page = try await Task.detached(priority: .userInitiated) { [core, recentlyPlayedInitialPageSize] in
+                try core.recentlyPlayed(
+                    musicLibraryId: nil,
+                    offset: 0,
+                    limit: recentlyPlayedInitialPageSize
+                )
             }.value
-            self.recentlyPlayed = tracks
+            self.recentlyPlayed = page.items
+            self.recentlyPlayedTotal = page.totalCount
         } catch {
             // Silent fallback — don't surface errors for a secondary widget.
             _ = handleAuthError(error)
         }
+    }
+
+    /// Load ALL tracks on a playlist by paging through `playlist_tracks` in
+    /// chunks of `playlistPageSize` until `totalCount` is reached or the
+    /// `playlistSafetyCap` is hit. Returns as soon as any page fails. No UI
+    /// wiring calls this yet (playlist detail screen is #313 et al), but the
+    /// FFI is now paginated so the caller that lands it can rely on "pass
+    /// this a playlist id and get every track". See #125 / #429.
+    func loadAllPlaylistTracks(playlistID: String) async -> [Track] {
+        var all: [Track] = []
+        var offset: UInt32 = 0
+        let limit = playlistPageSize
+        let cap = playlistSafetyCap
+        do {
+            while all.count < cap {
+                let page = try await Task.detached(priority: .userInitiated) { [core] in
+                    try core.playlistTracks(
+                        playlistId: playlistID,
+                        offset: offset,
+                        limit: limit
+                    )
+                }.value
+                all.append(contentsOf: page.items)
+                if page.items.isEmpty { break }
+                if all.count >= Int(page.totalCount) { break }
+                offset = UInt32(all.count)
+            }
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return all }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Playlist load failed: \(error.localizedDescription)"
+        }
+        return all
     }
 
     func loadTracks(forAlbum albumID: String) async -> [Track] {
@@ -249,13 +419,65 @@ final class AppModel {
         searchQuery = query
         guard !query.isEmpty else {
             searchResults = nil
+            searchResultsTotal = 0
             return
         }
         do {
-            let results = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.search(query: query)
+            let results = try await Task.detached(priority: .userInitiated) { [core, searchPageSize] in
+                try core.search(query: query, offset: 0, limit: searchPageSize)
             }.value
             self.searchResults = results
+            self.searchResultsTotal = results.totalRecordCount
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Search failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Fetch the next page of the current search query and merge into
+    /// `searchResults`. Jellyfin's combined-type `/Users/{id}/Items`
+    /// endpoint doesn't let us fetch more of a single kind at a time, so
+    /// this appends whichever of (artists, albums, tracks) the next page
+    /// happens to contain. The "Show all N results" button in `SearchView`
+    /// is the caller.
+    ///
+    /// Dedupes by id so the typed arrays don't accumulate duplicates if a
+    /// row happens to overlap across paged responses (which can happen
+    /// because Jellyfin's ordering is stable only per sort key).
+    func loadMoreSearchResults() async {
+        guard !isLoadingMoreSearch else { return }
+        guard let current = searchResults, !searchQuery.isEmpty else { return }
+        let loaded = current.artists.count + current.albums.count + current.tracks.count
+        guard loaded < Int(searchResultsTotal) else { return }
+        isLoadingMoreSearch = true
+        defer { isLoadingMoreSearch = false }
+        let offset = UInt32(loaded)
+        let query = searchQuery
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core, searchPageSize] in
+                try core.search(query: query, offset: offset, limit: searchPageSize)
+            }.value
+            // Merge with dedupe — see method doc.
+            var artistSet = Set(current.artists.map(\.id))
+            var albumSet = Set(current.albums.map(\.id))
+            var trackSet = Set(current.tracks.map(\.id))
+            var artists = current.artists
+            var albums = current.albums
+            var tracks = current.tracks
+            for a in page.artists where artistSet.insert(a.id).inserted { artists.append(a) }
+            for a in page.albums where albumSet.insert(a.id).inserted { albums.append(a) }
+            for t in page.tracks where trackSet.insert(t.id).inserted { tracks.append(t) }
+            self.searchResults = SearchResults(
+                artists: artists,
+                albums: albums,
+                tracks: tracks,
+                totalRecordCount: page.totalRecordCount
+            )
+            self.searchResultsTotal = page.totalRecordCount
             serverReachability.noteSuccess()
         } catch {
             if handleAuthError(error) { return }

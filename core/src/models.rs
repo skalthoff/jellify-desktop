@@ -86,6 +86,48 @@ pub struct SearchResults {
     pub artists: Vec<Artist>,
     pub albums: Vec<Album>,
     pub tracks: Vec<Track>,
+    /// Total number of items (across all item types) the server reports for
+    /// this query, as returned in `TotalRecordCount`. When the total is
+    /// greater than `artists.len() + albums.len() + tracks.len()`, more
+    /// results are available past the current page.
+    pub total_record_count: u32,
+}
+
+/// Page of albums returned by `albums` and `latest_albums`. `total_count`
+/// comes from Jellyfin's `TotalRecordCount`, so callers can detect when more
+/// pages exist beyond the current `items.len()` + `offset`. UniFFI doesn't
+/// support generics, so there is one of these per item type.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct PaginatedAlbums {
+    pub items: Vec<Album>,
+    pub total_count: u32,
+}
+
+/// Page of artists returned by `artists`. See [`PaginatedAlbums`].
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct PaginatedArtists {
+    pub items: Vec<Artist>,
+    pub total_count: u32,
+}
+
+/// Page of tracks returned by `recently_played` and `playlist_tracks`.
+/// See [`PaginatedAlbums`].
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct PaginatedTracks {
+    pub items: Vec<Track>,
+    pub total_count: u32,
+}
+
+/// Page of playlists returned by `user_playlists` and `public_playlists`.
+/// Note: these two endpoints filter the server's response client-side by
+/// `Path`, so `total_count` is the server-reported total across BOTH user
+/// and public playlists (i.e. what Jellyfin would return without the
+/// client-side partition). Callers should treat it as an upper bound on the
+/// page size they need to fetch, not as `items.len()`'s true total.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct PaginatedPlaylists {
+    pub items: Vec<Playlist>,
+    pub total_count: u32,
 }
 
 /// A lightweight, typed-heterogeneous search result returned by

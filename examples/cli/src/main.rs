@@ -52,10 +52,11 @@ fn main() -> Result<()> {
         .map_err(|e| anyhow!("login: {e}"))?;
     println!("Logged in as {}", session.user.name);
 
-    let albums = core
+    let page = core
         .list_albums(0, 20)
         .map_err(|e| anyhow!("list albums: {e}"))?;
-    println!("\nAlbums ({}):", albums.len());
+    let albums = page.items;
+    println!("\nAlbums ({} of {}):", albums.len(), page.total_count);
     for (i, a) in albums.iter().enumerate() {
         println!(
             "  [{}] {} — {} ({})",

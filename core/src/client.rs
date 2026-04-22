@@ -155,7 +155,7 @@ impl JellyfinClient {
 
     // ----- Library queries -----
 
-    pub async fn artists(&self, paging: Paging) -> Result<Vec<Artist>> {
+    pub async fn artists(&self, paging: Paging) -> Result<PaginatedArtists> {
         let user_id = self
             .user_id
             .as_ref()
@@ -179,10 +179,13 @@ impl JellyfinClient {
             .send()
             .await?;
         let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
-        Ok(raw.items.into_iter().map(Artist::from).collect())
+        Ok(PaginatedArtists {
+            items: raw.items.into_iter().map(Artist::from).collect(),
+            total_count: raw.total_record_count,
+        })
     }
 
-    pub async fn albums(&self, paging: Paging) -> Result<Vec<Album>> {
+    pub async fn albums(&self, paging: Paging) -> Result<PaginatedAlbums> {
         let user_id = self
             .user_id
             .as_ref()
@@ -208,7 +211,10 @@ impl JellyfinClient {
             .send()
             .await?;
         let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
-        Ok(raw.items.into_iter().map(Album::from).collect())
+        Ok(PaginatedAlbums {
+            items: raw.items.into_iter().map(Album::from).collect(),
+            total_count: raw.total_record_count,
+        })
     }
 
     /// Fetch the most recently added albums in a library, respecting the
@@ -223,18 +229,37 @@ impl JellyfinClient {
     ///   Home "Recently Added" row shows albums rather than loose tracks.
     /// - `library_id` is the music library's collection id (a "Views" item);
     ///   callers typically resolve it once at sign-in and cache it.
-    pub async fn latest_albums(&self, library_id: &str, limit: u32) -> Result<Vec<Album>> {
+    ///
+    /// # Pagination caveat
+    ///
+    /// The underlying `/Items/Latest` endpoint does NOT accept a
+    /// `StartIndex` query parameter (see Jellyfin's
+    /// `UserLibraryController.GetLatestMedia` — only `Limit` is exposed).
+    /// To still offer a uniform `Paging` surface, this method asks the
+    /// server for `offset + limit` items and slices the tail client-side.
+    /// That means `offset` values larger than Jellyfin's internal
+    /// "most recent" window will return an empty page even if more albums
+    /// exist in the library. Callers that need the full catalog should use
+    /// [`JellyfinClient::albums`] instead; `latest_albums` is optimized for
+    /// the Home "Recently Added" row.
+    ///
+    /// `total_count` on the returned [`PaginatedAlbums`] is the number of
+    /// items the server returned for this request, NOT the library total —
+    /// `/Items/Latest` does not report `TotalRecordCount`.
+    pub async fn latest_albums(&self, library_id: &str, paging: Paging) -> Result<PaginatedAlbums> {
         let user_id = self
             .user_id
             .as_ref()
             .ok_or(JellifyError::NotAuthenticated)?;
+        let limit = paging.limit.max(1);
+        let server_limit = paging.offset.saturating_add(limit).max(1);
         let mut url = self.endpoint("Items/Latest")?;
         {
             let mut q = url.query_pairs_mut();
             q.append_pair("UserId", user_id);
             q.append_pair("ParentId", library_id);
             q.append_pair("IncludeItemTypes", "MusicAlbum");
-            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair("Limit", &server_limit.to_string());
             q.append_pair("GroupItems", "true");
             q.append_pair(
                 "Fields",
@@ -248,7 +273,17 @@ impl JellyfinClient {
             .send()
             .await?;
         let items: Vec<RawItem> = Self::check(resp).await?.json().await?;
-        Ok(items.into_iter().map(Album::from).collect())
+        let total_count = items.len() as u32;
+        let sliced: Vec<Album> = items
+            .into_iter()
+            .skip(paging.offset as usize)
+            .take(limit as usize)
+            .map(Album::from)
+            .collect();
+        Ok(PaginatedAlbums {
+            items: sliced,
+            total_count,
+        })
     }
 
     /// Recently played audio tracks for the current user, sorted by
@@ -263,7 +298,7 @@ impl JellyfinClient {
         &self,
         music_library_id: Option<&str>,
         paging: Paging,
-    ) -> Result<Vec<Track>> {
+    ) -> Result<PaginatedTracks> {
         let user_id = self
             .user_id
             .as_ref()
@@ -292,7 +327,10 @@ impl JellyfinClient {
             .send()
             .await?;
         let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
-        Ok(raw.items.into_iter().map(Track::from).collect())
+        Ok(PaginatedTracks {
+            items: raw.items.into_iter().map(Track::from).collect(),
+            total_count: raw.total_record_count,
+        })
     }
 
     /// Fetch playlists the current user owns. Jellyfin stores user-owned
@@ -303,17 +341,27 @@ impl JellyfinClient {
     /// `playlist_library_id` is the Playlists view id (the CollectionFolder
     /// with `CollectionType == "playlists"`). Resolving that id is tracked
     /// separately; callers pass it in here.
+    ///
+    /// `total_count` on the returned [`PaginatedPlaylists`] is the server's
+    /// unfiltered `TotalRecordCount` (all playlists under the library view,
+    /// both user- and public-owned) — the per-page `items.len()` may be
+    /// smaller once the client-side `/data/` filter has been applied.
     pub async fn user_playlists(
         &self,
         playlist_library_id: &str,
         paging: Paging,
-    ) -> Result<Vec<Playlist>> {
-        let items = self.playlists_items(playlist_library_id, paging).await?;
-        Ok(items
+    ) -> Result<PaginatedPlaylists> {
+        let raw = self.playlists_items(playlist_library_id, paging).await?;
+        let items = raw
+            .items
             .into_iter()
             .filter(|i| i.path.as_deref().is_some_and(|p| p.contains("/data/")))
             .map(Playlist::from)
-            .collect())
+            .collect();
+        Ok(PaginatedPlaylists {
+            items,
+            total_count: raw.total_record_count,
+        })
     }
 
     /// Fetch playlists visible to the current user that are NOT owned by
@@ -323,27 +371,36 @@ impl JellyfinClient {
     /// `playlist_library_id` is the Playlists view id (the CollectionFolder
     /// with `CollectionType == "playlists"`). Resolving that id is tracked
     /// separately; callers pass it in here.
+    ///
+    /// See [`JellyfinClient::user_playlists`] for the `total_count` caveat.
     pub async fn public_playlists(
         &self,
         playlist_library_id: &str,
         paging: Paging,
-    ) -> Result<Vec<Playlist>> {
-        let items = self.playlists_items(playlist_library_id, paging).await?;
-        Ok(items
+    ) -> Result<PaginatedPlaylists> {
+        let raw = self.playlists_items(playlist_library_id, paging).await?;
+        let items = raw
+            .items
             .into_iter()
             .filter(|i| !i.path.as_deref().is_some_and(|p| p.contains("/data/")))
             .map(Playlist::from)
-            .collect())
+            .collect();
+        Ok(PaginatedPlaylists {
+            items,
+            total_count: raw.total_record_count,
+        })
     }
 
     /// Shared `GET /Items` request that returns all playlists under the
     /// given Playlists library view. `user_playlists` / `public_playlists`
-    /// partition the result by `Path`.
+    /// partition the result by `Path`. Returns the raw [`RawItems`] wrapper
+    /// so callers can forward `total_record_count` to their paginated
+    /// response shape.
     async fn playlists_items(
         &self,
         playlist_library_id: &str,
         paging: Paging,
-    ) -> Result<Vec<RawItem>> {
+    ) -> Result<RawItems<RawItem>> {
         let user_id = self
             .user_id
             .as_ref()
@@ -365,7 +422,7 @@ impl JellyfinClient {
             .send()
             .await?;
         let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
-        Ok(raw.items)
+        Ok(raw)
     }
 
     /// Fetch the audio tracks on a playlist, preserving the server's playlist
@@ -378,7 +435,11 @@ impl JellyfinClient {
     ///
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
-    pub async fn playlist_tracks(&self, playlist_id: &str, paging: Paging) -> Result<Vec<Track>> {
+    pub async fn playlist_tracks(
+        &self,
+        playlist_id: &str,
+        paging: Paging,
+    ) -> Result<PaginatedTracks> {
         let user_id = self
             .user_id
             .as_ref()
@@ -400,7 +461,10 @@ impl JellyfinClient {
             .send()
             .await?;
         let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
-        Ok(raw.items.into_iter().map(Track::from).collect())
+        Ok(PaginatedTracks {
+            items: raw.items.into_iter().map(Track::from).collect(),
+            total_count: raw.total_record_count,
+        })
     }
 
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
@@ -618,7 +682,19 @@ impl JellyfinClient {
         Ok(())
     }
 
-    pub async fn search(&self, query: &str) -> Result<SearchResults> {
+    /// Full-search query against `Users/{id}/Items?SearchTerm=…`. Returns
+    /// fully-hydrated records split into typed sections (artists / albums /
+    /// tracks) — use this for a "See all results" page where the UI wants
+    /// cards rather than raw hints. For a debounced omnibox, prefer
+    /// [`JellyfinClient::search_hints`].
+    ///
+    /// `paging` applies to the combined response: Jellyfin does not offer
+    /// per-type pagination on this endpoint, so `total_record_count` is the
+    /// server's total across ALL matched item types. Callers that want to
+    /// page a single kind (only tracks, only albums) should issue typed
+    /// requests via [`JellyfinClient::albums`] / `artists` etc. with
+    /// `SearchTerm` — a follow-up once the UI grows that affordance.
+    pub async fn search(&self, query: &str, paging: Paging) -> Result<SearchResults> {
         let user_id = self
             .user_id
             .as_ref()
@@ -629,7 +705,8 @@ impl JellyfinClient {
             q.append_pair("Recursive", "true");
             q.append_pair("SearchTerm", query);
             q.append_pair("IncludeItemTypes", "MusicArtist,MusicAlbum,Audio");
-            q.append_pair("Limit", "50");
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
             q.append_pair("Fields", "Genres,ProductionYear,PrimaryImageAspectRatio");
         }
         let resp = self
@@ -655,6 +732,7 @@ impl JellyfinClient {
             artists,
             albums,
             tracks,
+            total_record_count: raw.total_record_count,
         })
     }
 
@@ -673,7 +751,12 @@ impl JellyfinClient {
     /// (`includeItemTypes=Audio,MusicAlbum,MusicArtist,Playlist`). Requires
     /// an authenticated session; returns [`JellifyError::NotAuthenticated`]
     /// if no `user_id` is set.
-    pub async fn search_hints(&self, query: &str, limit: u32) -> Result<SearchHintResults> {
+    ///
+    /// `paging.offset` maps to Jellyfin's `startIndex` so callers can page
+    /// deeper into the hint list ("Show more" in the typeahead). The
+    /// returned `total_record_count` is the server-side unpaged total and
+    /// is stable across pages for the same query.
+    pub async fn search_hints(&self, query: &str, paging: Paging) -> Result<SearchHintResults> {
         let user_id = self
             .user_id
             .as_ref()
@@ -684,7 +767,8 @@ impl JellyfinClient {
             q.append_pair("userId", user_id);
             q.append_pair("searchTerm", query);
             q.append_pair("includeItemTypes", "Audio,MusicAlbum,MusicArtist,Playlist");
-            q.append_pair("limit", &limit.max(1).to_string());
+            q.append_pair("limit", &paging.limit.max(1).to_string());
+            q.append_pair("startIndex", &paging.offset.to_string());
         }
         let resp = self
             .http
@@ -905,7 +989,6 @@ struct RawItems<T> {
     #[serde(rename = "Items", default)]
     items: Vec<T>,
     #[serde(rename = "TotalRecordCount", default)]
-    #[allow(dead_code)]
     total_record_count: u32,
 }
 
