@@ -15,6 +15,8 @@ struct LibraryView: View {
                         .tint(Theme.ink2)
                         .padding(.top, 40)
                         .frame(maxWidth: .infinity)
+                } else if model.albums.isEmpty {
+                    EmptyLibraryState(serverUrl: serverWebURL)
                 } else {
                     LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
                         ForEach(model.albums, id: \.id) { album in
@@ -29,6 +31,16 @@ struct LibraryView: View {
             .padding(.bottom, 32)
         }
         .background(backgroundWash)
+    }
+
+    /// Jellyfin's web UI lives at `/web/` on the server host. Falls back to
+    /// `nil` if the user somehow lands here without a server URL so the empty
+    /// state can hide the CTA.
+    private var serverWebURL: URL? {
+        let trimmed = model.serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let base = trimmed.hasSuffix("/") ? String(trimmed.dropLast()) : trimmed
+        return URL(string: "\(base)/web/")
     }
 
     private var header: some View {
