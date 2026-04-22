@@ -72,7 +72,14 @@ struct Sidebar: View {
             .background(Divider().background(Theme.border), alignment: .top)
         }
         .frame(width: 252)
-        .background(Theme.bgAlt)
+        // Translucent Apple-Music-style sidebar material. The `.sidebar`
+        // material + `.behindWindow` blending lets the desktop wallpaper
+        // tint through while preserving the brand backdrop on top. See
+        // issues #9 / #10 / #28.
+        .background(
+            VisualEffectView(material: .sidebar)
+                .overlay(Theme.bgAlt.opacity(0.55))
+        )
     }
 
     @ViewBuilder

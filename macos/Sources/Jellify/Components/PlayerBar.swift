@@ -18,7 +18,14 @@ struct PlayerBar: View {
         }
         .padding(.horizontal, 16)
         .frame(height: 78)
-        .background(Theme.bgAlt)
+        // HUD-style translucent material for the unified transport bar so
+        // the chrome matches Music.app's bottom panel and reads as "system
+        // chrome" rather than app content. Brand wash on top keeps Jellify's
+        // palette dominant. See issues #9 / #10 / #28.
+        .background(
+            VisualEffectView(material: .hudWindow)
+                .overlay(Theme.bgAlt.opacity(0.7))
+        )
         .overlay(alignment: .top) {
             Rectangle().fill(Theme.border).frame(height: 1)
         }

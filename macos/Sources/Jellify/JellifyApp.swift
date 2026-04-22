@@ -5,6 +5,12 @@ import SwiftUI
 struct JellifyApp: App {
     @State private var model: AppModel
 
+    /// AppKit delegate for the dock menu, sleep / wake observers, and
+    /// window-tabbing opt-in. SwiftUI's `Scene` protocol can't express any
+    /// of those, so we bridge through the delegate adaptor and hand the
+    /// live `AppModel` over once the scene mounts. See `AppDelegate.swift`.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     /// Persisted color-scheme mode from the Appearance pane (#263). Read here
     /// so the entire window tree (including the Preferences scene) honours the
     /// user's choice. `oled` resolves to `.dark` until the true-black surface
@@ -30,6 +36,14 @@ struct JellifyApp: App {
                 .environment(model)
                 .frame(minWidth: 960, minHeight: 640)
                 .preferredColorScheme(preferredColorScheme)
+                .task { appDelegate.bind(appModel: model) }
+                // Publish the current window's `AppModel` as a focused
+                // scene value so `@FocusedValue(\.appModel)` readers
+                // (e.g. future menu commands that live outside the
+                // WindowGroup body) can resolve against whichever window
+                // is key. Single-window apps only need this to be ready
+                // for a multi-window future. See `FocusedValueKey+AppModel`.
+                .focusedSceneValue(\.appModel, model)
         }
         .defaultSize(width: 1280, height: 820)
         .windowToolbarStyle(.unifiedCompact)
@@ -38,12 +52,33 @@ struct JellifyApp: App {
         }
 
         // Native Preferences scene. macOS wires up ⌘, and menu item for free.
+        // Window restoration: on macOS 14+ `WindowGroup` + `Settings`
+        // handle size/position persistence for us, so we intentionally do
+        // not register a `SceneStorage` or persist a frame manually. See #17.
         Settings {
             PreferencesView()
                 .environment(model)
                 .preferredColorScheme(preferredColorScheme)
         }
         .windowResizability(.contentSize)
+    }
+}
+
+// MARK: - FocusedValue plumbing
+//
+// SwiftUI `FocusedValues` expose per-scene state to commands and menus
+// that live outside the view hierarchy. Registering an `AppModel` key
+// here lets us add menu items in the future (e.g. a Now-Playing MenuBar
+// extra) that talk to the correct window's model without us having to
+// thread a singleton through.
+private struct AppModelFocusedValueKey: FocusedValueKey {
+    typealias Value = AppModel
+}
+
+extension FocusedValues {
+    var appModel: AppModel? {
+        get { self[AppModelFocusedValueKey.self] }
+        set { self[AppModelFocusedValueKey.self] = newValue }
     }
 }
 
