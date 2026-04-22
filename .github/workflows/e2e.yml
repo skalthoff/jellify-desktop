@@ -33,7 +33,7 @@ jobs:
       # --health-cmd and let Scripts/e2e-setup-jellyfin.sh block on the
       # server's public info endpoint from the host side instead.
       jellyfin:
-        image: jellyfin/jellyfin:10.10.3
+        image: jellyfin/jellyfin:10.11.8
         ports:
           - 8096:8096
     steps:
@@ -101,7 +101,7 @@ jobs:
           docker run -d --name jellyfin \
             -p 8096:8096 \
             -e JELLYFIN_PublishedServerUrl=http://localhost:8096 \
-            jellyfin/jellyfin:10.10.3
+            jellyfin/jellyfin:10.11.8
       - name: Complete Jellyfin first-run wizard
         run: ./Scripts/e2e-setup-jellyfin.sh http://localhost:8096 "$JELLIFY_E2E_USER" "$JELLIFY_E2E_PASS"
       - name: Build xcframework
