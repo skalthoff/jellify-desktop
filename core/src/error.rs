@@ -18,6 +18,13 @@ pub enum JellifyError {
     #[error("no active session — call login or restore first")]
     NoSession,
 
+    /// The current access token was rejected by the server (`401`) and a
+    /// silent re-read from the keyring did not surface a fresh one. Surfaced
+    /// so the UI can prompt the user to re-authenticate — see
+    /// [`crate::JellifyCore::forget_token`] for the pre-fill affordance.
+    #[error("authentication expired — please sign in again")]
+    AuthExpired,
+
     #[error("decode error: {0}")]
     Decode(String),
 

@@ -13,6 +13,37 @@ import Foundation
 // and even on a cross-platform build it would just pollute this engine with
 // dead code.
 
+/// How long the engine will tolerate `AVPlayer` sitting in
+/// `.waitingToPlayAtSpecifiedRate` before treating it as a stall and
+/// kicking the stream.
+private let stallThreshold: TimeInterval = 5.0
+
+/// Maximum number of silent restart attempts before the engine surfaces a
+/// terminal failure to the owner. Two retries covers the "flaky Wi-Fi
+/// transient" case without turning a genuine outage into a busy-loop.
+private let maxAutoRetries: Int = 2
+
+/// Observer contract for transport failures surfaced by [`AudioEngine`].
+///
+/// The engine does not render UI — it only tells the owner that the stream
+/// stalled (retry in progress) or ultimately failed. See issue #439.
+///
+/// Every method is `@MainActor`-bound so implementors don't have to hop
+/// queues before touching SwiftUI state.
+@MainActor
+public protocol AudioEngineDelegate: AnyObject {
+    /// Called when the engine has been in
+    /// `.waitingToPlayAtSpecifiedRate` for longer than the stall threshold
+    /// and is about to restart the stream. The owner typically shows a
+    /// transient toast ("Stalled, retrying…").
+    func audioEngineDidStall()
+
+    /// Called when the engine has exhausted its auto-retry budget. The
+    /// owner should surface a terminal error with a tap-to-retry
+    /// affordance — the engine will NOT retry again on its own.
+    func audioEngineDidFail(_ message: String)
+}
+
 /// AVPlayer-backed audio engine. Reports transport state back to the Rust
 /// core so other parts of the app can observe it via `core.status()`.
 @MainActor
@@ -23,6 +54,22 @@ public final class AudioEngine: NSObject {
     private var endObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
+    private var timeControlObservation: NSKeyValueObservation?
+
+    /// The URL + auth header of the item currently loaded into the player.
+    /// Captured on `play(_:)` so we can rebuild a fresh `AVPlayerItem` when
+    /// recovering from a stall.
+    private var currentStreamURL: URL?
+    private var currentAuthHeader: String?
+
+    /// Pending stall-detection work item. Scheduled the moment
+    /// `timeControlStatus` flips to `.waitingToPlayAtSpecifiedRate`;
+    /// cancelled when playback resumes or the engine tears down.
+    private var stallWorkItem: DispatchWorkItem?
+
+    /// How many silent restart attempts we've made on the *current* stream.
+    /// Reset to 0 every time `play(_:)` loads a brand-new track.
+    private var stallRetryCount: Int = 0
 
     /// Called when AVPlayer reaches the end of the current item, so the
     /// owner (AppModel) can advance the queue.
@@ -33,6 +80,10 @@ public final class AudioEngine: NSObject {
     /// it of transport state transitions. See `MediaSession.swift` and
     /// issues #29 / #48.
     public weak var mediaSession: MediaSession?
+
+    /// Receives stall / terminal-failure notifications for issue #439.
+    /// Held weakly — the owner (`AppModel`) has the strong reference.
+    public weak var delegate: AudioEngineDelegate?
 
     public init(core: JellifyCore) {
         self.core = core
@@ -72,6 +123,15 @@ public final class AudioEngine: NSObject {
         newPlayer.automaticallyWaitsToMinimizeStalling = true
         self.player = newPlayer
 
+        // Remember the stream so `recoverFromStall` can rebuild a fresh
+        // `AVPlayerItem` without re-asking the core for a URL (which would
+        // cost an extra async hop on the main actor).
+        self.currentStreamURL = url
+        self.currentAuthHeader = authHeader
+        // Each new track gets a fresh budget for silent restart attempts —
+        // a genuine library-wide outage shouldn't poison the *next* song.
+        self.stallRetryCount = 0
+
         attachPlayerObservers(to: newPlayer, item: item)
 
         core.markTrackStarted(track: track)
@@ -100,10 +160,14 @@ public final class AudioEngine: NSObject {
     }
 
     public func stop() {
+        cancelStallWatchdog()
         player?.pause()
         player?.replaceCurrentItem(with: nil)
         removePlayerObservers()
         player = nil
+        currentStreamURL = nil
+        currentAuthHeader = nil
+        stallRetryCount = 0
         core.stop()
         mediaSession?.trackChanged(nil)
     }
@@ -164,6 +228,31 @@ public final class AudioEngine: NSObject {
                 self.mediaSession?.rateChanged(isPlaying: isPlaying)
             }
         }
+
+        // Stall detection (issue #439). `timeControlStatus` tells us why
+        // the player is or isn't moving:
+        //   * `.playing` — audio is flowing.
+        //   * `.paused` — user-initiated.
+        //   * `.waitingToPlayAtSpecifiedRate` — the buffer drained and the
+        //     network isn't catching up. AVPlayer already *wants* to play,
+        //     so a brief spell here is normal; anything past
+        //     `stallThreshold` is a real hang worth kicking.
+        timeControlObservation = player.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+            let status = player.timeControlStatus
+            Task { @MainActor in
+                guard let self = self else { return }
+                switch status {
+                case .waitingToPlayAtSpecifiedRate:
+                    self.scheduleStallWatchdog()
+                case .playing, .paused:
+                    // Playback recovered (or user paused) — drop any pending
+                    // restart so we don't nuke a perfectly healthy stream.
+                    self.cancelStallWatchdog()
+                @unknown default:
+                    break
+                }
+            }
+        }
     }
 
     private func removePlayerObservers() {
@@ -179,6 +268,103 @@ public final class AudioEngine: NSObject {
         rateObservation = nil
         statusObservation?.invalidate()
         statusObservation = nil
+        timeControlObservation?.invalidate()
+        timeControlObservation = nil
+    }
+
+    // MARK: - Stall recovery (issue #439)
+
+    /// Queue a stall handler to fire after [`stallThreshold`]. If
+    /// playback resumes within the window the work item is cancelled in
+    /// [`cancelStallWatchdog`]; otherwise [`handleStallTimeout`] fires.
+    ///
+    /// Scheduling is idempotent — repeatedly calling this while the player
+    /// keeps flipping in and out of `.waitingToPlayAtSpecifiedRate` only
+    /// keeps one timer alive at a time.
+    private func scheduleStallWatchdog() {
+        stallWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                self?.handleStallTimeout()
+            }
+        }
+        stallWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + stallThreshold, execute: item)
+    }
+
+    private func cancelStallWatchdog() {
+        stallWorkItem?.cancel()
+        stallWorkItem = nil
+    }
+
+    /// Called from the watchdog when the player has been stuck in
+    /// `.waitingToPlayAtSpecifiedRate` for [`stallThreshold`].
+    ///
+    /// On the first two stalls of a given stream we notify the delegate
+    /// that a silent retry is in flight and rebuild the `AVPlayerItem`
+    /// against the same URL — that's enough to dislodge most transient
+    /// CDN / Wi-Fi blips. On the third stall we give up and surface a
+    /// terminal failure so the UI can offer tap-to-retry.
+    private func handleStallTimeout() {
+        // Guard against a stale timer firing after the user already
+        // stopped the engine or moved on to a different track.
+        guard let player = self.player, let url = self.currentStreamURL else {
+            return
+        }
+        // If playback resumed between the timer firing and us getting
+        // onto the main actor, bail — no retry needed.
+        if player.timeControlStatus != .waitingToPlayAtSpecifiedRate {
+            return
+        }
+
+        stallRetryCount += 1
+        if stallRetryCount > maxAutoRetries {
+            delegate?.audioEngineDidFail("Couldn't play, tap to retry.")
+            return
+        }
+
+        delegate?.audioEngineDidStall()
+        recoverFromStall(player: player, url: url)
+    }
+
+    /// Rebuild `AVPlayerItem` from the remembered URL + auth header and
+    /// swap it in via `replaceCurrentItem`. This restarts the HTTP fetch
+    /// without tearing the player down, so `rate` / `timeControlStatus`
+    /// observers remain wired and the UI doesn't flicker.
+    private func recoverFromStall(player: AVPlayer, url: URL) {
+        let options: [String: Any]
+        if let header = currentAuthHeader {
+            options = [
+                "AVURLAssetHTTPHeaderFieldsKey": ["Authorization": header]
+            ]
+        } else {
+            options = [:]
+        }
+        let asset = AVURLAsset(url: url, options: options)
+        let item = AVPlayerItem(asset: asset)
+
+        // `replaceCurrentItem` does NOT re-fire the end-of-item
+        // notification for the old item, so we need to re-register the
+        // end observer against the freshly-built `AVPlayerItem` or the
+        // queue will stop advancing after a stall recovery. Tearing down
+        // just the end observer (rather than everything) keeps
+        // `rateObservation` / `timeControlObservation` in place — both
+        // target the `AVPlayer`, not the item.
+        if let end = endObserver {
+            NotificationCenter.default.removeObserver(end)
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            self.core.markState(state: .ended)
+            self.onTrackEnded?()
+        }
+
+        player.replaceCurrentItem(with: item)
+        player.play()
     }
 }
 
