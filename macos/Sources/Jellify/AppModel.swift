@@ -207,6 +207,37 @@ final class AppModel {
     var status: PlayerStatus
     var pollTimer: Timer?
 
+    // MARK: - Queue inspector (BATCH-07a, #79 / #80 / #282)
+    //
+    // Issue #282 — separate "Up Next" (user-added) from "Auto Queue" (what
+    // will play after the user-added items run out). The core queue is a
+    // flat list today (see `player::set_queue`), so the split lives only
+    // in-app: `upNextAutoQueue` is derived from the core queue tail after
+    // the current track, and `upNextUserAdded` is a client-side overlay
+    // fed by `playNext(...)` / `addToQueue(...)` calls. When we gain a
+    // proper core primitive (tracked as TODO(core-#282)), this shape stays
+    // the same — only the `play(tracks:)` fan-out changes.
+
+    /// User-added "Up Next" overlay — what the user explicitly queued via
+    /// "Play Next" / "Add to Queue". Drained into actual playback as the
+    /// engine advances past the current track. Reorderable and removable
+    /// from the Queue Inspector (#80).
+    var upNextUserAdded: [Queue] = []
+    /// Auto-queue tail — the rest of the current playback source (album /
+    /// playlist / radio) after the currently-playing track. Read-only in
+    /// the inspector; double-click jumps to that track (#282). Derived
+    /// from the core queue on every `play(tracks:)` for now.
+    var upNextAutoQueue: [Queue] = []
+    /// Human-readable label + id + kind for the source that populated
+    /// `upNextAutoQueue`. Used by the inspector's "PLAYING FROM" header
+    /// (#82 / BATCH-07b will expand this into a richer display). Nil when
+    /// playback was started from an ad-hoc selection without a known
+    /// source (e.g. a single track picked from "All Tracks").
+    var currentContext: QueueContext?
+    /// Show / hide the right-side queue inspector panel. Toggled by the
+    /// Cmd+Opt+Q shortcut (#79).
+    var isQueueInspectorOpen: Bool = false
+
     /// Contributors on the currently-playing track, sourced from Jellyfin's
     /// `Item.People` field. Populated by `fetchCurrentTrackDetails()` on
     /// track changes and cleared when the track stops. See #279.
@@ -2858,6 +2889,82 @@ final class AppModel {
         pollTimer?.invalidate()
         pollTimer = nil
     }
+
+    // MARK: - Queue inspector (BATCH-07a)
+
+    /// Toggle the right-side Queue Inspector panel. Bound to the Cmd+Opt+Q
+    /// keyboard shortcut via `MainShell`. See #79.
+    func toggleQueueInspector() {
+        isQueueInspectorOpen.toggle()
+    }
+
+    /// Reorder the user-added "Up Next" list. Uses the same `IndexSet` → Int
+    /// contract as SwiftUI `List.onMove`, so the inspector can wire this up
+    /// directly. See #80.
+    ///
+    /// Today this only reorders the in-app overlay because the core has no
+    /// `reorder_queue` primitive. When that lands (TODO(core-#282)), this
+    /// should also push the new order down to `core.setQueue` so the
+    /// engine's view of "what plays next" matches the inspector.
+    func moveUpNext(from source: IndexSet, to destination: Int) {
+        upNextUserAdded.move(fromOffsets: source, toOffset: destination)
+        // TODO(core-#282): push the reordered slice down to the core queue
+        // once a `reorder_queue` primitive exists. For now, the overlay
+        // drives the inspector and the core keeps its original order.
+    }
+
+    /// Remove one entry from the user-added "Up Next" list by its stable
+    /// per-item `queueId`. Uses `queueId` rather than `track.id` so users
+    /// can queue the same track twice and still remove a single instance.
+    /// See #80.
+    func removeFromUpNext(id: UUID) {
+        upNextUserAdded.removeAll { $0.id == id }
+        // TODO(core-#282): drop the corresponding entry in the core queue
+        // once we have an addressable `remove_from_queue` primitive.
+    }
+}
+
+// MARK: - Queue models (BATCH-07a)
+
+/// One entry in the Queue Inspector's lists. Thin wrapper around `Track`
+/// that carries a per-instance `queueId` so the same track can be queued
+/// more than once and still be individually addressable by `onMove` /
+/// remove. `Track.id` is the Jellyfin item id and would collide on repeats.
+struct Queue: Identifiable, Hashable {
+    /// Stable per-queue-instance id. Not the track id — see struct doc.
+    let id: UUID
+    /// Underlying audio track.
+    let track: Track
+
+    init(id: UUID = UUID(), track: Track) {
+        self.id = id
+        self.track = track
+    }
+}
+
+/// Source that populated the current auto-queue tail — what the inspector's
+/// "PLAYING FROM {source}" header describes. Kept minimal on purpose; #82
+/// and BATCH-07b will flesh out the richer label / link treatment.
+struct QueueContext: Hashable {
+    /// Display name (e.g. album title, playlist name, artist name).
+    let name: String
+    /// Jellyfin item id for the source, when known. Nil for ad-hoc
+    /// selections (e.g. shuffle-all-favorites) without a single target.
+    let id: String?
+    /// What kind of surface started playback. Drives the icon + route
+    /// behavior the header uses when the user clicks the source label.
+    let sourceType: ContextSourceType
+}
+
+/// Classification of what started the current playback. See `QueueContext`.
+enum ContextSourceType: String, Hashable {
+    case album
+    case playlist
+    case artist
+    case genre
+    case search
+    case radio
+    case other
 }
 
 // MARK: - Convenience
