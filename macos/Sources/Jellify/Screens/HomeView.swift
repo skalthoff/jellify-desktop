@@ -424,56 +424,6 @@ private struct HomeQuickTilePlaceholder: View {
     }
 }
 
-private struct RecentlyPlayedTile: View {
-    @Environment(AppModel.self) private var model
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let track: Track
-    @State private var isHovering = false
-
-    var body: some View {
-        Button {
-            model.play(tracks: [track], startIndex: 0)
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                ZStack(alignment: .bottomTrailing) {
-                    Artwork(
-                        url: model.imageURL(
-                            for: track.albumId ?? track.id,
-                            tag: track.imageTag,
-                            maxWidth: 400
-                        ),
-                        seed: track.albumName ?? track.name,
-                        size: 160,
-                        radius: 8
-                    )
-                    .frame(width: 160, height: 160)
-
-                    Image(systemName: "play.fill")
-                        .foregroundStyle(.white)
-                        .font(.system(size: 14))
-                        .frame(width: 36, height: 36)
-                        .background(Circle().fill(Theme.primary))
-                        .shadow(color: Theme.primary.opacity(0.5), radius: 8, y: 3)
-                        .padding(8)
-                        .opacity(isHovering ? 1 : 0)
-                        .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
-                        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.name)
-                        .font(Theme.font(13, weight: .bold))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                    Text(track.artistName)
-                        .font(Theme.font(11, weight: .medium))
-                        .foregroundStyle(Theme.ink2)
-                        .lineLimit(1)
-                }
-                .frame(width: 160, alignment: .leading)
-            }
-        }
-        .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
-    }
-}
+// `RecentlyPlayedTile` lives in `Components/RecentlyPlayedTile.swift` so it
+// can be reused from the Discover "For You" carousel (#249) without
+// duplication.

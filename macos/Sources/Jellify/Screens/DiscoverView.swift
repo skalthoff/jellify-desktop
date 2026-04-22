@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Discover — the "find something new" surface. For now this is a simple
-/// header + Instant Mix CTA (#248). Richer recommendations (recently added,
-/// more like this, genre tiles, etc.) land in follow-ups.
+/// Discover — the "find something new" surface. Today: a header + Instant Mix
+/// CTA (#248) and a horizontal "For You" carousel (#249). Richer
+/// recommendations (recently added, more like this, genre tiles, etc.) land
+/// in follow-ups.
 ///
 /// Title is italic 34pt, subline 14pt `ink2`, right-aligned primary "Start
 /// Instant Mix" + ghost "Generate new mix" — per `06-screen-specs.md`.
@@ -11,8 +12,9 @@ struct DiscoverView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 28) {
                 header
+                forYouSection
                 Spacer(minLength: 24)
             }
             .padding(.horizontal, 32)
@@ -20,6 +22,38 @@ struct DiscoverView: View {
             .padding(.bottom, 32)
         }
         .background(backgroundWash)
+    }
+
+    /// The "For You" recommendations carousel (#249). Today this mirrors
+    /// `recentlyPlayed` via `AppModel.refreshForYou()` — a deliberate
+    /// stand-in until the core grows a real recommendations endpoint.
+    /// Hidden when there is nothing to show so we do not punch a blank hole
+    /// in the layout for a brand-new user who has not listened to anything.
+    @ViewBuilder
+    private var forYouSection: some View {
+        if !model.forYou.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(Theme.accent)
+                        .font(.system(size: 14, weight: .bold))
+                    Text("For You")
+                        .font(Theme.font(18, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                    Text("Picks based on what you have been playing")
+                        .font(Theme.font(12, weight: .medium))
+                        .foregroundStyle(Theme.ink3)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 16) {
+                        ForEach(model.forYou, id: \.id) { track in
+                            RecentlyPlayedTile(track: track)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
     }
 
     private var header: some View {
