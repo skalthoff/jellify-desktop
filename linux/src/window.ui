@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Composite template for `JellifyWindow`. Kept intentionally minimal for the
+  bootstrap batch — later batches land the sidebar (AdwNavigationSplitView),
+  mini-player, and per-screen content pages under this AdwNavigationView root.
+-->
+<interface>
+  <requires lib="gtk" version="4.12"/>
+  <requires lib="Adw" version="1.5"/>
+  <template class="JellifyWindow" parent="AdwApplicationWindow">
+    <property name="title" translatable="yes">Jellify</property>
+    <property name="default-width">1100</property>
+    <property name="default-height">720</property>
+    <property name="content">
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="AdwHeaderBar" id="header_bar">
+            <property name="title-widget">
+              <object class="AdwWindowTitle">
+                <property name="title" translatable="yes">Jellify</property>
+              </object>
+            </property>
+          </object>
+        </child>
+        <child>
+          <object class="AdwNavigationView" id="navigation_view">
+            <property name="vexpand">true</property>
+            <child>
+              <object class="AdwNavigationPage">
+                <property name="title" translatable="yes">Jellify</property>
+                <property name="tag">root</property>
+                <property name="child">
+                  <object class="AdwStatusPage">
+                    <property name="icon-name">folder-music-symbolic</property>
+                    <property name="title" translatable="yes">Jellify</property>
+                    <property name="description" translatable="yes">Connect to a Jellyfin server to browse your music library.</property>
+                  </object>
+                </property>
+              </object>
+            </child>
+          </object>
+        </child>
+      </object>
+    </property>
+  </template>
+</interface>

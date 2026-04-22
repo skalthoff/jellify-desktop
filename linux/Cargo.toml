@@ -1,0 +1,36 @@
+[package]
+name = "jellify-desktop"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Jellify — native GTK4 + libadwaita Jellyfin music player for Linux"
+
+[[bin]]
+name = "jellify-desktop"
+path = "src/main.rs"
+
+[dependencies]
+# Core (in-process; no FFI on Linux)
+jellify_core = { path = "../core" }
+
+# GNOME 46 / libadwaita 1.5 stack — pinned to match the Flatpak runtime we
+# target (org.gnome.Platform//46). Bumping these means bumping the runtime
+# in linux/flatpak too.
+gtk4 = { version = "0.9", features = ["v4_12"] }
+libadwaita = { version = "0.7", features = ["v1_5"] }
+glib = "0.20"
+gio = "0.20"
+
+# Async bridging for shuttling core calls off the main loop.
+async-channel = "2"
+
+# Workspace utilities
+tokio = { workspace = true }
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[build-dependencies]
+glib-build-tools = "0.20"

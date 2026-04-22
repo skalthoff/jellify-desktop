@@ -18,6 +18,13 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      # Linux crate pulls in gtk4-rs + libadwaita which require GTK4 and
+      # libadwaita system libs for pkg-config to resolve during build.
+      - name: Install GTK4 + libadwaita system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev build-essential pkg-config
       - name: cargo fmt
         run: cargo fmt --all -- --check
       - name: cargo clippy
