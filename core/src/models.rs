@@ -88,6 +88,20 @@ pub struct SearchResults {
     pub tracks: Vec<Track>,
 }
 
+/// Subset of Jellyfin's `UserItemDataDto` surfaced by favorite mutations so
+/// callers can update UI state without refetching the item. `last_played` is
+/// a raw ISO 8601 string as returned by the server (or `null` when the item
+/// has never been played).
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct FavoriteState {
+    #[serde(rename = "IsFavorite", default)]
+    pub is_favorite: bool,
+    #[serde(rename = "PlayCount", default)]
+    pub play_count: Option<u32>,
+    #[serde(rename = "LastPlayedDate", default)]
+    pub last_played: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, Default, uniffi::Record)]
 pub struct Paging {
     pub offset: u32,

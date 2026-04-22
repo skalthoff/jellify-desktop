@@ -372,48 +372,106 @@ impl JellyfinClient {
 
     /// Mark an item as a favorite for the current user.
     ///
-    /// Backed by `POST /Users/{userId}/FavoriteItems/{itemId}`. The server
-    /// returns `UserItemData` on success, which this method discards — callers
-    /// that need the refreshed metadata should re-fetch the item.
+    /// Uses the preferred `POST /UserFavoriteItems/{itemId}` endpoint, where
+    /// the current user is inferred from the authentication token. If the
+    /// server does not support that route (404/405 — older Jellyfin builds),
+    /// this falls back to the legacy `POST /Users/{userId}/FavoriteItems/{itemId}`
+    /// endpoint when a `user_id` is available.
+    ///
+    /// Returns the updated [`FavoriteState`] so callers can refresh UI state
+    /// without refetching the item.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
-    pub async fn set_favorite(&self, item_id: &str) -> Result<()> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let url = self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn set_favorite(&self, item_id: &str) -> Result<FavoriteState> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+
+        let url = self.endpoint(&format!("UserFavoriteItems/{item_id}"))?;
         let resp = self
             .http
             .post(url)
             .headers(self.build_headers()?)
             .send()
             .await?;
-        Self::check(resp).await?;
-        Ok(())
+
+        if resp.status().is_success() {
+            return resp.json().await.map_err(Into::into);
+        }
+
+        if matches!(
+            resp.status(),
+            reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::METHOD_NOT_ALLOWED
+        ) {
+            if let Some(user_id) = self.user_id.as_ref() {
+                let legacy_url =
+                    self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
+                let legacy_resp = self
+                    .http
+                    .post(legacy_url)
+                    .headers(self.build_headers()?)
+                    .send()
+                    .await?;
+                return Self::check(legacy_resp)
+                    .await?
+                    .json()
+                    .await
+                    .map_err(Into::into);
+            }
+        }
+
+        Self::check(resp).await?.json().await.map_err(Into::into)
     }
 
     /// Remove the favorite flag from an item for the current user.
     ///
-    /// Backed by `DELETE /Users/{userId}/FavoriteItems/{itemId}`.
+    /// Uses the preferred `DELETE /UserFavoriteItems/{itemId}` endpoint, where
+    /// the current user is inferred from the authentication token. If the
+    /// server does not support that route (404/405 — older Jellyfin builds),
+    /// this falls back to the legacy `DELETE /Users/{userId}/FavoriteItems/{itemId}`
+    /// endpoint when a `user_id` is available.
+    ///
+    /// Returns the updated [`FavoriteState`] so callers can refresh UI state
+    /// without refetching the item.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
-    pub async fn unset_favorite(&self, item_id: &str) -> Result<()> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let url = self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn unset_favorite(&self, item_id: &str) -> Result<FavoriteState> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+
+        let url = self.endpoint(&format!("UserFavoriteItems/{item_id}"))?;
         let resp = self
             .http
             .delete(url)
             .headers(self.build_headers()?)
             .send()
             .await?;
-        Self::check(resp).await?;
-        Ok(())
+
+        if resp.status().is_success() {
+            return resp.json().await.map_err(Into::into);
+        }
+
+        if matches!(
+            resp.status(),
+            reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::METHOD_NOT_ALLOWED
+        ) {
+            if let Some(user_id) = self.user_id.as_ref() {
+                let legacy_url =
+                    self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
+                let legacy_resp = self
+                    .http
+                    .delete(legacy_url)
+                    .headers(self.build_headers()?)
+                    .send()
+                    .await?;
+                return Self::check(legacy_resp)
+                    .await?
+                    .json()
+                    .await
+                    .map_err(Into::into);
+            }
+        }
+
+        Self::check(resp).await?.json().await.map_err(Into::into)
     }
 
     pub async fn search(&self, query: &str) -> Result<SearchResults> {

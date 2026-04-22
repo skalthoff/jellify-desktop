@@ -211,15 +211,23 @@ impl JellifyCore {
     }
 
     /// Mark an item (track, album, artist, playlist) as a favorite for the
-    /// current user. Errors with [`JellifyError::NotAuthenticated`] if no
-    /// session is active.
-    pub fn set_favorite(&self, item_id: String) -> std::result::Result<(), JellifyError> {
+    /// current user. Returns the updated [`FavoriteState`] so the UI can
+    /// refresh without refetching. Errors with
+    /// [`JellifyError::NotAuthenticated`] if no session is active.
+    pub fn set_favorite(
+        &self,
+        item_id: String,
+    ) -> std::result::Result<FavoriteState, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.set_favorite(&item_id)))
     }
 
-    /// Remove the favorite flag from an item for the current user. Errors with
-    /// [`JellifyError::NotAuthenticated`] if no session is active.
-    pub fn unset_favorite(&self, item_id: String) -> std::result::Result<(), JellifyError> {
+    /// Remove the favorite flag from an item for the current user. Returns the
+    /// updated [`FavoriteState`] so the UI can refresh without refetching.
+    /// Errors with [`JellifyError::NotAuthenticated`] if no session is active.
+    pub fn unset_favorite(
+        &self,
+        item_id: String,
+    ) -> std::result::Result<FavoriteState, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.unset_favorite(&item_id)))
     }
 
