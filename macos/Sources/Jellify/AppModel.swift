@@ -22,7 +22,7 @@ final class AppModel {
     var username: String = ""
 
     // MARK: - Navigation
-    enum Screen: Hashable { case home, library, search, settings, album(String), artist(String), playlist(String) }
+    enum Screen: Hashable { case home, discover, library, search, settings, album(String), artist(String), playlist(String) }
     var screen: Screen = .library
 
     /// Toggled by the ⌘F menu command to request that `SearchView` move
@@ -209,6 +209,19 @@ final class AppModel {
     func focusSearch() {
         screen = .search
         requestSearchFocus = true
+    }
+
+    /// Navigate to the Discover screen. See #248.
+    func goToDiscover() {
+        screen = .discover
+    }
+
+    /// Kick off a library-seeded Instant Mix from the Discover screen's CTA.
+    /// TODO: #144 / #327 — Instant Mix (polymorphic) FFI + modal not yet
+    /// wired. This is a logging stub so the UI action has a landing pad.
+    func startInstantMix() {
+        // TODO: #144 / #327 — Instant Mix FFI + modal not yet wired.
+        print("[AppModel] startInstantMix() not yet wired — see #144 / #327")
     }
 
     func search(_ query: String) async {
