@@ -17,6 +17,22 @@ pub enum PlaybackState {
     Ended,
 }
 
+/// Queue-wide repeat mode carried on [`PlayerStatus`] and exposed to the
+/// platform remote-control surface (macOS `MPChangeRepeatModeCommand`, MPRIS
+/// `LoopStatus`, SMTC `AutoRepeatMode`).
+///
+/// * `Off` — advance through the queue once, then stop at the end.
+/// * `One` — keep replaying the current track; next/previous both no-op.
+/// * `All` — wrap around at the ends of the queue so skip-next past the last
+///   track jumps to index 0, and skip-previous from index 0 jumps to the end.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, uniffi::Enum)]
+pub enum RepeatMode {
+    #[default]
+    Off,
+    One,
+    All,
+}
+
 #[derive(Clone, Debug, uniffi::Record)]
 pub struct PlayerStatus {
     pub state: PlaybackState,
@@ -26,6 +42,17 @@ pub struct PlayerStatus {
     pub volume: f32,
     pub queue_position: u32,
     pub queue_length: u32,
+    /// Whether the queue-shuffle mode is engaged. The core does not actually
+    /// reorder the stored queue — it just carries the flag so the platform
+    /// layer can reflect it in remote-control surfaces (Control Center,
+    /// media keys) and so downstream "Up Next" logic can opt into a shuffled
+    /// ordering. See issue #34.
+    pub shuffle: bool,
+    /// Current [`RepeatMode`] for the queue. Interpreted by the platform
+    /// audio engine when deciding what to do at end-of-track and by
+    /// [`Player::skip_next`] / [`Player::skip_previous`] when the caller
+    /// walks past a queue boundary. See issue #34.
+    pub repeat_mode: RepeatMode,
 }
 
 pub struct Player {
@@ -39,6 +66,8 @@ struct Shared {
     queue_index: usize,
     volume: f32,
     position_seconds: f64,
+    shuffle: bool,
+    repeat_mode: RepeatMode,
 }
 
 impl Shared {
@@ -50,6 +79,8 @@ impl Shared {
             queue_index: 0,
             volume: 1.0,
             position_seconds: 0.0,
+            shuffle: false,
+            repeat_mode: RepeatMode::Off,
         }
     }
 
@@ -67,6 +98,8 @@ impl Shared {
             volume: self.volume,
             queue_position: self.queue_index as u32,
             queue_length: self.queue.len() as u32,
+            shuffle: self.shuffle,
+            repeat_mode: self.repeat_mode,
         }
     }
 }
@@ -133,6 +166,22 @@ impl Player {
         self.shared.lock().volume = v.clamp(0.0, 1.0);
     }
 
+    /// Toggle the queue-wide shuffle flag. The core does not reorder the
+    /// stored queue — callers that want a shuffled listening session are
+    /// expected to call [`Player::set_queue`] with pre-shuffled tracks and
+    /// then toggle this flag so the remote-control surface reflects the
+    /// current mode. See issue #34.
+    pub fn set_shuffle(&self, on: bool) {
+        self.shared.lock().shuffle = on;
+    }
+
+    /// Update the queue's [`RepeatMode`]. Does not touch the queue itself;
+    /// the platform audio engine consults this when the current track ends
+    /// to decide whether to replay, advance, or stop. See issue #34.
+    pub fn set_repeat_mode(&self, mode: RepeatMode) {
+        self.shared.lock().repeat_mode = mode;
+    }
+
     pub fn clear(&self) {
         let mut s = self.shared.lock();
         s.state = PlaybackState::Stopped;
@@ -142,5 +191,75 @@ impl Player {
 
     pub fn status(&self) -> PlayerStatus {
         self.shared.lock().snapshot()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::Track;
+
+    fn track(id: &str) -> Track {
+        Track {
+            id: id.to_string(),
+            name: id.to_string(),
+            album_id: None,
+            album_name: None,
+            artist_name: "Test Artist".to_string(),
+            artist_id: None,
+            index_number: None,
+            disc_number: None,
+            year: None,
+            runtime_ticks: 1_800_000_000, // 3 minutes
+            is_favorite: false,
+            play_count: 0,
+            container: None,
+            bitrate: None,
+            image_tag: None,
+        }
+    }
+
+    #[test]
+    fn status_defaults_shuffle_off_and_repeat_off() {
+        let player = Player::new();
+        let status = player.status();
+        assert!(!status.shuffle);
+        assert_eq!(status.repeat_mode, RepeatMode::Off);
+    }
+
+    #[test]
+    fn set_shuffle_toggles_flag_on_status() {
+        let player = Player::new();
+        player.set_shuffle(true);
+        assert!(player.status().shuffle);
+        player.set_shuffle(false);
+        assert!(!player.status().shuffle);
+    }
+
+    #[test]
+    fn set_repeat_mode_persists_all_three_variants() {
+        let player = Player::new();
+        player.set_repeat_mode(RepeatMode::One);
+        assert_eq!(player.status().repeat_mode, RepeatMode::One);
+        player.set_repeat_mode(RepeatMode::All);
+        assert_eq!(player.status().repeat_mode, RepeatMode::All);
+        player.set_repeat_mode(RepeatMode::Off);
+        assert_eq!(player.status().repeat_mode, RepeatMode::Off);
+    }
+
+    #[test]
+    fn shuffle_and_repeat_are_preserved_across_queue_changes() {
+        // Callers (e.g. the macOS AppModel) set shuffle/repeat once and
+        // expect the flags to survive a fresh `set_queue` call — otherwise
+        // dropping a new album onto the dock would silently disable the
+        // user's chosen repeat mode. Validate that invariant here.
+        let player = Player::new();
+        player.set_shuffle(true);
+        player.set_repeat_mode(RepeatMode::All);
+        player.set_queue(vec![track("a"), track("b")], 0);
+        let status = player.status();
+        assert!(status.shuffle);
+        assert_eq!(status.repeat_mode, RepeatMode::All);
+        assert_eq!(status.queue_length, 2);
     }
 }

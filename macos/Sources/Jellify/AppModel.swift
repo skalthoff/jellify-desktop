@@ -512,26 +512,36 @@ final class AppModel {
             }
         ))
 
-        // Playback toggles. Shuffle / repeat state isn't yet carried on
-        // `PlayerStatus` (tracked in research/02-media-integration.md), so
-        // these are logging stubs for now — the palette entry still has a
-        // landing pad so ⌘K discovery works before the FFI lands.
+        // Playback toggles (#34): flip shuffle / cycle repeat via the
+        // palette entries. Both feed the same core setters that Control
+        // Center's `MPChangeShuffleModeCommand` / `MPChangeRepeatModeCommand`
+        // handlers drive, so all three surfaces stay consistent.
         actions.append(PaletteAction(
             id: "playback.toggleShuffle",
             title: "Toggle Shuffle",
             symbol: "shuffle",
-            run: {
-                // TODO(core): wire to core.setShuffle(on:) once FFI lands.
-                print("[AppModel] Toggle Shuffle — not yet wired (see research/02-media-integration.md)")
+            run: { [weak self] in
+                guard let self else { return }
+                self.mediaSessionSetShuffle(!self.status.shuffle)
             }
         ))
         actions.append(PaletteAction(
             id: "playback.toggleRepeat",
             title: "Toggle Repeat",
             symbol: "repeat",
-            run: {
-                // TODO(core): wire to core.setRepeatMode(_:) once FFI lands.
-                print("[AppModel] Toggle Repeat — not yet wired (see research/02-media-integration.md)")
+            run: { [weak self] in
+                guard let self else { return }
+                // Cycle off -> all -> one -> off to match Apple Music's
+                // long-press menu ordering — "all" is the most frequently
+                // wanted step up from "off".
+                let next: RepeatMode = {
+                    switch self.status.repeatMode {
+                    case .off: return .all
+                    case .all: return .one
+                    case .one: return .off
+                    }
+                }()
+                self.mediaSessionSetRepeatMode(next)
             }
         ))
 
@@ -3627,10 +3637,49 @@ extension AppModel: MediaSessionDelegate {
     func mediaSessionSkipPrevious() { skipPrevious() }
     func mediaSessionSeek(toSeconds seconds: Double) { audio.seek(toSeconds: seconds) }
 
+    func mediaSessionSetShuffle(_ on: Bool) {
+        // Push the flag into the core so `PlayerStatus.shuffle` stays the
+        // source of truth for every surface (Queue Inspector header,
+        // menu-bar toggle, Control Center). The platform layer doesn't
+        // reorder the queue here — that's up to whatever fed the queue in
+        // the first place.
+        core.setShuffle(on: on)
+        refreshStatus()
+    }
+
+    func mediaSessionSetRepeatMode(_ mode: RepeatMode) {
+        core.setRepeatMode(mode: mode)
+        refreshStatus()
+    }
+
+    func mediaSessionToggleFavorite() -> Bool? {
+        // The command fires against the currently-playing track; without
+        // one we signal `.noActionableNowPlayingItem` back to the remote
+        // surface via a `nil` return.
+        guard let track = status.currentTrack else { return nil }
+        let target = !(isFavorite(id: track.id) || track.isFavorite)
+        Task { await setFavorite(itemId: track.id, enabled: target) }
+        return target
+    }
+
     func mediaSessionArtworkURL(for track: Track, maxWidth: UInt32) -> URL? {
         imageURL(for: track.albumId ?? track.id, tag: track.imageTag, maxWidth: maxWidth)
     }
     func mediaSessionAuthorizationHeader() -> String? {
         try? core.authHeader()
+    }
+}
+
+// MARK: - MediaSession status nudge
+
+extension AppModel {
+    /// Pull the latest `PlayerStatus` snapshot out of the core and hand it
+    /// to `MediaSession` so the remote-control surface reflects any
+    /// just-applied change (shuffle, repeat, favorite). The polling timer
+    /// refreshes this on a cadence, but command handlers want the round-trip
+    /// to feel synchronous — without this, Control Center's shuffle toggle
+    /// can flicker back to the previous state on the next redraw.
+    fileprivate func refreshStatus() {
+        self.status = core.status()
     }
 }

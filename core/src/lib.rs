@@ -18,7 +18,7 @@ pub mod storage;
 
 pub use error::{JellifyError, Result};
 pub use models::*;
-pub use player::{PlaybackState, Player, PlayerStatus};
+pub use player::{PlaybackState, Player, PlayerStatus, RepeatMode};
 
 use crate::client::{JellyfinClient, PublicSystemInfo};
 use crate::storage::{CredentialStore, Database};
@@ -586,6 +586,19 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.unset_favorite(&item_id)))
     }
 
+    /// Set or clear an item's favorite flag in a single call. `favorite=true`
+    /// dispatches to [`Self::set_favorite`], `false` dispatches to
+    /// [`Self::unset_favorite`]. Intended for remote-control surfaces (the
+    /// macOS `MPFeedbackCommand.like` toggle, etc.) that only know the
+    /// desired target state. See issue #35.
+    pub fn toggle_favorite(
+        &self,
+        item_id: String,
+        favorite: bool,
+    ) -> std::result::Result<FavoriteState, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.toggle_favorite(&item_id, favorite)))
+    }
+
     /// Create a new playlist for the current user. Returns the new
     /// playlist id — callers refetch the full [`Playlist`] via
     /// [`JellifyCore::fetch_item`] if they need the populated record.
@@ -824,6 +837,24 @@ impl JellifyCore {
 
     pub fn set_volume(&self, volume: f32) {
         self.player.set_volume(volume);
+    }
+
+    /// Toggle queue-wide shuffle on or off. The flag lands on
+    /// [`PlayerStatus`] so platform remote-control surfaces (Control Center
+    /// `MPChangeShuffleModeCommand` on macOS, MPRIS `Shuffle` on Linux,
+    /// SMTC `ShuffleEnabled` on Windows) stay in sync with the app. The
+    /// core does not reorder the underlying queue — callers hand over
+    /// already-shuffled tracks via [`Self::set_queue`] and use this to
+    /// reflect the current mode. See issue #34.
+    pub fn set_shuffle(&self, on: bool) {
+        self.player.set_shuffle(on);
+    }
+
+    /// Set the queue-wide [`RepeatMode`]. Consumed by the platform audio
+    /// engine at end-of-track (replay vs. advance vs. stop) and exposed on
+    /// the remote-control surface. See issue #34.
+    pub fn set_repeat_mode(&self, mode: RepeatMode) {
+        self.player.set_repeat_mode(mode);
     }
 
     pub fn stop(&self) {

@@ -1310,6 +1310,19 @@ impl JellyfinClient {
         Self::check(resp).await?.json().await.map_err(Into::into)
     }
 
+    /// Convenience dispatcher: route to [`Self::set_favorite`] when
+    /// `favorite` is `true` and [`Self::unset_favorite`] otherwise. Used by
+    /// the platform remote-control surface (macOS `MPFeedbackCommand.like`)
+    /// where the transport layer only knows the desired *target* state, not
+    /// whether the current item is already favorited. See issue #35.
+    pub async fn toggle_favorite(&self, item_id: &str, favorite: bool) -> Result<FavoriteState> {
+        if favorite {
+            self.set_favorite(item_id).await
+        } else {
+            self.unset_favorite(item_id).await
+        }
+    }
+
     /// Create a new playlist for the current user via `POST /Playlists`.
     ///
     /// The request body uses Jellyfin's PascalCase keys:

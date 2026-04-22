@@ -21,6 +21,23 @@ public protocol MediaSessionDelegate: AnyObject {
     func mediaSessionSkipNext()
     func mediaSessionSkipPrevious()
     func mediaSessionSeek(toSeconds seconds: Double)
+    /// Toggle the queue-wide shuffle mode, driven by Control Center's
+    /// `MPChangeShuffleModeCommand`. Callers must update the core via
+    /// `core.setShuffle(_:)` and refresh `PlayerStatus` observers so the UI
+    /// tracks the new mode. See issue #34.
+    func mediaSessionSetShuffle(_ on: Bool)
+    /// Set the queue-wide repeat mode, driven by Control Center's
+    /// `MPChangeRepeatModeCommand`. `.off` stops at end-of-queue, `.one`
+    /// replays the current track, `.all` wraps around. See issue #34.
+    func mediaSessionSetRepeatMode(_ mode: RepeatMode)
+    /// Toggle the currently-playing track's favorite state. Returns the
+    /// target state the implementation is attempting to apply so
+    /// `MediaSession` can flip `likeCommand.isActive` immediately — the
+    /// eventual server response may invalidate that on rollback, but the
+    /// latency between tap and state refresh is what the user perceives.
+    /// Return `nil` if no track is active (command should be treated as
+    /// no-op). See issue #35.
+    func mediaSessionToggleFavorite() -> Bool?
     /// Build the artwork URL for a track. Returns `nil` when the track has no
     /// image tag or when the auth context isn't ready. `MediaSession` uses
     /// this rather than holding a reference to `JellifyCore` so the session
@@ -262,10 +279,91 @@ public final class MediaSession {
             return .success
         }
 
-        // Commands explicitly not wired yet (BATCH-14 / #35 / #38):
-        // likeCommand, dislikeCommand, changeShuffleModeCommand,
-        // changeRepeatModeCommand. Leaving them at their default-disabled
-        // state so they don't appear in Control Center.
+        // BATCH-14 (#34): shuffle + repeat toggles from Control Center /
+        // AirPods Pro long-press / Bluetooth remotes. The `currentShuffle*`
+        // and `currentRepeat*` properties on the commands are what
+        // `MPNowPlayingInfoCenter` publishes to the remote-control surface;
+        // we push them through on status-refresh below so external UIs see
+        // the active mode without a round-trip.
+        cc.changeShuffleModeCommand.isEnabled = true
+        cc.changeShuffleModeCommand.addTarget { [weak self] event in
+            guard
+                let self,
+                let delegate = self.delegate,
+                let change = event as? MPChangeShuffleModeCommandEvent
+            else {
+                return .commandFailed
+            }
+            let on = change.shuffleType != .off
+            delegate.mediaSessionSetShuffle(on)
+            // Echo the new mode back to the command so Control Center
+            // toggles reflect the on-disk state on the very next redraw.
+            cc.changeShuffleModeCommand.currentShuffleType = change.shuffleType
+            self.refreshRemoteCommandEnablement()
+            return .success
+        }
+
+        cc.changeRepeatModeCommand.isEnabled = true
+        cc.changeRepeatModeCommand.addTarget { [weak self] event in
+            guard
+                let self,
+                let delegate = self.delegate,
+                let change = event as? MPChangeRepeatModeCommandEvent
+            else {
+                return .commandFailed
+            }
+            delegate.mediaSessionSetRepeatMode(Self.repeatMode(from: change.repeatType))
+            cc.changeRepeatModeCommand.currentRepeatType = change.repeatType
+            self.refreshRemoteCommandEnablement()
+            return .success
+        }
+
+        // BATCH-14 (#35): like toggles the currently-playing track's
+        // favorite state via the Jellyfin `/UserFavoriteItems` endpoint.
+        // `likeCommand.isActive` is pushed in `refreshRemoteCommandEnablement`
+        // so Control Center reflects the server-side favorite flag.
+        cc.likeCommand.isEnabled = true
+        cc.likeCommand.addTarget { [weak self] _ in
+            guard let self, let delegate = self.delegate else {
+                return .commandFailed
+            }
+            guard let targetState = delegate.mediaSessionToggleFavorite() else {
+                return .noActionableNowPlayingItem
+            }
+            // Optimistic UI: flip `isActive` before the network call
+            // completes so the tap has no perceptible latency. The next
+            // `trackChanged` / `queueChanged` refresh reconciles if the
+            // server rolled back.
+            cc.likeCommand.isActive = targetState
+            return .success
+        }
+
+        // `dislikeCommand` stays disabled — Jellyfin has no concept of a
+        // negative rating, so exposing it would be misleading.
+        cc.dislikeCommand.isEnabled = false
+    }
+
+    /// Map a `MPRepeatType` from Control Center onto the core's
+    /// [`RepeatMode`]. `MPRepeatType.one` is Apple's "repeat this track"
+    /// flag; `MPRepeatType.all` is "loop the queue". The core only cares
+    /// about those two distinctions plus off.
+    private static func repeatMode(from type: MPRepeatType) -> RepeatMode {
+        switch type {
+        case .off: return .off
+        case .one: return .one
+        case .all: return .all
+        @unknown default: return .off
+        }
+    }
+
+    /// Inverse of [`Self.repeatMode(from:)`], used when pushing the active
+    /// mode back out to Control Center after a status refresh.
+    private static func repeatType(from mode: RepeatMode) -> MPRepeatType {
+        switch mode {
+        case .off: return .off
+        case .one: return .one
+        case .all: return .all
+        }
     }
 
     private func refreshRemoteCommandEnablement() {
@@ -274,15 +372,30 @@ public final class MediaSession {
         let cc = MPRemoteCommandCenter.shared()
         let hasTrack = status.currentTrack != nil
         cc.stopCommand.isEnabled = hasTrack
-        // Next/previous gate on queue bounds. Repeat/shuffle-driven
-        // rebinding is BATCH-14; until then the bounds check is strict.
+        // Next/previous gate on queue bounds, with repeat-all letting the
+        // user wrap across the end/start of the queue so the remote surface
+        // doesn't dead-end on the last or first track.
         if status.queueLength == 0 {
             cc.nextTrackCommand.isEnabled = false
             cc.previousTrackCommand.isEnabled = false
+        } else if status.repeatMode == .all {
+            cc.nextTrackCommand.isEnabled = true
+            cc.previousTrackCommand.isEnabled = true
         } else {
             cc.nextTrackCommand.isEnabled = status.queuePosition + 1 < status.queueLength
             cc.previousTrackCommand.isEnabled = status.queuePosition > 0
         }
+
+        // Shuffle / repeat mirrors: push the current mode back out so
+        // Control Center highlights the correct cell when the user opens
+        // the "Now Playing" popover.
+        cc.changeShuffleModeCommand.currentShuffleType = status.shuffle ? .items : .off
+        cc.changeRepeatModeCommand.currentRepeatType = Self.repeatType(from: status.repeatMode)
+
+        // Like: enabled only while a track is playing, with `isActive`
+        // reflecting the current favorite flag.
+        cc.likeCommand.isEnabled = hasTrack
+        cc.likeCommand.isActive = status.currentTrack?.isFavorite ?? false
     }
 
     // MARK: - Artwork
