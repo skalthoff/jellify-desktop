@@ -27,7 +27,10 @@ if [[ -d "$BUNDLE" ]]; then
   cp -R "$BUNDLE" "$APP/Contents/Resources/"
 fi
 
-cat > "$APP/Contents/Info.plist" <<EOF
+# Quoted heredoc delimiter ("EOF") so bash doesn't try to expand backticks or
+# variables in the body — the XML comment below mentions MPNowPlayingInfoCenter
+# and friends, which would otherwise be parsed as command substitution.
+cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -52,6 +55,16 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <!--
+      Classifies the app as a music player. macOS uses this for App Store
+      categorization and (more relevantly here) to mark the app as a media
+      producer, which is what MPNowPlayingInfoCenter / Control Center
+      expect. AVAudioSession is iOS-only — background playback on macOS is
+      automatic for a regular GUI app as long as it doesn't set
+      LSBackgroundOnly or LSUIElement. See issue #47.
+    -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.music</string>
 </dict>
 </plist>
 EOF

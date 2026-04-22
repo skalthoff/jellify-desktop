@@ -13,6 +13,7 @@ final class AppModel {
     // MARK: - Core
     let core: JellifyCore
     let audio: AudioEngine
+    let mediaSession: MediaSession
     let network: NetworkMonitor
     let serverReachability: ServerReachability
 
@@ -201,12 +202,19 @@ final class AppModel {
         )
         self.core = core
         self.audio = AudioEngine(core: core)
+        self.mediaSession = MediaSession()
         self.network = NetworkMonitor()
         self.serverReachability = ServerReachability()
         self.status = core.status()
         self.audio.onTrackEnded = { [weak self] in
             self?.handleTrackEnded()
         }
+        // Hand the engine and the media session the things they need
+        // from us *after* all stored properties are initialized. The
+        // MediaSession is the single writer of MPNowPlayingInfoCenter;
+        // the engine pushes state transitions to it.
+        self.mediaSession.attach(delegate: self)
+        self.audio.mediaSession = self.mediaSession
     }
 
     // MARK: - Network
@@ -1584,6 +1592,8 @@ final class AppModel {
             guard let self else { return }
             Task { @MainActor in
                 let before = self.status.currentTrack?.id
+                let beforeQueuePos = self.status.queuePosition
+                let beforeQueueLen = self.status.queueLength
                 self.status = self.core.status()
                 let after = self.status.currentTrack?.id
                 // Trigger a details refetch when the track changes. Scoped
@@ -1597,6 +1607,18 @@ final class AppModel {
                     } else {
                         Task { await self.fetchCurrentTrackDetails() }
                     }
+                }
+                // Keep MediaSession's queue index in sync when a skip
+                // happens. `AudioEngine.play(track:)` already fires
+                // `trackChanged` for the new item; `queueChanged` handles
+                // the case where the queue length shifts without a new
+                // track starting (e.g. future `setQueue` on the current).
+                // Elapsed time is intentionally NOT pushed on every tick
+                // (see issue #48 — the widget interpolates from
+                // `elapsed + wallclock * rate`).
+                if beforeQueuePos != self.status.queuePosition
+                    || beforeQueueLen != self.status.queueLength {
+                    self.mediaSession.queueChanged()
                 }
             }
         }
@@ -1645,4 +1667,42 @@ struct AlbumDetail: Equatable {
     /// these by role. Empty when the server didn't populate `People` (a
     /// surprising number don't).
     let people: [Person]
+}
+
+// MARK: - MediaSessionDelegate
+
+/// Bridge between `MediaSession` (owns MPNowPlayingInfoCenter and
+/// MPRemoteCommandCenter) and the rest of the app. Keeping the command
+/// handlers here means a Bluetooth headset, Control Center click, or media
+/// key all run the exact same code path as the on-screen buttons — no
+/// duplicate transport logic. See issues #29 / #31.
+extension AppModel: MediaSessionDelegate {
+    var currentStatus: PlayerStatus { status }
+
+    func mediaSessionTogglePlayPause() { togglePlayPause() }
+    func mediaSessionPlay() {
+        // Remote "play" may fire after a pause (resume) or at end-of-track
+        // (restart). Reuse the existing togglePlayPause logic so the two
+        // cases stay in one place.
+        switch status.state {
+        case .playing: return
+        case .paused: resume()
+        case .ended, .stopped, .idle, .loading:
+            if let track = status.currentTrack {
+                playCurrent(track)
+            }
+        }
+    }
+    func mediaSessionPause() { pause() }
+    func mediaSessionStop() { stop() }
+    func mediaSessionSkipNext() { skipNext() }
+    func mediaSessionSkipPrevious() { skipPrevious() }
+    func mediaSessionSeek(toSeconds seconds: Double) { audio.seek(toSeconds: seconds) }
+
+    func mediaSessionArtworkURL(for track: Track, maxWidth: UInt32) -> URL? {
+        imageURL(for: track.albumId ?? track.id, tag: track.imageTag, maxWidth: maxWidth)
+    }
+    func mediaSessionAuthorizationHeader() -> String? {
+        try? core.authHeader()
+    }
 }
