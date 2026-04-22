@@ -293,6 +293,107 @@ impl JellifyCore {
         })
     }
 
+    /// Seed a station around any item (track, album, artist, playlist,
+    /// genre) via Jellyfin's polymorphic `/Items/{id}/InstantMix`. Returns a
+    /// freshly generated queue of audio tracks the caller drops into the
+    /// player. Powers the "Start Radio" context-menu action.
+    pub fn instant_mix(
+        &self,
+        item_id: String,
+        limit: u32,
+    ) -> std::result::Result<Vec<Track>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.instant_mix(&item_id, limit)))
+    }
+
+    /// Server-curated suggestions for the Home "You might like" row. More
+    /// useful than recency-ordered recent-adds for long-tail discovery.
+    pub fn suggestions(&self, limit: u32) -> std::result::Result<Vec<Track>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.suggestions(limit)))
+    }
+
+    /// Artists similar to `artist_id` — Jellyfin's tag/genre-based
+    /// similarity. Powers the artist detail "Fans also like" shelf.
+    pub fn similar_artists(
+        &self,
+        artist_id: String,
+        limit: u32,
+    ) -> std::result::Result<Vec<Artist>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.similar_artists(&artist_id, limit)))
+    }
+
+    /// Albums similar to `album_id`. Powers the album detail "Similar
+    /// albums" shelf.
+    pub fn similar_albums(
+        &self,
+        album_id: String,
+        limit: u32,
+    ) -> std::result::Result<Vec<Album>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.similar_albums(&album_id, limit)))
+    }
+
+    /// Generic similar-items fallback — returns typed [`ItemRef`]s so the
+    /// UI can dispatch to the right detail screen without re-fetching.
+    pub fn similar_items(
+        &self,
+        item_id: String,
+        limit: u32,
+    ) -> std::result::Result<Vec<ItemRef>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.similar_items(&item_id, limit)))
+    }
+
+    /// Most frequently played tracks for the current user, ordered by the
+    /// server's `PlayCount` descending. Powers the Home "Play It Again" /
+    /// "On Repeat" row.
+    pub fn frequently_played_tracks(
+        &self,
+        limit: u32,
+    ) -> std::result::Result<Vec<Track>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.frequently_played_tracks(limit)))
+    }
+
+    /// All music genres in the user's library, paginated. Each [`Genre`]
+    /// carries `song_count` / `album_count` via `Fields=ItemCounts`, so the
+    /// Genres tab can render counts without a second round-trip.
+    pub fn genres(
+        &self,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<PaginatedGenres, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.genres(Paging::new(offset, limit))))
+    }
+
+    /// Albums belonging to a genre, paginated. Powers the genre detail
+    /// landing view.
+    pub fn items_by_genre(
+        &self,
+        genre_id: String,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.items_by_genre(&genre_id, Paging::new(offset, limit)))
+        })
+    }
+
+    /// Full artist record with biography, backdrop image tags, and
+    /// external links (MusicBrainz / Last.fm / Discogs). Feeds the artist
+    /// detail header.
+    pub fn artist_detail(
+        &self,
+        artist_id: String,
+    ) -> std::result::Result<ArtistDetail, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.artist_detail(&artist_id)))
+    }
+
+    /// Fetch lyrics for a track. Returns `None` when the server reports 404
+    /// (no lyrics available — common). Handles both synced LRC and plain
+    /// text; `LyricLine::time_seconds` is pre-converted out of Jellyfin's
+    /// 100-ns tick units.
+    pub fn lyrics(&self, track_id: String) -> std::result::Result<Option<Lyrics>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.lyrics(&track_id)))
+    }
+
     /// Recently added albums for the Home "Recently Added" row.
     ///
     /// Server-side filtering respects the user's parental controls; the
