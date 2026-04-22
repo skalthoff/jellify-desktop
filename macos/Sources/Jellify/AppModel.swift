@@ -12,6 +12,7 @@ final class AppModel {
     // MARK: - Core
     let core: JellifyCore
     let audio: AudioEngine
+    let network: NetworkMonitor
 
     // MARK: - Session
     var session: Session?
@@ -44,10 +45,21 @@ final class AppModel {
         )
         self.core = core
         self.audio = AudioEngine(core: core)
+        self.network = NetworkMonitor()
         self.status = core.status()
         self.audio.onTrackEnded = { [weak self] in
             self?.handleTrackEnded()
         }
+    }
+
+    // MARK: - Network
+
+    /// Re-evaluates network reachability and, if a session exists, kicks off a
+    /// library refetch. Wired to the offline banner's `Retry` button.
+    func retryNetwork() {
+        network.retry()
+        guard session != nil else { return }
+        Task { await refreshLibrary() }
     }
 
     // MARK: - Session

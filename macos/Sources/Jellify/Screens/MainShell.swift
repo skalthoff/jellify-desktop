@@ -8,7 +8,7 @@ struct MainShell: View {
             HStack(spacing: 0) {
                 Sidebar()
                 Divider().background(Theme.border)
-                mainContent
+                contentColumn
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -16,6 +16,19 @@ struct MainShell: View {
             PlayerBar()
         }
         .background(Theme.bg)
+    }
+
+    @ViewBuilder
+    private var contentColumn: some View {
+        VStack(spacing: 0) {
+            if !model.network.isOnline {
+                OfflineBanner(onRetry: { model.retryNetwork() })
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+            mainContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .animation(.easeInOut(duration: 0.2), value: model.network.isOnline)
     }
 
     @ViewBuilder
