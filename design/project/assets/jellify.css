@@ -1,0 +1,243 @@
+/* ============================================================
+   Jellify Design System — Colors + Type
+   Source of truth: src/configs/tamagui.config.ts + fonts.config.ts
+   ============================================================ */
+
+/* ---------- Fonts ---------- */
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 300;
+  font-style: normal;
+  src: url('assets/fonts/Figtree-Light.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 400;
+  font-style: normal;
+  src: url('assets/fonts/Figtree-Regular.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 400;
+  font-style: italic;
+  src: url('assets/fonts/Figtree-Italic.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 500;
+  font-style: normal;
+  src: url('assets/fonts/Figtree-Medium.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 600;
+  font-style: normal;
+  src: url('assets/fonts/Figtree-SemiBold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 700;
+  font-style: normal;
+  src: url('assets/fonts/Figtree-Bold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 800;
+  font-style: normal;
+  src: url('assets/fonts/Figtree-ExtraBold.otf') format('opentype');
+}
+@font-face {
+  font-family: 'Figtree';
+  font-weight: 900;
+  font-style: normal;
+  src: url('assets/fonts/Figtree-Black.otf') format('opentype');
+}
+
+:root {
+  /* ---------- Brand palette (Purple preset — the Jellify default) ---------- */
+  --jf-purple-deep: #0C0622;          /* darkest brand purple, Figma BG */
+  --jf-purple: #100538;                /* tamagui 'purple' */
+  --jf-purple-gray: #66617B;
+  --jf-amethyst: rgba(126, 114, 175, 1);
+  --jf-amethyst-75: rgba(126, 114, 175, 0.75);
+  --jf-amethyst-50: rgba(126, 114, 175, 0.5);
+  --jf-amethyst-25: rgba(126, 114, 175, 0.25);
+
+  /* Primary + accent */
+  --jf-primary-dark: #887BFF;          /* primary on dark backgrounds */
+  --jf-primary-light: #4B0FD6;         /* primary on light backgrounds */
+  --jf-secondary-dark: rgba(75,125,215,1);
+  --jf-secondary-light: rgba(0,58,159,1);
+
+  /* Semantic */
+  --jf-danger-dark: #FF066F;
+  --jf-danger-light: #B30077;
+  --jf-warning-dark: #FF6625;
+  --jf-warning-light: #A93300;
+  --jf-success-dark: rgba(87,233,201,1);   /* teal */
+  --jf-success-light: rgba(16,175,141,1);
+
+  /* Figma pink accent (used for active-tab labels, highlights) */
+  --jf-pink-accent: rgb(204, 47, 113);
+
+  /* Neutrals */
+  --jf-white: #FFFFFF;
+  --jf-offwhite: #ECECEC;
+  --jf-neutral: #77748E;
+  --jf-border: #77748E;
+  --jf-dark-border: #CEAAFF;
+  --jf-black: #000000;
+
+  /* Surface — dark mode (Figma default) */
+  --jf-bg-dark: rgba(25, 24, 28, 1);
+  --jf-bg-dark-75: rgba(25, 24, 28, 0.75);
+  --jf-bg-dark-50: rgba(25, 24, 28, 0.5);
+  --jf-bg-dark-25: rgba(25, 24, 28, 0.25);
+  --jf-bg-figma: #0C0622;               /* deep purple used in Figma mocks */
+
+  /* Surface — light mode */
+  --jf-bg-light: #FFFFFF;
+  --jf-bg-light-tint: rgb(235, 221, 255);
+
+  /* Surface — OLED */
+  --jf-bg-oled: #000000;
+
+  /* Play button tints */
+  --jf-play-dark: rgb(88, 28, 172);
+  --jf-play-light: rgb(136, 81, 212);
+
+  /* Translucency / scrims */
+  --jf-scrim-dark: rgba(0,0,0,0.5);
+  --jf-scrim-light: rgba(255,255,255,0.75);
+  --jf-scrim-92: rgba(12, 6, 34, 0.92);
+  --jf-scrim-76: rgba(12, 6, 34, 0.76);
+
+  /* ---------- Semantic (defaults to dark) ---------- */
+  --fg: var(--jf-white);
+  --fg1: var(--jf-white);
+  --fg2: var(--jf-amethyst);
+  --fg3: var(--jf-neutral);
+  --accent: var(--jf-pink-accent);
+  --primary: var(--jf-primary-dark);
+  --bg: var(--jf-bg-figma);
+  --surface: var(--jf-bg-dark);
+  --border: var(--jf-amethyst-50);
+  --success: var(--jf-success-dark);
+  --danger: var(--jf-danger-dark);
+  --warning: var(--jf-warning-dark);
+
+  /* ---------- Radius / shadow / spacing ---------- */
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-pill: 999px;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.35);
+  --shadow-md: 0 6px 16px rgba(0,0,0,0.45);
+  --shadow-lg: 0 18px 40px rgba(0,0,0,0.55);
+  --shadow-glow-primary: 0 0 0 2px rgba(136,123,255,0.35);
+
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px; --sp-10: 64px;
+
+  /* ---------- Type scale ---------- */
+  --font-sans: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+               Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* Figma used Inter; Jellify app code uses Figtree (font identity). We use Figtree everywhere. */
+
+  --fs-10: 10px;  /* metadata, tab labels */
+  --fs-12: 12px;  /* section headers uppercase, captions */
+  --fs-14: 14px;  /* body, list rows */
+  --fs-16: 16px;  /* default paragraph, section titles */
+  --fs-20: 20px;
+  --fs-24: 24px;  /* H1 large in app */
+  --fs-28: 28px;
+  --fs-34: 34px;  /* screen title ("In Rotation") */
+  --fs-48: 48px;
+
+  --lh-tight: 1.1;
+  --lh-snug:  1.2;
+  --lh-body:  1.45;
+
+  --ls-tight: -0.01em;
+  --ls-caps:  0.06em;
+}
+
+/* ---------- Semantic element defaults ---------- */
+html, body {
+  font-family: var(--font-sans);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1, .h1 {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: var(--fs-34);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  color: var(--fg1);
+  margin: 0;
+}
+h2, .h2 {
+  font-weight: 700;
+  font-size: var(--fs-24);
+  line-height: var(--lh-snug);
+  color: var(--fg1);
+  margin: 0;
+}
+h3, .h3 {
+  font-weight: 700;
+  font-size: var(--fs-20);
+  line-height: var(--lh-snug);
+  color: var(--fg1);
+  margin: 0;
+}
+h4, .h4 {
+  font-weight: 600;
+  font-size: var(--fs-16);
+  line-height: var(--lh-snug);
+  color: var(--fg1);
+  margin: 0;
+}
+p, .body {
+  font-weight: 400;
+  font-size: var(--fs-14);
+  line-height: var(--lh-body);
+  color: var(--fg1);
+  margin: 0;
+}
+.caption {
+  font-size: var(--fs-12);
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--fg2);
+}
+.eyebrow {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--jf-amethyst);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+}
+.meta {
+  font-size: var(--fs-10);
+  font-weight: 500;
+  color: var(--fg3);
+}
+.label-tab {
+  font-size: var(--fs-10);
+  font-weight: 500;
+  color: var(--fg1);
+}
+.label-tab.active { color: var(--jf-pink-accent); }
+
+code, .mono {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, monospace;
+  font-size: 0.92em;
+}

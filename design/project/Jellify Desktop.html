@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Jellify — Desktop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="stylesheet" href="assets/jellify.css"/>
+<style>
+  html, body { margin:0; padding:0; background:#050210; color-scheme:dark; overflow:hidden; height:100%; }
+  * { box-sizing:border-box; }
+  ::-webkit-scrollbar { width:10px; height:10px; }
+  ::-webkit-scrollbar-thumb { background:rgba(126,114,175,0.25); border-radius:5px; border:2px solid transparent; background-clip:padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background:rgba(126,114,175,0.45); background-clip:padding-box; border:2px solid transparent; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  input { font-family: inherit; }
+  button { font-family: inherit; }
+  kbd { font-family: inherit; }
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" src="src/tokens.jsx"></script>
+<script type="text/babel" src="src/data.jsx"></script>
+<script type="text/babel" src="src/chrome.jsx"></script>
+<script type="text/babel" src="src/content.jsx"></script>
+<script type="text/babel" src="src/screens.jsx"></script>
+<script type="text/babel" src="src/panels.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+function App() {
+  // Persist position (current screen) across reloads
+  const persisted = (() => {
+    try { return JSON.parse(localStorage.getItem('jellify-desktop') || '{}'); }
+    catch { return {}; }
+  })();
+
+  const [settings, setSettings] = React.useState({ ...JF, ...persisted.settings });
+  const [screen, setScreen] = React.useState(persisted.screen || settings.screen || 'home');
+  const [search, setSearch] = React.useState('');
+  const [current, setCurrent] = React.useState({
+    title:'Yona', artist:'Saloli', album:'The Deep End', duration:'3:42', year:2020, fav:true, plays:142,
+  });
+  const [playing, setPlaying] = React.useState(true);
+  const [progress, setProgress] = React.useState(0.28);
+  const [volume, setVolume] = React.useState(0.72);
+  const [rightPanelMode, setRightPanelMode] = React.useState(settings.rightPanel || 'now-playing');
+  const [tweaksOpen, setTweaksOpen] = React.useState(false);
+  const [fullPlayer, setFullPlayer] = React.useState(false);
+
+  // keep settings in sync with rightPanelMode
+  React.useEffect(() => {
+    setRightPanelMode(settings.rightPanel === 'hidden' ? 'hidden' : settings.rightPanel);
+  }, [settings.rightPanel]);
+
+  // Persist
+  React.useEffect(() => {
+    localStorage.setItem('jellify-desktop', JSON.stringify({ screen, settings }));
+  }, [screen, settings]);
+
+  // Edit-mode protocol (for Tweaks toolbar)
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweaksOpen(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({type:'__edit_mode_available'}, '*');
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  // Post edits to host for persistence
+  const applySettings = (next) => {
+    setSettings(next);
+    // Bubble changes to host for disk persistence
+    const changed = {};
+    Object.keys(next).forEach(k => { if (next[k] !== settings[k]) changed[k] = next[k]; });
+    if (Object.keys(changed).length) {
+      window.parent.postMessage({type:'__edit_mode_set_keys', edits: changed}, '*');
+    }
+  };
+
+  // Progress auto-advance
+  React.useEffect(() => {
+    if (!playing) return;
+    const id = setInterval(() => {
+      setProgress(p => {
+        const total = durationSec(current.duration);
+        const step = 1 / total; // 1 second
+        return p + step >= 1 ? 0 : p + step;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [playing, current]);
+
+  const theme = resolveTheme(settings.theme, settings.mode);
+
+  const onPlay = (tr) => {
+    setCurrent({ ...tr, fav: tr.fav });
+    setPlaying(true);
+    setProgress(0);
+    setFullPlayer(false);
+  };
+
+  // Screen content
+  let main;
+  if (screen === 'home') main = <HomeScreen t={theme} onPlay={onPlay} current={current}/>;
+  else if (screen === 'library' || screen === 'favorites' || screen === 'albums' || screen === 'artists' || screen === 'tracks' || screen === 'downloads')
+    main = <LibraryScreen t={theme} onPlay={onPlay} current={current} playing={playing}/>;
+  else if (screen === 'album') main = <AlbumScreen t={theme} onPlay={onPlay} current={current} playing={playing}/>;
+  else if (screen === 'search') main = <SearchScreen t={theme} onPlay={onPlay} current={current} playing={playing} query={search} setQuery={setSearch}/>;
+  else if (screen === 'discover') main = <HomeScreen t={theme} onPlay={onPlay} current={current}/>;
+  else if (screen === 'radio') main = <HomeScreen t={theme} onPlay={onPlay} current={current}/>;
+  else if (screen === 'settings') main = <HomeScreen t={theme} onPlay={onPlay} current={current}/>;
+  else if (screen.startsWith('playlist:')) main = <AlbumScreen t={theme} onPlay={onPlay} current={current} playing={playing}/>;
+  else main = <HomeScreen t={theme} onPlay={onPlay} current={current}/>;
+
+  const crumbs = screen === 'home' ? ['Jellify','Home'] :
+    screen === 'library' ? ['Jellify','Library'] :
+    screen === 'album' ? ['Jellify','Library','Albums','The Deep End'] :
+    screen === 'search' ? ['Jellify','Search'] :
+    ['Jellify', screen[0].toUpperCase() + screen.slice(1)];
+
+  // Use screen setting from tweaks if different
+  React.useEffect(() => {
+    if (settings.screen && settings.screen !== screen) setScreen(settings.screen);
+  }, [settings.screen]);
+
+  const showRight = rightPanelMode !== 'hidden' && current;
+
+  return (
+    <ScaledStage bg={settings.mode === 'light' ? '#E5DAFF' : '#000'}>
+      <div data-screen-label={`Jellify Desktop · ${screen}`} style={{
+        width:1440, height:900,
+        borderRadius:12, overflow:'hidden', position:'relative',
+        background:theme.bg, color:theme.ink,
+        boxShadow:'0 0 0 1px rgba(255,255,255,0.06), 0 40px 80px rgba(0,0,0,0.6)',
+        display:'flex', flexDirection:'column',
+      }}>
+        {/* Top chrome */}
+        <TopBar t={theme} crumbs={crumbs} search={search} setSearch={v=>{setSearch(v); if(v && screen!=='search') setScreen('search');}}/>
+
+        {/* Body */}
+        <div style={{flex:1, display:'flex', minHeight:0}}>
+          <Sidebar t={theme} screen={screen} setScreen={(s)=>{setScreen(s); applySettings({...settings, screen: ['home','library','search','discover','radio','settings'].includes(s) ? s : settings.screen});}} density={settings.density}/>
+          <div style={{flex:1, minWidth:0, overflowY:'auto', background: settings.mode === 'light'
+            ? `linear-gradient(180deg, ${theme.bgAlt} 0%, ${theme.bg} 400px)`
+            : `radial-gradient(ellipse 100% 600px at 50% 0%, ${theme.primary}22, transparent 80%), ${theme.bg}`}}>
+            {main}
+          </div>
+          {showRight && (
+            <RightPanel t={theme} mode={rightPanelMode}
+              setMode={(m)=>{ setRightPanelMode(m); applySettings({...settings, rightPanel: m}); }}
+              track={current} playing={playing}
+              onPlay={onPlay}
+              onClose={()=>{ setRightPanelMode('hidden'); applySettings({...settings, rightPanel:'hidden'}); }}/>
+          )}
+        </div>
+
+        {/* Player bar */}
+        <PlayerBar t={theme} track={current} playing={playing}
+          onToggle={()=>setPlaying(!playing)}
+          progress={progress} setProgress={setProgress}
+          volume={volume} setVolume={setVolume}
+          onOpenQueue={()=>{
+            if (rightPanelMode === 'queue') { setRightPanelMode('hidden'); applySettings({...settings, rightPanel:'hidden'}); }
+            else { setRightPanelMode('queue'); applySettings({...settings, rightPanel:'queue'}); }
+          }}
+          queueOpen={rightPanelMode === 'queue'}
+          onOpenPlayer={()=>setFullPlayer(true)}/>
+
+        {/* Full player overlay */}
+        {fullPlayer && <FullPlayer t={theme} track={current} playing={playing}
+          onToggle={()=>setPlaying(!playing)}
+          progress={progress} setProgress={setProgress}
+          onClose={()=>setFullPlayer(false)}/>}
+
+        {/* Tweaks */}
+        <TweaksPanel open={tweaksOpen} t={theme}
+          settings={settings} setSettings={applySettings}
+          onClose={()=>setTweaksOpen(false)}/>
+      </div>
+    </ScaledStage>
+  );
+}
+
+// Scale a 1440x900 stage to fit the current viewport (letterbox).
+function ScaledStage({ bg, children }) {
+  const [scale, setScale] = React.useState(1);
+  React.useEffect(() => {
+    const compute = () => {
+      const s = Math.min(window.innerWidth / 1440, window.innerHeight / 900);
+      setScale(s);
+    };
+    compute();
+    window.addEventListener('resize', compute);
+    return () => window.removeEventListener('resize', compute);
+  }, []);
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:bg,
+      display:'flex', alignItems:'center', justifyContent:'center', overflow:'hidden',
+    }}>
+      <div style={{width:1440, height:900, transform:`scale(${scale})`, transformOrigin:'center center', flexShrink:0}}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

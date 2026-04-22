@@ -1,0 +1,53 @@
+[workspace]
+resolver = "2"
+members = [
+    "core",
+    "examples/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "GPL-3.0-only"
+repository = "https://github.com/Jellify-Music/Jellify"
+
+[workspace.dependencies]
+# Runtime
+tokio = { version = "1.40", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# HTTP + JSON
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream", "gzip"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+url = { version = "2", features = ["serde"] }
+
+# Storage
+rusqlite = { version = "0.32", features = ["bundled"] }
+keyring = "3"
+
+# (Audio playback happens on the platform side via AVFoundation/MediaPlayer/GStreamer.
+#  The Rust core only manages stream URLs + queue state.)
+
+# Utilities
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+parking_lot = "0.12"
+
+# FFI
+uniffi = { version = "0.28", features = ["cli"] }
+
+# Testing
+wiremock = "0.6"
+tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

@@ -1,0 +1,24 @@
+# Rust
+target/
+**/*.rs.bk
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Generated (produced by Scripts/build-core.sh)
+macos/Jellify.xcframework/
+macos/Sources/JellifyCore/Generated/
+macos/build/
+
+# Symbol files / debug
+*.pdb
+*.dSYM/
+
+# Editor + OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
