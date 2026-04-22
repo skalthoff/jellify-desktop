@@ -211,6 +211,46 @@ impl JellyfinClient {
         Ok(raw.items.into_iter().map(Album::from).collect())
     }
 
+    /// Fetch the most recently added albums in a library, respecting the
+    /// authenticated user's parental controls (enforced server-side via
+    /// `userId`). Backed by `GET /Items/Latest`.
+    ///
+    /// Notes:
+    /// - The response is a bare `BaseItemDto[]` (not wrapped in
+    ///   `{ Items, TotalRecordCount }` like most library endpoints).
+    /// - `groupItems=true` asks the server to collapse audio children into
+    ///   their parent album when both land in the "recent" window, so the
+    ///   Home "Recently Added" row shows albums rather than loose tracks.
+    /// - `library_id` is the music library's collection id (a "Views" item);
+    ///   callers typically resolve it once at sign-in and cache it.
+    pub async fn latest_albums(&self, library_id: &str, limit: u32) -> Result<Vec<Album>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Items/Latest")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("userId", user_id);
+            q.append_pair("parentId", library_id);
+            q.append_pair("includeItemTypes", "MusicAlbum");
+            q.append_pair("limit", &limit.max(1).to_string());
+            q.append_pair("groupItems", "true");
+            q.append_pair(
+                "fields",
+                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let items: Vec<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(items.into_iter().map(Album::from).collect())
+    }
+
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
         let user_id = self
             .user_id

@@ -177,6 +177,19 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.album_tracks(&album_id)))
     }
 
+    /// Recently added albums for the Home "Recently Added" row.
+    ///
+    /// Server-side filtering respects the user's parental controls; the
+    /// response is grouped by album so loose tracks never appear. Callers
+    /// resolve `library_id` (the music collection view id) once at sign-in.
+    pub fn latest_albums(
+        &self,
+        library_id: String,
+        limit: u32,
+    ) -> std::result::Result<Vec<Album>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.latest_albums(&library_id, limit)))
+    }
+
     pub fn search(&self, query: String) -> std::result::Result<SearchResults, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.search(&query)))
     }
