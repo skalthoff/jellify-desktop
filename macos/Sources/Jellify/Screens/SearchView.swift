@@ -49,6 +49,15 @@ struct SearchView: View {
                                 }
                             }
                         }
+                        // "Show all N results" — visible when the server
+                        // reports more matches than the current page holds.
+                        // See issue #429. Jellyfin doesn't expose per-kind
+                        // pagination on this endpoint, so we page the
+                        // combined response and let the per-kind arrays
+                        // grow as new results come in.
+                        if showAllResultsVisible(for: results) {
+                            showAllResultsButton(for: results)
+                        }
                     }
                 }
                 Spacer(minLength: 32)
@@ -133,6 +142,54 @@ struct SearchView: View {
             .font(Theme.font(18, weight: .bold))
             .foregroundStyle(Theme.ink)
             .padding(.top, 12)
+    }
+
+    /// Total rows currently displayed across all three typed sections.
+    /// Used against `searchResultsTotal` to decide whether a follow-up page
+    /// would yield anything new.
+    private func loadedCount(for results: SearchResults) -> Int {
+        results.artists.count + results.albums.count + results.tracks.count
+    }
+
+    private func showAllResultsVisible(for results: SearchResults) -> Bool {
+        Int(model.searchResultsTotal) > loadedCount(for: results)
+    }
+
+    @ViewBuilder
+    private func showAllResultsButton(for results: SearchResults) -> some View {
+        let loaded = loadedCount(for: results)
+        let total = Int(model.searchResultsTotal)
+        HStack {
+            Spacer()
+            if model.isLoadingMoreSearch {
+                ProgressView()
+                    .tint(Theme.ink2)
+                    .scaleEffect(0.8)
+                    .padding(.vertical, 14)
+            } else {
+                Button {
+                    Task { await model.loadMoreSearchResults() }
+                } label: {
+                    Text("Show all \(total) results (\(loaded) shown)")
+                        .font(Theme.font(13, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(Theme.surface)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(Theme.borderStrong, lineWidth: 1)
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show all \(total) results, \(loaded) currently shown")
+            }
+            Spacer()
+        }
+        .padding(.top, 16)
     }
 
     @ViewBuilder

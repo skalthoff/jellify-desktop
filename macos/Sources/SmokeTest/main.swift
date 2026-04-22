@@ -46,7 +46,9 @@ struct SmokeTest {
 
         let albums: [Album]
         do {
-            albums = try core.listAlbums(offset: 0, limit: 5)
+            // `listAlbums` now returns a paginated envelope — the smoke
+            // test doesn't need the total, just the first few items.
+            albums = try core.listAlbums(offset: 0, limit: 5).items
         } catch { fputs("list albums: \(error)\n", stderr); exit(1) }
         guard let album = albums.first else {
             fputs("no albums on server\n", stderr); exit(1)

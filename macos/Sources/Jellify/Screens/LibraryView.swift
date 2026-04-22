@@ -79,12 +79,14 @@ struct LibraryView: View {
                     .font(Theme.font(36, weight: .black, italic: true))
                     .foregroundStyle(Theme.ink)
                 // Count subline — 11pt uppercase `ink3`. Updates live as the
-                // user switches chips. See #212 / screen spec Issue 13.
+                // user switches chips. Shows "N of M" while more pages exist
+                // on the server; falls back to "N" once loaded == total.
+                // See #212 / #429 / screen spec Issue 13.
                 Text(countSubline)
                     .font(Theme.font(11, weight: .bold))
                     .foregroundStyle(Theme.ink3)
                     .tracking(1.2)
-                    .accessibilityLabel("\(tabCount(for: selectedTab)) \(selectedTab.countNoun)")
+                    .accessibilityLabel(countAccessibilityLabel)
             }
             Spacer()
             LibraryViewToggle(mode: $viewMode)
@@ -103,6 +105,12 @@ struct LibraryView: View {
     /// so the chip selection still produces a coherent screen. As tracks,
     /// artists, playlists, and download state land, each branch gets its own
     /// surface.
+    /// Distance from the end of the grid at which the near-end
+    /// `.onAppear` trigger fires a follow-up page. 20 is enough to overlap
+    /// two screen-heights on a MacBook display, which is plenty of runway
+    /// to hide round-trip latency.
+    private let paginationTriggerDistance = 20
+
     @ViewBuilder
     private var content: some View {
         switch selectedTab {
@@ -110,18 +118,29 @@ struct LibraryView: View {
             if model.albums.isEmpty {
                 EmptyLibraryState(serverUrl: serverWebURL)
             } else {
-                switch viewMode {
-                case .grid:
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                        ForEach(model.albums, id: \.id) { album in
-                            AlbumCard(album: album)
+                VStack(alignment: .leading, spacing: 18) {
+                    switch viewMode {
+                    case .grid:
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                            ForEach(Array(model.albums.enumerated()), id: \.element.id) { idx, album in
+                                AlbumCard(album: album)
+                                    .onAppear {
+                                        triggerLoadMoreAlbumsIfNeeded(atIndex: idx)
+                                    }
+                            }
+                        }
+                    case .list:
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(model.albums.enumerated()), id: \.element.id) { idx, album in
+                                LibraryListRow(album: album)
+                                    .onAppear {
+                                        triggerLoadMoreAlbumsIfNeeded(atIndex: idx)
+                                    }
+                            }
                         }
                     }
-                case .list:
-                    LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(model.albums, id: \.id) { album in
-                            LibraryListRow(album: album)
-                        }
+                    if model.isLoadingMoreAlbums {
+                        paginationSpinner
                     }
                 }
             }
@@ -132,8 +151,35 @@ struct LibraryView: View {
         }
     }
 
-    /// Count for a given tab. Artists has a real count; the rest are stubs
-    /// pending their respective FFI/storage work.
+    /// Bottom spinner shown while a follow-up page is in flight. Stays under
+    /// the grid so interaction with already-loaded items isn't blocked.
+    private var paginationSpinner: some View {
+        HStack {
+            Spacer()
+            ProgressView()
+                .tint(Theme.ink2)
+                .scaleEffect(0.8)
+            Spacer()
+        }
+        .padding(.vertical, 12)
+        .accessibilityLabel("Loading more")
+    }
+
+    /// Fire `loadMoreAlbums` when the user scrolls into the last
+    /// `paginationTriggerDistance` cells and there are more albums on the
+    /// server than currently loaded. The model debounces re-entrant calls,
+    /// so this is safe to trigger from every nearby cell's `.onAppear`.
+    private func triggerLoadMoreAlbumsIfNeeded(atIndex idx: Int) {
+        let loaded = model.albums.count
+        let total = Int(model.albumsTotal)
+        guard total > loaded else { return }
+        let threshold = max(loaded - paginationTriggerDistance, 0)
+        guard idx >= threshold else { return }
+        Task { await model.loadMoreAlbums() }
+    }
+
+    /// Count for a given tab. Albums and artists have real counts; the rest
+    /// are stubs pending their respective FFI/storage work.
     private func tabCount(for tab: LibraryTab) -> Int {
         switch tab {
         case .albums: return model.albums.count
@@ -142,13 +188,40 @@ struct LibraryView: View {
         }
     }
 
-    /// 11pt uppercase count subline, e.g. "42 ALBUMS". Mirrors the spec's
-    /// "{n} tracks · Sorted by {sort}" — sort hasn't been wired yet (#216),
-    /// so for now the subline is just the count. The sort segment slots in
-    /// once the sort menu lands.
+    /// Server-reported total for a given tab. Zero when not yet known or
+    /// when the tab doesn't have a backing endpoint yet.
+    private func tabTotal(for tab: LibraryTab) -> Int {
+        switch tab {
+        case .albums: return Int(model.albumsTotal)
+        case .artists: return Int(model.artistsTotal)
+        case .tracks, .playlists, .downloaded: return 0
+        }
+    }
+
+    /// 11pt uppercase count subline. Renders as `N of M` when the server
+    /// total is known AND more items remain to load; otherwise falls back
+    /// to plain `N`. Mirrors the spec's "{n} tracks · Sorted by {sort}" —
+    /// sort hasn't been wired yet (#216), so for now the subline is just
+    /// the count. Issue #429 / #212.
     private var countSubline: String {
         let count = tabCount(for: selectedTab)
+        let total = tabTotal(for: selectedTab)
+        if total > count {
+            return "\(count) OF \(total) \(selectedTab.countNoun.uppercased())"
+        }
         return "\(count) \(selectedTab.countNoun)".uppercased()
+    }
+
+    /// VoiceOver-friendly version of the count subline. Reads naturally
+    /// as "42 of 5000 albums" rather than the uppercased + tracking-spaced
+    /// display string.
+    private var countAccessibilityLabel: String {
+        let count = tabCount(for: selectedTab)
+        let total = tabTotal(for: selectedTab)
+        if total > count {
+            return "\(count) of \(total) \(selectedTab.countNoun)"
+        }
+        return "\(count) \(selectedTab.countNoun)"
     }
 
     private var backgroundWash: some View {
