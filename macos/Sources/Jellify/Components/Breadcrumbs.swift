@@ -17,7 +17,8 @@ struct Breadcrumbs: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(Array(segments.enumerated()), id: \.offset) { idx, segment in
+            ForEach(segments.indices, id: \.self) { idx in
+                let segment = segments[idx]
                 let isLast = idx == segments.count - 1
                 if isLast {
                     Text(segment)
