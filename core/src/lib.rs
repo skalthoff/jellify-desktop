@@ -288,6 +288,22 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.unset_favorite(&item_id)))
     }
 
+    /// Create a new playlist for the current user. Returns the new
+    /// playlist id — callers refetch the full [`Playlist`] via
+    /// [`JellifyCore::fetch_item`] if they need the populated record.
+    /// `item_ids` may be empty to create an empty playlist. Errors with
+    /// [`JellifyError::NotAuthenticated`] if no session is active.
+    pub fn create_playlist(
+        &self,
+        name: String,
+        item_ids: Vec<String>,
+    ) -> std::result::Result<String, JellifyError> {
+        self.with_client(|c| {
+            let id_refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
+            self.runtime.block_on(c.create_playlist(&name, &id_refs))
+        })
+    }
+
     /// Fetch a single item by id with a caller-selected `fields` projection
     /// (e.g. `["Overview", "Genres", "Tags", "People"]`). Returns the raw
     /// JSON object serialized as a string — callers decode whichever
