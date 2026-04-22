@@ -6,18 +6,18 @@ import SwiftUI
 /// (Recently Played, Artists You Love, Jump Back In, Your Playlists,
 /// Recently Added). See `research/06-screen-specs.md`.
 ///
-/// This issue (#205) only delivers the quick-tiles row. The greeting header
-/// (#204) and each carousel (#206 / #55 / #208 / #209 / #207) land in
-/// follow-up issues; this scaffold intentionally keeps the surface minimal
-/// so they can slot in without refactoring.
+/// #205 delivered the quick-tiles row; #206 adds the Recently Played
+/// carousel below it. The full time-aware greeting header (#204) and the
+/// remaining carousels (#55 / #208 / #209 / #207) land in follow-up issues.
 struct HomeView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 24) {
                 header
                 quickTilesRow
+                recentlyPlayedSection
                 Spacer(minLength: 24)
             }
             .padding(.horizontal, 32)
@@ -89,6 +89,27 @@ struct HomeView: View {
         max(0, 3 - tileAlbums.count)
     }
 
+    /// The "Recently Played" carousel (#206). Hidden when the backing data is
+    /// still loading or empty so we don't punch a blank hole in the layout.
+    @ViewBuilder
+    private var recentlyPlayedSection: some View {
+        if !model.recentlyPlayed.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Recently Played")
+                    .font(Theme.font(18, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 16) {
+                        ForEach(model.recentlyPlayed, id: \.id) { track in
+                            RecentlyPlayedTile(track: track)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
     private var backgroundWash: some View {
         LinearGradient(
             colors: [Theme.primary.opacity(0.15), .clear],
@@ -134,5 +155,59 @@ private struct HomeQuickTilePlaceholder: View {
                 .fill(Theme.surface.opacity(0.5))
         )
         .accessibilityHidden(true)
+    }
+}
+
+private struct RecentlyPlayedTile: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let track: Track
+    @State private var isHovering = false
+
+    var body: some View {
+        Button {
+            model.play(tracks: [track], startIndex: 0)
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                ZStack(alignment: .bottomTrailing) {
+                    Artwork(
+                        url: model.imageURL(
+                            for: track.albumId ?? track.id,
+                            tag: track.imageTag,
+                            maxWidth: 400
+                        ),
+                        seed: track.albumName ?? track.name,
+                        size: 160,
+                        radius: 8
+                    )
+                    .frame(width: 160, height: 160)
+
+                    Image(systemName: "play.fill")
+                        .foregroundStyle(.white)
+                        .font(.system(size: 14))
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(Theme.primary))
+                        .shadow(color: Theme.primary.opacity(0.5), radius: 8, y: 3)
+                        .padding(8)
+                        .opacity(isHovering ? 1 : 0)
+                        .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(track.name)
+                        .font(Theme.font(13, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                        .lineLimit(1)
+                    Text(track.artistName)
+                        .font(Theme.font(11, weight: .medium))
+                        .foregroundStyle(Theme.ink2)
+                        .lineLimit(1)
+                }
+                .frame(width: 160, alignment: .leading)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
     }
 }
