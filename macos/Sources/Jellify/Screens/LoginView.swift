@@ -58,6 +58,13 @@ struct LoginView: View {
             }
             .padding(40)
         }
+        .onAppear {
+            // After an auth-expired bounce (#303), the server URL and
+            // username live on AppModel from the last successful sign-in.
+            // Prefill so the user only needs to re-enter their password.
+            if url.isEmpty, !model.serverURL.isEmpty { url = model.serverURL }
+            if username.isEmpty, !model.username.isEmpty { username = model.username }
+        }
     }
 
     @ViewBuilder

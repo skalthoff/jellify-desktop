@@ -5,6 +5,7 @@ struct MainShell: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        @Bindable var model = model
         VStack(spacing: 0) {
             HStack(spacing: 0) {
                 Sidebar()
@@ -17,6 +18,17 @@ struct MainShell: View {
             PlayerBar()
         }
         .background(Theme.bg)
+        // Auth-expired prompt — see #303. One-shot modal; on "Sign in" we
+        // drop the stored token and clear the session so `RootView` routes
+        // back to `LoginView`, which prefills the remembered server URL and
+        // username so the user only needs to re-enter their password.
+        .sheet(isPresented: $model.authExpired) {
+            AuthExpiredSheet {
+                model.forgetToken()
+                model.session = nil
+                model.authExpired = false
+            }
+        }
     }
 
     @ViewBuilder

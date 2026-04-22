@@ -47,6 +47,13 @@ final class AppModel {
     var isLoadingLibrary = false
     var errorMessage: String?
 
+    /// Set when a core call fails because the server rejected our token
+    /// (HTTP 401) or the core reports no-longer-authenticated. Drives the
+    /// modal prompt in `MainShell`. Reset after the user dismisses the sheet
+    /// or signs back in. Auto-reauth (reissuing credentials silently) is
+    /// tracked separately in #440 — this flag only powers the prompt.
+    var authExpired: Bool = false
+
     init() throws {
         let core = try JellifyCore(
             config: CoreConfig(dataDir: "", deviceName: "Jellify macOS")
@@ -112,6 +119,48 @@ final class AppModel {
         stopPolling()
     }
 
+    /// Drop the stored access token (keychain + in-memory session) without
+    /// clearing the remembered server URL / username, so the user can re-auth
+    /// against the same server by re-entering only their password. Called
+    /// when the user taps "Sign in" on the auth-expired sheet. Note: the
+    /// caller still owns toggling `authExpired` off and nilling `session`.
+    func forgetToken() {
+        audio.stop()
+        try? core.logout()
+        albums = []
+        artists = []
+        albumTracks = [:]
+        stopPolling()
+    }
+
+    /// Flag the session as expired. The UI surfaces this via the auth-expired
+    /// modal in `MainShell`. Idempotent — second hits within a session are
+    /// no-ops while the prompt is still visible.
+    func markAuthExpired() {
+        guard !authExpired else { return }
+        audio.stop()
+        stopPolling()
+        authExpired = true
+    }
+
+    /// Inspect an error from a core call and, if it looks like a 401 or the
+    /// core's `NotAuthenticated` variant, mark the session expired and return
+    /// `true` so the caller knows to skip its generic error surfacing.
+    ///
+    /// `JellifyError` is a `flat_error` in uniffi, so on the Swift side we
+    /// only get the `thiserror` Display string. The variants we care about
+    /// are:
+    /// - `NotAuthenticated` → `"not logged in"`
+    /// - `Server { status: 401, .. }` → `"server returned an error: 401 ..."`
+    private func handleAuthError(_ error: Error) -> Bool {
+        let description = error.localizedDescription
+        let isNotAuthenticated = description.contains("not logged in")
+        let isServer401 = description.contains("server returned an error: 401")
+        guard isNotAuthenticated || isServer401 else { return false }
+        markAuthExpired()
+        return true
+    }
+
     // MARK: - Library
 
     func refreshLibrary() async {
@@ -128,6 +177,7 @@ final class AppModel {
             self.artists = artists
             serverReachability.noteSuccess()
         } catch {
+            if handleAuthError(error) { return }
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
@@ -145,6 +195,7 @@ final class AppModel {
             serverReachability.noteSuccess()
             return tracks
         } catch {
+            if handleAuthError(error) { return [] }
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
@@ -173,6 +224,7 @@ final class AppModel {
             self.searchResults = results
             serverReachability.noteSuccess()
         } catch {
+            if handleAuthError(error) { return }
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
@@ -194,6 +246,7 @@ final class AppModel {
             try audio.play(track: first)
             errorMessage = nil
         } catch {
+            if handleAuthError(error) { return }
             errorMessage = "Couldn't start playback: \(error.localizedDescription)"
         }
     }
@@ -518,6 +571,7 @@ final class AppModel {
         do {
             try audio.play(track: track)
         } catch {
+            if handleAuthError(error) { return }
             errorMessage = "Playback failed: \(error.localizedDescription)"
         }
     }
