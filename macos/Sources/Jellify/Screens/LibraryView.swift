@@ -100,11 +100,11 @@ struct LibraryView: View {
         )
     }
 
-    /// Grid / list body for the currently selected chip. Only the `albums`
-    /// tab has live content today; the others render the shared empty state
-    /// so the chip selection still produces a coherent screen. As tracks,
-    /// artists, playlists, and download state land, each branch gets its own
-    /// surface.
+    /// Grid / list body for the currently selected chip. Albums, artists,
+    /// tracks, and playlists all have live content today; Downloaded
+    /// renders the shared empty state until the download engine lands
+    /// (#70 / #222).
+    ///
     /// Distance from the end of the grid at which the near-end
     /// `.onAppear` trigger fires a follow-up page. 20 is enough to overlap
     /// two screen-heights on a MacBook display, which is plenty of runway
@@ -196,8 +196,38 @@ struct LibraryView: View {
                     }
                 }
             }
-        case .playlists, .downloaded:
-            // Placeholder until the per-tab surfaces land. The chip row, header,
+        case .playlists:
+            if model.playlists.isEmpty {
+                EmptyLibraryState(serverUrl: serverWebURL)
+            } else {
+                VStack(alignment: .leading, spacing: 18) {
+                    switch viewMode {
+                    case .grid:
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                            ForEach(Array(model.playlists.enumerated()), id: \.element.id) { idx, playlist in
+                                PlaylistCard(playlist: playlist)
+                                    .onAppear {
+                                        triggerLoadMorePlaylistsIfNeeded(atIndex: idx)
+                                    }
+                            }
+                        }
+                    case .list:
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(model.playlists.enumerated()), id: \.element.id) { idx, playlist in
+                                LibraryListRow(playlist: playlist)
+                                    .onAppear {
+                                        triggerLoadMorePlaylistsIfNeeded(atIndex: idx)
+                                    }
+                            }
+                        }
+                    }
+                    if model.isLoadingMorePlaylists {
+                        paginationSpinner
+                    }
+                }
+            }
+        case .downloaded:
+            // Placeholder until the per-tab surface lands. The chip row, header,
             // and count subline remain live so navigation feels responsive.
             EmptyLibraryState(serverUrl: serverWebURL)
         }
@@ -256,14 +286,28 @@ struct LibraryView: View {
         Task { await model.loadMoreTracks() }
     }
 
-    /// Count for a given tab. Albums, artists, and tracks have real counts;
-    /// the rest are stubs pending their respective FFI/storage work.
+    /// Mirror of `triggerLoadMoreAlbumsIfNeeded` for the Playlists grid.
+    /// Separate function rather than a parameterised helper so the guard
+    /// arithmetic stays obvious at the call site.
+    private func triggerLoadMorePlaylistsIfNeeded(atIndex idx: Int) {
+        let loaded = model.playlists.count
+        let total = Int(model.playlistsTotal)
+        guard total > loaded else { return }
+        let threshold = max(loaded - paginationTriggerDistance, 0)
+        guard idx >= threshold else { return }
+        Task { await model.loadMorePlaylists() }
+    }
+
+    /// Count for a given tab. Albums, artists, tracks, and playlists have
+    /// real counts; Downloaded is a stub pending the download engine (#70 /
+    /// #222).
     private func tabCount(for tab: LibraryTab) -> Int {
         switch tab {
         case .albums: return model.albums.count
         case .artists: return model.artists.count
         case .tracks: return model.tracks.count
-        case .playlists, .downloaded: return 0
+        case .playlists: return model.playlists.count
+        case .downloaded: return 0
         }
     }
 
@@ -274,7 +318,8 @@ struct LibraryView: View {
         case .albums: return Int(model.albumsTotal)
         case .artists: return Int(model.artistsTotal)
         case .tracks: return Int(model.tracksTotal)
-        case .playlists, .downloaded: return 0
+        case .playlists: return Int(model.playlistsTotal)
+        case .downloaded: return 0
         }
     }
 

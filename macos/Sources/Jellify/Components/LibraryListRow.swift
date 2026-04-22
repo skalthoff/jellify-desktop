@@ -3,13 +3,19 @@ import SwiftUI
 
 /// Compact single-line row used by the Library list view. Mirrors the
 /// design's list density: small square artwork, title, secondary text, and
-/// a trailing metadata slot. Renders either an album or an artist depending
+/// a trailing metadata slot. Renders an album, artist, or playlist depending
 /// on which payload was used at construction time. Clicking opens the
 /// relevant detail screen; hover reveals an inline play button.
+///
+/// Each backing value type (`Album`, `Artist`, `Playlist`) has its own
+/// initializer so the call sites stay typed without a giant sum-type
+/// argument. The body is one `switch self.payload` so the SwiftUI layout
+/// doesn't fan out across separate view structs.
 struct LibraryListRow: View {
     enum Payload {
         case album(Album)
         case artist(Artist)
+        case playlist(Playlist)
     }
 
     @Environment(AppModel.self) private var model
@@ -23,6 +29,10 @@ struct LibraryListRow: View {
 
     init(artist: Artist) {
         self.payload = .artist(artist)
+    }
+
+    init(playlist: Playlist) {
+        self.payload = .playlist(playlist)
     }
 
     var body: some View {
@@ -101,6 +111,8 @@ struct LibraryListRow: View {
             return model.imageURL(for: album.id, tag: album.imageTag, maxWidth: 120)
         case .artist(let artist):
             return model.imageURL(for: artist.id, tag: artist.imageTag, maxWidth: 120)
+        case .playlist(let playlist):
+            return model.imageURL(for: playlist.id, tag: playlist.imageTag, maxWidth: 120)
         }
     }
 
@@ -108,15 +120,16 @@ struct LibraryListRow: View {
         switch payload {
         case .album(let album): return album.name
         case .artist(let artist): return artist.name
+        case .playlist(let playlist): return playlist.name
         }
     }
 
-    /// Albums use the shared 4pt radius; artists get a pill/circle so the
-    /// list row reads consistently with the circular `ArtistRadioTile` used
-    /// elsewhere.
+    /// Albums and playlists use the shared 4pt radius; artists get a
+    /// pill/circle so the list row reads consistently with the circular
+    /// `ArtistRadioTile` used elsewhere.
     private var artworkRadius: CGFloat {
         switch payload {
-        case .album: return 4
+        case .album, .playlist: return 4
         case .artist: return 20
         }
     }
@@ -125,6 +138,7 @@ struct LibraryListRow: View {
         switch payload {
         case .album(let album): return album.name
         case .artist(let artist): return artist.name
+        case .playlist(let playlist): return playlist.name
         }
     }
 
@@ -135,16 +149,21 @@ struct LibraryListRow: View {
         case .artist(let artist):
             if !artist.genres.isEmpty { return artist.genres.joined(separator: ", ") }
             return "Artist"
+        case .playlist(let playlist):
+            // Playlists have no "artist" analogue, so the subtitle carries
+            // runtime duration instead. Falls back to an empty label for
+            // zero-runtime playlists so the layout still lines up.
+            return formattedDuration(runtimeTicks: playlist.runtimeTicks)
         }
     }
 
     /// Optional trailing metadata (e.g. release year for albums). Artists
-    /// have no equivalent, so the slot stays empty.
+    /// and playlists have no equivalent, so the slot stays empty.
     private var trailingMeta: String? {
         switch payload {
         case .album(let album):
             return album.year.map { String($0) }
-        case .artist:
+        case .artist, .playlist:
             return nil
         }
     }
@@ -155,7 +174,33 @@ struct LibraryListRow: View {
             return "\(album.trackCount) tracks"
         case .artist(let artist):
             return artist.albumCount == 1 ? "1 album" : "\(artist.albumCount) albums"
+        case .playlist(let playlist):
+            // Empty playlists get a compact "Empty" label rather than "0
+            // tracks"; otherwise mirror the album column's format.
+            switch playlist.trackCount {
+            case 0: return "Empty"
+            case 1: return "1 track"
+            default: return "\(playlist.trackCount) tracks"
+            }
         }
+    }
+
+    /// Compact duration label for the playlist subtitle. Ticks are in
+    /// hundred-nanoseconds (standard Jellyfin unit). Shows `H:MM` past the
+    /// hour mark, `Mm` otherwise ("4 min", "1h 32m"). Empty playlists
+    /// (`runtimeTicks == 0`) render as an empty string so the row collapses
+    /// to just the title line.
+    private func formattedDuration(runtimeTicks: UInt64) -> String {
+        guard runtimeTicks > 0 else { return "" }
+        let totalSeconds = Int(runtimeTicks / 10_000_000)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        // Sub-minute playlists round up to "1 min" rather than "0 min", so a
+        // 30-second single-track playlist still looks like content.
+        return "\(max(minutes, 1)) min"
     }
 
     private func openDetail() {
@@ -164,6 +209,8 @@ struct LibraryListRow: View {
             model.screen = .album(album.id)
         case .artist(let artist):
             model.screen = .artist(artist.id)
+        case .playlist(let playlist):
+            model.screen = .playlist(playlist.id)
         }
     }
 
@@ -173,6 +220,8 @@ struct LibraryListRow: View {
             model.play(album: album)
         case .artist(let artist):
             model.playAll(artist: artist)
+        case .playlist(let playlist):
+            model.play(playlist: playlist)
         }
     }
 
@@ -183,6 +232,8 @@ struct LibraryListRow: View {
             AlbumContextMenu(album: album)
         case .artist(let artist):
             ArtistContextMenu(artist: artist)
+        case .playlist(let playlist):
+            PlaylistContextMenu(playlist: playlist)
         }
     }
 }

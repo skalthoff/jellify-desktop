@@ -41,6 +41,7 @@ struct Sidebar: View {
                 libRow("heart", label: "Favorites", count: nil)
                 libRow("square.stack", label: "Albums", count: UInt32(model.albums.count))
                 libRow("person.crop.circle", label: "Artists", count: UInt32(model.artists.count))
+                libRow("music.note.list", label: "Playlists", count: UInt32(model.playlists.count))
             }
             .padding(.horizontal, 10)
 
