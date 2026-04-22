@@ -112,6 +112,21 @@ final class AppModel {
     var searchResults: SearchResults?
     var searchQuery: String = ""
 
+    /// Instant-search payload rendered by `SearchInstantDropdown` while the
+    /// user is typing in the toolbar / search field. Distinct from
+    /// `searchResults` (which backs the full Search screen) so a live
+    /// dropdown and the committed "see all results" surface don't trample
+    /// each other. Always safe to read — empty until a non-empty query
+    /// arrives. See #85 / #241 / #243.
+    var instantSearchResults: InstantSearchResults = .empty
+
+    /// In-flight debounced instant-search task. Published so re-entrant
+    /// callers (each keystroke invokes `runInstantSearch`) can cancel the
+    /// previous pass before kicking off a new one. Storing the handle as
+    /// state rather than a local makes the cancel-previous pattern trivial
+    /// regardless of which view / keystroke triggered the original fetch.
+    var searchTask: Task<Void, Never>?
+
     /// Collection-view id of the Jellyfin "Playlists" library. Resolved
     /// lazily on first `refreshPlaylists()` — see `ensurePlaylistLibraryId`.
     /// Cached across the session; cleared on logout.
@@ -394,6 +409,9 @@ final class AppModel {
         favoriteAlbumsVisible = []
         searchResults = nil
         searchQuery = ""
+        instantSearchResults = .empty
+        searchTask?.cancel()
+        searchTask = nil
         currentTrackPeople = []
         currentTrackPeopleForId = nil
         currentLyrics = nil
@@ -436,6 +454,9 @@ final class AppModel {
         favoriteAlbumsVisible = []
         searchResults = nil
         searchQuery = ""
+        instantSearchResults = .empty
+        searchTask?.cancel()
+        searchTask = nil
         currentTrackPeople = []
         currentTrackPeopleForId = nil
         currentLyrics = nil
@@ -1562,6 +1583,117 @@ final class AppModel {
         }
     }
 
+    /// Debounced instant search for the dropdown shown under the toolbar
+    /// search field. Cancels any previous in-flight pass, waits 250ms for
+    /// more keystrokes, then hits `core.search`. On success we rank a
+    /// single "top result" by exact-title > prefix > contains (ties broken
+    /// by play count when available, then alpha) and split the rest into
+    /// typed sections for the dropdown to render.
+    ///
+    /// Empty / whitespace-only queries short-circuit to `.empty` and
+    /// cancel any pending fetch so the dropdown clears instantly.
+    ///
+    /// Spec: #85 (instant dropdown), #241 (debounced fetch), #243 (hero
+    /// top result). Deliberately uses the existing `core.search` endpoint
+    /// — a leaner `/Search/Hints` path is tracked separately; swapping
+    /// here is a one-line change when that lands.
+    func runInstantSearch(query: String) {
+        // Cancel whatever was in flight — the user either typed another
+        // character or cleared the field. Either way, the old result is
+        // stale.
+        searchTask?.cancel()
+
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            instantSearchResults = .empty
+            searchTask = nil
+            return
+        }
+
+        searchTask = Task { [weak self, core] in
+            // 250ms debounce — if another keystroke fires the task is
+            // cancelled before we ever hit the network.
+            do {
+                try await Task.sleep(nanoseconds: 250_000_000)
+            } catch {
+                return
+            }
+            if Task.isCancelled { return }
+
+            // Instant dropdown is tuned for speed, not completeness —
+            // 20 items is enough to populate every section without
+            // hauling the whole "see all" page down on each keystroke.
+            let results: SearchResults
+            do {
+                results = try await Task.detached(priority: .userInitiated) {
+                    try core.search(query: trimmed, offset: 0, limit: 20)
+                }.value
+            } catch {
+                // Instant search failures are cosmetic — the full Search
+                // screen still surfaces the "real" error on submit. Swallow
+                // here so a flaky network doesn't keep firing error banners
+                // for every keystroke.
+                return
+            }
+            if Task.isCancelled { return }
+
+            guard let self else { return }
+            await MainActor.run {
+                let top = Self.pickTopResult(query: trimmed, results: results)
+                self.instantSearchResults = InstantSearchResults(
+                    topResult: top,
+                    artists: results.artists,
+                    albums: results.albums,
+                    tracks: results.tracks,
+                    // Playlists and genres are not yet surfaced by
+                    // `core.search` (today it returns Audio / MusicAlbum /
+                    // MusicArtist only). TODO(core): expand the search
+                    // endpoint to include Playlist + MusicGenre so the
+                    // instant dropdown can render those sections.
+                    playlists: [],
+                    genres: []
+                )
+            }
+        }
+    }
+
+    /// Pick the single "top result" for the hero card.
+    ///
+    /// Ranking, strongest → weakest: exact case-insensitive title match,
+    /// then prefix match, then substring match. Ties are broken by play
+    /// count (only tracks carry one today) and finally by alphabetical
+    /// order so the choice is deterministic across keystrokes.
+    nonisolated static func pickTopResult(query: String, results: SearchResults) -> SearchItem? {
+        let q = query.lowercased()
+        var candidates: [SearchItem] = []
+        candidates.reserveCapacity(results.artists.count + results.albums.count + results.tracks.count)
+        candidates.append(contentsOf: results.artists.map(SearchItem.artist))
+        candidates.append(contentsOf: results.albums.map(SearchItem.album))
+        candidates.append(contentsOf: results.tracks.map(SearchItem.track))
+        guard !candidates.isEmpty else { return nil }
+
+        // Lower sort key wins. `(rank, -playCount, name)` so we can call
+        // `.min(by:)` without an ad-hoc comparator per tier.
+        func rank(for name: String) -> Int {
+            let lower = name.lowercased()
+            if lower == q { return 0 }
+            if lower.hasPrefix(q) { return 1 }
+            if lower.contains(q) { return 2 }
+            return 3
+        }
+
+        return candidates.min { a, b in
+            let ra = rank(for: a.title)
+            let rb = rank(for: b.title)
+            if ra != rb { return ra < rb }
+            // Play count — only tracks carry one. Treat non-tracks as 0.
+            let pa = a.playCount
+            let pb = b.playCount
+            if pa != pb { return pa > pb }
+            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
+        }
+    }
+
     func imageURL(for itemID: String, tag: String?, maxWidth: UInt32 = 400) -> URL? {
         guard let s = try? core.imageUrl(itemId: itemID, tag: tag, maxWidth: maxWidth) else { return nil }
         return URL(string: s)
@@ -2554,6 +2686,111 @@ extension Track {
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+/// Client-side genre record used by `InstantSearchResults` and the search
+/// dropdown's genre row. Jellyfin returns genres as bare strings on
+/// `Album`/`Artist` today, so an `id` is derived from the name until a
+/// proper `MusicGenre` item shape lands in core (see `GenreContextMenu`'s
+/// TODO for #318).
+struct Genre: Hashable, Identifiable, Sendable {
+    let id: String
+    let name: String
+
+    init(name: String) {
+        self.name = name
+        // Name doubles as id — genres are unique by label in Jellyfin's
+        // surface and we don't have the real collection ids yet.
+        self.id = name
+    }
+}
+
+/// Heterogeneous "thing" returned by the instant-search dropdown. Wraps the
+/// four core record types plus `Genre` so the dropdown's `onPickItem`
+/// callback can carry enough context for routing without per-type
+/// callbacks.
+///
+/// `title` / `playCount` are derived so the ranking algorithm in
+/// `AppModel.pickTopResult` can stay generic.
+enum SearchItem: Hashable, Sendable {
+    case artist(Artist)
+    case album(Album)
+    case track(Track)
+    case playlist(Playlist)
+    case genre(Genre)
+
+    var id: String {
+        switch self {
+        case .artist(let a): return "artist:\(a.id)"
+        case .album(let a): return "album:\(a.id)"
+        case .track(let t): return "track:\(t.id)"
+        case .playlist(let p): return "playlist:\(p.id)"
+        case .genre(let g): return "genre:\(g.id)"
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .artist(let a): return a.name
+        case .album(let a): return a.name
+        case .track(let t): return t.name
+        case .playlist(let p): return p.name
+        case .genre(let g): return g.name
+        }
+    }
+
+    /// Human-readable type label rendered on the hero card. "Artist" /
+    /// "Album" / "Track" / "Playlist" / "Genre" per the spec in #243.
+    var typeLabel: String {
+        switch self {
+        case .artist: return "Artist"
+        case .album: return "Album"
+        case .track: return "Track"
+        case .playlist: return "Playlist"
+        case .genre: return "Genre"
+        }
+    }
+
+    /// Play count used as the secondary ranking key. Only tracks carry
+    /// one today; everything else returns 0 so the comparator still does
+    /// the right thing in a generic `.min(by:)`.
+    var playCount: UInt32 {
+        if case .track(let t) = self { return t.playCount }
+        return 0
+    }
+}
+
+/// Aggregate payload for the instant-search dropdown. Split into typed
+/// sections so the dropdown can render each without re-partitioning, and
+/// carries a pre-ranked `topResult` so the hero card doesn't need to
+/// re-run the ranker on every view update. See `AppModel.runInstantSearch`.
+struct InstantSearchResults: Sendable {
+    let topResult: SearchItem?
+    let artists: [Artist]
+    let albums: [Album]
+    let tracks: [Track]
+    let playlists: [Playlist]
+    let genres: [Genre]
+
+    static let empty = InstantSearchResults(
+        topResult: nil,
+        artists: [],
+        albums: [],
+        tracks: [],
+        playlists: [],
+        genres: []
+    )
+
+    /// True when every section is empty — the dropdown uses this to
+    /// decide between rendering results vs. a minimal "no matches" state.
+    var isEmpty: Bool {
+        topResult == nil
+            && artists.isEmpty
+            && albums.isEmpty
+            && tracks.isEmpty
+            && playlists.isEmpty
+            && genres.isEmpty
     }
 }
 
