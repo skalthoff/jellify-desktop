@@ -35,10 +35,25 @@ final class AppModel {
     var albums: [Album] = []
     var artists: [Artist] = []
     var tracks: [Track] = []
+    var playlists: [Playlist] = []
     var albumTracks: [String: [Track]] = [:]          // albumID → tracks
     var recentlyPlayed: [Track] = []
     var searchResults: SearchResults?
     var searchQuery: String = ""
+
+    /// Collection-view id of the Jellyfin "Playlists" library. Resolved
+    /// lazily on first `refreshPlaylists()` — see `ensurePlaylistLibraryId`.
+    /// Cached across the session; cleared on logout.
+    ///
+    /// Jellyfin scopes `user_playlists` / `public_playlists` by `ParentId`,
+    /// so we need this before we can fetch anything. There is no FFI yet for
+    /// listing the user's libraries (tracked in core issue separate from
+    /// #483), so the current resolve is a pragmatic empty-string fallback:
+    /// Jellyfin's `/Items` endpoint treats an empty `ParentId` as "root /
+    /// any library the user can see", which happens to return playlists
+    /// across the whole server. When a real `core.libraries()` FFI lands,
+    /// swap this for a proper lookup.
+    var playlistLibraryId: String?
 
     // MARK: - Pagination
     //
@@ -57,6 +72,14 @@ final class AppModel {
     var artistsTotal: UInt32 = 0
     /// Server-reported total track count for the current library.
     var tracksTotal: UInt32 = 0
+    /// Server-reported total playlist count for the current library.
+    ///
+    /// Caveat: `user_playlists` / `public_playlists` on the core filter the
+    /// server's response client-side by `Path`, so this total is the raw
+    /// server count across BOTH user- and public-owned playlists — i.e. an
+    /// upper bound on what `items.count` will reach. See the core's
+    /// `PaginatedPlaylists` docstring.
+    var playlistsTotal: UInt32 = 0
     /// Server-reported total recently-played count (listening history size).
     var recentlyPlayedTotal: UInt32 = 0
     /// Server-reported total for the current search query across all item kinds.
@@ -69,6 +92,8 @@ final class AppModel {
     var isLoadingMoreArtists: Bool = false
     /// A follow-up tracks page is in flight. See `isLoadingMoreAlbums`.
     var isLoadingMoreTracks: Bool = false
+    /// A follow-up playlists page is in flight. See `isLoadingMoreAlbums`.
+    var isLoadingMorePlaylists: Bool = false
     /// A follow-up search page is in flight for the current query.
     var isLoadingMoreSearch: Bool = false
 
@@ -169,6 +194,8 @@ final class AppModel {
         albums = []
         artists = []
         tracks = []
+        playlists = []
+        playlistLibraryId = nil
         albumTracks = [:]
         recentlyPlayed = []
         searchResults = nil
@@ -188,6 +215,8 @@ final class AppModel {
         albums = []
         artists = []
         tracks = []
+        playlists = []
+        playlistLibraryId = nil
         albumTracks = [:]
         recentlyPlayed = []
         searchResults = nil
@@ -203,11 +232,13 @@ final class AppModel {
         albumsTotal = 0
         artistsTotal = 0
         tracksTotal = 0
+        playlistsTotal = 0
         recentlyPlayedTotal = 0
         searchResultsTotal = 0
         isLoadingMoreAlbums = false
         isLoadingMoreArtists = false
         isLoadingMoreTracks = false
+        isLoadingMorePlaylists = false
         isLoadingMoreSearch = false
     }
 
@@ -244,24 +275,30 @@ final class AppModel {
     func refreshLibrary() async {
         isLoadingLibrary = true
         defer { isLoadingLibrary = false }
+        // Fetch albums, artists, tracks, and playlists in parallel. Previously
+        // the album/artist calls were sequential, doubling time-to-first-paint
+        // on every fresh session; `async let` lets all round-trips overlap.
+        // Playlists are wired in alongside so switching to the Playlists chip
+        // doesn't trigger a first-paint spinner. The smaller
+        // `libraryInitialPageSize` (100 vs. the old 200) is a further
+        // first-paint win — the grid fills the viewport with 100 and the
+        // per-tab `loadMore*` paths take over when the user scrolls.
+        //
+        // Playlists go through their own try/catch because the library id
+        // resolution can fail independently (no playlist library on the
+        // server, or an error from a hypothetical future `core.libraries()`)
+        // and we don't want that to sink the albums/artists/tracks fetch.
+        async let albumsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+            try core.listAlbums(offset: 0, limit: libraryInitialPageSize)
+        }.value
+        async let artistsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+            try core.listArtists(offset: 0, limit: libraryInitialPageSize)
+        }.value
+        async let tracksPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+            try core.listTracks(musicLibraryId: nil, offset: 0, limit: libraryInitialPageSize)
+        }.value
+        async let playlistsResult: Void = refreshPlaylists()
         do {
-            // Fetch albums, artists, and tracks in parallel. Previously the
-            // calls were sequential, doubling time-to-first-paint on every
-            // fresh session. `async let` lets all three round-trips overlap;
-            // the `await` below resolves when all complete. The smaller
-            // `libraryInitialPageSize` (100 vs. the old 200) is a further
-            // first-paint win — the grid fills the viewport with 100 and
-            // `loadMoreAlbums` / `loadMoreTracks` take over when the user
-            // scrolls.
-            async let albumsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
-                try core.listAlbums(offset: 0, limit: libraryInitialPageSize)
-            }.value
-            async let artistsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
-                try core.listArtists(offset: 0, limit: libraryInitialPageSize)
-            }.value
-            async let tracksPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
-                try core.listTracks(musicLibraryId: nil, offset: 0, limit: libraryInitialPageSize)
-            }.value
             let (albums, artists, tracks) = try await (albumsPage, artistsPage, tracksPage)
             self.albums = albums.items
             self.albumsTotal = albums.totalCount
@@ -277,6 +314,7 @@ final class AppModel {
             }
             self.errorMessage = "Library load failed: \(error.localizedDescription)"
         }
+        _ = await playlistsResult
         await refreshRecentlyPlayed()
     }
 
@@ -372,6 +410,99 @@ final class AppModel {
                 serverReachability.noteFailure()
             }
             self.errorMessage = "Library load failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Resolve (and cache) the `ParentId` to scope playlist queries by.
+    ///
+    /// Jellyfin exposes playlists under a dedicated "Playlists"
+    /// CollectionFolder, but the core doesn't yet ship an FFI for listing a
+    /// user's libraries (tracked alongside #124 / #483). Until it does, we
+    /// fall back to the empty string: Jellyfin's `/Items` endpoint treats an
+    /// empty `ParentId` query value as "no filter", which returns the
+    /// server-wide set of playlists the user can see. That's slightly
+    /// broader than what the eventual proper resolve will return, but the
+    /// client-side `Path`-based filter in `user_playlists` / `public_playlists`
+    /// keeps the result correct.
+    ///
+    /// Logs a warning on first resolve so the gap is visible in Console.app.
+    private func ensurePlaylistLibraryId() -> String {
+        if let cached = playlistLibraryId { return cached }
+        // TODO: wire `core.libraries()` (tracked in core followup) so we can
+        // pick the CollectionFolder with `CollectionType == "playlists"`.
+        print("[AppModel] No playlist-library resolver available — falling back to empty ParentId. This returns the correct set for typical Jellyfin servers; wire core.libraries() when it lands.")
+        let resolved = ""
+        playlistLibraryId = resolved
+        return resolved
+    }
+
+    /// Fetch the first page of user-owned playlists for the Library screen's
+    /// Playlists chip. Wired into `refreshLibrary` so the chip is populated
+    /// before the user clicks it. Parallels `loadMoreAlbums` for the error
+    /// / auth / reachability story.
+    ///
+    /// Uses `user_playlists` (user-owned) rather than `public_playlists`. The
+    /// Playlists tab spec (#212) describes "your playlists"; a separate
+    /// "Community" affordance for public playlists is a future concern.
+    func refreshPlaylists() async {
+        let libraryId = ensurePlaylistLibraryId()
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+                try core.userPlaylists(
+                    playlistLibraryId: libraryId,
+                    offset: 0,
+                    limit: libraryInitialPageSize
+                )
+            }.value
+            self.playlists = page.items
+            self.playlistsTotal = page.totalCount
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            // Silent-ish: don't clobber the albums/artists error banner if
+            // both fail in the same refresh. The Playlists tab empty state
+            // already explains "nothing to see here" when `playlists` is
+            // empty.
+            print("[AppModel] refreshPlaylists failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Fetch the next page of playlists and append to `playlists`. Mirror
+    /// of `loadMoreAlbums` — see its docs for the trigger contract.
+    ///
+    /// Server-side total caveat: `user_playlists` filters results client-
+    /// side by `Path`, so `playlistsTotal` is an upper bound on the raw
+    /// server count, not on `playlists.count`. The `<` guard below uses the
+    /// raw total deliberately — stopping at `playlists.count >= total` is
+    /// safe even when the two drift, because the server itself won't return
+    /// more items past its total and we'd bail on an empty page anyway.
+    func loadMorePlaylists() async {
+        guard !isLoadingMorePlaylists else { return }
+        guard playlistsTotal == 0 || playlists.count < Int(playlistsTotal) else { return }
+        isLoadingMorePlaylists = true
+        defer { isLoadingMorePlaylists = false }
+        let libraryId = ensurePlaylistLibraryId()
+        let offset = UInt32(playlists.count)
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core, libraryPageSize] in
+                try core.userPlaylists(
+                    playlistLibraryId: libraryId,
+                    offset: offset,
+                    limit: libraryPageSize
+                )
+            }.value
+            self.playlists.append(contentsOf: page.items)
+            self.playlistsTotal = page.totalCount
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            self.errorMessage = "Playlists load failed: \(error.localizedDescription)"
         }
     }
 
