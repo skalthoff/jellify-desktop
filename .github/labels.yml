@@ -24,6 +24,10 @@
 - { name: "kind:feat",        color: "A2EEEF", description: "New feature" }
 - { name: "kind:polish",      color: "B5E1FF", description: "Tightening existing surface" }
 - { name: "kind:chore",       color: "CFD3D7", description: "Infra / cleanup / dep bump" }
+- { name: "kind:refactor",    color: "CFD3D7", description: "Refactor without behavior change" }
+- { name: "kind:docs",        color: "0075CA", description: "Documentation changes" }
+- { name: "kind:research",    color: "D876E3", description: "Research / spike before building" }
+- { name: "kind:test",        color: "C2E0C6", description: "Tests or test infrastructure" }
 - { name: "kind:security",    color: "B60205", description: "Security-sensitive" }
 - { name: "kind:question",    color: "D876E3", description: "Discussion or open question" }
 
