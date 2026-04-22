@@ -12,12 +12,36 @@ struct MainShell: View {
                 Divider().background(Theme.border)
                 contentColumn
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                // Right-side Queue Inspector (#79). Hidden by default; toggled
+                // by Cmd+Opt+Q or a future PlayerBar button (BATCH-07b). Kept
+                // at 320pt so it doesn't crowd the detail column on a 13"
+                // laptop but is wide enough for readable track titles.
+                if model.isQueueInspectorOpen {
+                    Divider().background(Theme.border)
+                    QueueInspector()
+                        .frame(width: 320)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.isQueueInspectorOpen)
 
             PlayerBar()
         }
         .background(Theme.bg)
+        // Cmd+Opt+Q toggles the queue inspector (#79). Hung off a zero-sized
+        // hidden button so the shortcut is global to `MainShell` without
+        // requiring a visible chrome affordance — the visible toggle will
+        // land in PlayerBar in BATCH-07b. `.hidden()` alone is not enough
+        // (SwiftUI elides hidden buttons from the responder chain), so the
+        // button has a 1×1 clear frame that stays non-interactive.
+        .background(
+            Button("Toggle Queue Inspector") { model.toggleQueueInspector() }
+                .keyboardShortcut("q", modifiers: [.command, .option])
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        )
         // Auth-expired prompt — see #303. One-shot modal; on "Sign in" we
         // drop the stored token and clear the session so `RootView` routes
         // back to `LoginView`, which prefills the remembered server URL and
