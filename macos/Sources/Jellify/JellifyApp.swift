@@ -4,6 +4,12 @@ import SwiftUI
 struct JellifyApp: App {
     @State private var model: AppModel
 
+    /// Persisted color-scheme mode from the Appearance pane (#263). Read here
+    /// so the entire window tree (including the Preferences scene) honours the
+    /// user's choice. `oled` resolves to `.dark` until the true-black surface
+    /// wash lands alongside the theme engine in #405.
+    @AppStorage(AppearanceKeys.mode) private var modeRaw: String = AppearanceMode.dark.rawValue
+
     init() {
         FontRegistration.register()
         do {
@@ -13,12 +19,16 @@ struct JellifyApp: App {
         }
     }
 
+    private var preferredColorScheme: ColorScheme? {
+        (AppearanceMode(rawValue: modeRaw) ?? .dark).preferredColorScheme
+    }
+
     var body: some Scene {
         WindowGroup("Jellify") {
             RootView()
                 .environment(model)
                 .frame(minWidth: 960, minHeight: 640)
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(preferredColorScheme)
         }
         .defaultSize(width: 1280, height: 820)
         .windowToolbarStyle(.unifiedCompact)
@@ -30,6 +40,7 @@ struct JellifyApp: App {
         Settings {
             PreferencesView()
                 .environment(model)
+                .preferredColorScheme(preferredColorScheme)
         }
         .windowResizability(.contentSize)
     }
