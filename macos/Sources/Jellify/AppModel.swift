@@ -1,6 +1,7 @@
 import AppKit
 import Foundation
 import Observation
+import SwiftUI
 @preconcurrency import JellifyCore
 import JellifyAudio
 
@@ -275,6 +276,196 @@ final class AppModel {
     /// state (no server-side follow primitive on Jellyfin), persisted to
     /// `UserDefaults` on write. See #64 / #228.
     var followedArtistIds: Set<String> = []
+
+    // MARK: - Command Palette (⌘K)
+
+    /// Whether the command-palette overlay is currently visible. Toggled by
+    /// the ⌘K menu command and by the palette itself on Esc / row commit.
+    /// Driven out of `AppModel` rather than `MainShell` so the overlay can
+    /// sit above every screen (Home, Library, Now Playing, and the auth
+    /// sheet's host) from one place, and so the menu command doesn't need a
+    /// SwiftUI `@Environment(AppModel.self)` round-trip. See #305 / #306 /
+    /// #307 / #309.
+    var isCommandPaletteOpen: Bool = false
+
+    /// A single verb entry in the command palette's action list. See
+    /// `paletteActions` for the live roster and `executePaletteAction(id:)`
+    /// for the dispatcher. Actions are intentionally held by id + closure
+    /// rather than by enum so the registry can grow without rippling
+    /// through view code. See #307.
+    struct PaletteAction: Identifiable {
+        let id: String
+        let title: LocalizedStringKey
+        let symbol: String
+        let run: () -> Void
+    }
+
+    /// Static verb list surfaced by the command palette. Computed so the
+    /// play/pause entry swaps labels based on the current playback state —
+    /// re-evaluated on every palette render since the model publishes
+    /// `status` changes. See #307.
+    var paletteActions: [PaletteAction] {
+        let isPlaying = status.state == .playing
+        let hasTrack = status.currentTrack != nil
+        var actions: [PaletteAction] = []
+
+        // Transport. "Play" / "Pause" swap so the user sees the action that
+        // actually fires rather than a generic "Toggle Play/Pause".
+        if hasTrack {
+            if isPlaying {
+                actions.append(PaletteAction(
+                    id: "playback.pause",
+                    title: "Pause",
+                    symbol: "pause.fill",
+                    run: { [weak self] in self?.pause() }
+                ))
+            } else {
+                actions.append(PaletteAction(
+                    id: "playback.play",
+                    title: "Play",
+                    symbol: "play.fill",
+                    run: { [weak self] in self?.togglePlayPause() }
+                ))
+            }
+        } else {
+            // No loaded track — still surface "Play" so ⌘K → Play has a
+            // landing pad (it's a no-op until a track is loaded). Using
+            // `togglePlayPause` keeps the behavior consistent with the
+            // Space-bar shortcut (both no-op in this state).
+            actions.append(PaletteAction(
+                id: "playback.play",
+                title: "Play",
+                symbol: "play.fill",
+                run: { [weak self] in self?.togglePlayPause() }
+            ))
+        }
+        actions.append(PaletteAction(
+            id: "playback.playNext",
+            title: "Play Next",
+            symbol: "text.line.first.and.arrowtriangle.forward",
+            run: { [weak self] in
+                guard let track = self?.status.currentTrack else { return }
+                self?.playNext(tracks: [track])
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "playback.addToQueue",
+            title: "Add to Queue",
+            symbol: "text.badge.plus",
+            run: { [weak self] in
+                guard let track = self?.status.currentTrack else { return }
+                self?.addToQueue(tracks: [track])
+            }
+        ))
+
+        // Navigation. Keep parity with the Go menu (⌘1 / ⌘2 / Discover).
+        actions.append(PaletteAction(
+            id: "nav.library",
+            title: "Go to Library",
+            symbol: "music.note.list",
+            run: { [weak self] in self?.screen = .library }
+        ))
+        actions.append(PaletteAction(
+            id: "nav.home",
+            title: "Go to Home",
+            symbol: "house",
+            run: { [weak self] in self?.screen = .home }
+        ))
+        actions.append(PaletteAction(
+            id: "nav.discover",
+            title: "Go to Discover",
+            symbol: "sparkles",
+            run: { [weak self] in self?.goToDiscover() }
+        ))
+
+        // Preferences. macOS exposes the Settings scene through the standard
+        // Application menu (⌘,); from the palette we mirror that by opening
+        // the scene directly rather than routing through `screen = .settings`
+        // (which is unused today).
+        actions.append(PaletteAction(
+            id: "app.openPreferences",
+            title: "Open Preferences",
+            symbol: "gearshape",
+            run: {
+                // `showSettingsWindow:` is the documented selector for
+                // opening the Settings scene from outside a menu command.
+                // Fall back to the legacy Preferences selector for older
+                // macOS versions that don't respond to the newer one.
+                if #available(macOS 14, *) {
+                    NSApp.sendAction(
+                        Selector(("showSettingsWindow:")),
+                        to: nil,
+                        from: nil
+                    )
+                } else {
+                    NSApp.sendAction(
+                        Selector(("showPreferencesWindow:")),
+                        to: nil,
+                        from: nil
+                    )
+                }
+            }
+        ))
+
+        // Playback toggles. Shuffle / repeat state isn't yet carried on
+        // `PlayerStatus` (tracked in research/02-media-integration.md), so
+        // these are logging stubs for now — the palette entry still has a
+        // landing pad so ⌘K discovery works before the FFI lands.
+        actions.append(PaletteAction(
+            id: "playback.toggleShuffle",
+            title: "Toggle Shuffle",
+            symbol: "shuffle",
+            run: {
+                // TODO(core): wire to core.setShuffle(on:) once FFI lands.
+                print("[AppModel] Toggle Shuffle — not yet wired (see research/02-media-integration.md)")
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "playback.toggleRepeat",
+            title: "Toggle Repeat",
+            symbol: "repeat",
+            run: {
+                // TODO(core): wire to core.setRepeatMode(_:) once FFI lands.
+                print("[AppModel] Toggle Repeat — not yet wired (see research/02-media-integration.md)")
+            }
+        ))
+
+        // Queue + download verbs. Both are placeholders today — the core
+        // lacks a `clear_queue` primitive and the download engine hasn't
+        // landed (#70). Kept in the roster so the discovery affordance
+        // surfaces them; the closures are no-ops for now.
+        actions.append(PaletteAction(
+            id: "queue.clear",
+            title: "Clear Queue",
+            symbol: "trash",
+            run: {
+                // TODO(#282): wire to a core `clear_queue` primitive.
+                print("[AppModel] Clear Queue — not yet wired (see #282)")
+            }
+        ))
+        actions.append(PaletteAction(
+            id: "download.current",
+            title: "Download Current",
+            symbol: "arrow.down.circle",
+            run: { [weak self] in
+                guard self?.status.currentTrack != nil else { return }
+                // TODO(#70): wire to the download engine once it lands.
+                print("[AppModel] Download Current — not yet wired (see #70)")
+            }
+        ))
+
+        return actions
+    }
+
+    /// Look up a palette action by id and run it. Called by `CommandPalette`
+    /// on ↩ commit. Also closes the palette on success, mirroring the
+    /// "execute and dismiss" behavior users expect from Spotlight-style
+    /// launchers. See #307.
+    func executePaletteAction(id: String) {
+        guard let action = paletteActions.first(where: { $0.id == id }) else { return }
+        action.run()
+        isCommandPaletteOpen = false
+    }
 
     init() throws {
         let core = try JellifyCore(
