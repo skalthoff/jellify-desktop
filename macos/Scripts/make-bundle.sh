@@ -1,19 +1,102 @@
 #!/usr/bin/env bash
-# Wrap the swift-build executable as a minimal .app bundle so macOS treats it
-# as a proper GUI process (visible in the Dock, Cmd-Tab, etc.). This is
-# dev-grade packaging — signing and notarization come in M4.
+# Wrap the swift-build executable as a Jellify.app bundle.
+#
+# Info.plist is copied from `macos/Resources/Info.plist` (a real, checked-in
+# template). This script injects `$VERSION` and `$BUILD` via `plutil -replace`
+# before the codesign pass.
+#
+# Resolution order for version metadata:
+#   1. $VERSION / $BUILD env vars (CI and release scripts set these).
+#   2. git describe / commit count (useful for local dev builds).
+#   3. Fallback: 0.0.0-dev / 0.
+#
+# Usage:
+#   ./macos/Scripts/make-bundle.sh                      # debug arm64 build
+#   ./macos/Scripts/make-bundle.sh --release            # release arm64 build
+#   ./macos/Scripts/make-bundle.sh --release --universal # release arm64+x86_64
+#
+# The --universal flag selects the `apple/Products` output tree that
+# `swift build --arch arm64 --arch x86_64` produces.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MACOS="$ROOT/macos"
-BUILD_DIR="$MACOS/.build/arm64-apple-macosx/debug"
-EXE="$BUILD_DIR/Jellify"
+RESOURCES="$MACOS/Resources"
+INFO_TEMPLATE="$RESOURCES/Info.plist"
 APP="$MACOS/build/Jellify.app"
 
-if [[ ! -x "$EXE" ]]; then
-  echo "error: Jellify executable not found at $EXE — run 'swift build' first" >&2
-  exit 1
+PROFILE="debug"
+UNIVERSAL=0
+for arg in "$@"; do
+    case "$arg" in
+        --release) PROFILE="release" ;;
+        --debug)   PROFILE="debug"   ;;
+        --universal) UNIVERSAL=1 ;;
+        -h | --help)
+            sed -n '2,19p' "${BASH_SOURCE[0]}"
+            exit 0
+            ;;
+        *)
+            echo "error: unknown argument: $arg" >&2
+            echo "usage: $0 [--release|--debug] [--universal]" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ ! -f "$INFO_TEMPLATE" ]]; then
+    echo "error: Info.plist template not found at $INFO_TEMPLATE" >&2
+    exit 1
 fi
+
+# Pick the swift-build output directory. The universal build puts products
+# under `apple/Products/<Configuration>`; single-arch builds use
+# `<triple>/<profile>`.
+if [[ "$UNIVERSAL" -eq 1 ]]; then
+    CONFIG_CAP="$(tr '[:lower:]' '[:upper:]' <<< "${PROFILE:0:1}")${PROFILE:1}"
+    BUILD_DIR="$MACOS/.build/apple/Products/$CONFIG_CAP"
+else
+    BUILD_DIR="$MACOS/.build/arm64-apple-macosx/$PROFILE"
+fi
+EXE="$BUILD_DIR/Jellify"
+
+if [[ ! -x "$EXE" ]]; then
+    echo "error: Jellify executable not found at $EXE" >&2
+    echo "       run 'swift build' (or './macos/Scripts/build-core.sh --release' + a universal swift build) first" >&2
+    exit 1
+fi
+
+# Resolve version + build.
+VERSION="${VERSION:-}"
+BUILD="${BUILD:-}"
+
+if [[ -z "$VERSION" ]]; then
+    if VERSION_FROM_GIT="$(git -C "$ROOT" describe --tags --abbrev=0 2>/dev/null)"; then
+        # Strip a leading "v" if the tag uses one.
+        VERSION="${VERSION_FROM_GIT#v}"
+    else
+        VERSION="0.0.0-dev"
+    fi
+fi
+
+if [[ -z "$BUILD" ]]; then
+    if BUILD_FROM_GIT="$(git -C "$ROOT" rev-list --count HEAD 2>/dev/null)"; then
+        BUILD="$BUILD_FROM_GIT"
+    else
+        BUILD="0"
+    fi
+fi
+
+# Clean up any half-built bundle on error so reruns start fresh.
+cleanup() {
+    if [[ -n "${TMP_PLIST:-}" && -f "$TMP_PLIST" ]]; then
+        rm -f "$TMP_PLIST"
+    fi
+}
+trap cleanup EXIT
+
+echo "==> Building $APP ($PROFILE)"
+echo "    version: $VERSION (build $BUILD)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
@@ -24,49 +107,27 @@ cp "$EXE" "$APP/Contents/MacOS/Jellify"
 # Copy SPM-processed resources (fonts bundle) next to the executable.
 BUNDLE="$BUILD_DIR/Jellify_Jellify.bundle"
 if [[ -d "$BUNDLE" ]]; then
-  cp -R "$BUNDLE" "$APP/Contents/Resources/"
+    cp -R "$BUNDLE" "$APP/Contents/Resources/"
 fi
 
-# Quoted heredoc delimiter ("EOF") so bash doesn't try to expand backticks or
-# variables in the body — the XML comment below mentions MPNowPlayingInfoCenter
-# and friends, which would otherwise be parsed as command substitution.
-cat > "$APP/Contents/Info.plist" <<'EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleExecutable</key>
-    <string>Jellify</string>
-    <key>CFBundleIdentifier</key>
-    <string>org.jellify.desktop</string>
-    <key>CFBundleName</key>
-    <string>Jellify</string>
-    <key>CFBundleDisplayName</key>
-    <string>Jellify</string>
-    <key>CFBundleVersion</key>
-    <string>0.1.0</string>
-    <key>CFBundleShortVersionString</key>
-    <string>0.1.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>14.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-    <!--
-      Classifies the app as a music player. macOS uses this for App Store
-      categorization and (more relevantly here) to mark the app as a media
-      producer, which is what MPNowPlayingInfoCenter / Control Center
-      expect. AVAudioSession is iOS-only — background playback on macOS is
-      automatic for a regular GUI app as long as it doesn't set
-      LSBackgroundOnly or LSUIElement. See issue #47.
-    -->
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.music</string>
-</dict>
-</plist>
-EOF
+# Copy the app icon if it has been produced. This is intentionally soft:
+# the icon pipeline is tracked in a separate issue and we don't want to
+# block dev builds on it.
+if [[ -f "$RESOURCES/AppIcon.icns" ]]; then
+    cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+fi
+
+# Drop the template into the bundle, then patch $VERSION / $BUILD in place.
+TMP_PLIST="$APP/Contents/Info.plist"
+cp "$INFO_TEMPLATE" "$TMP_PLIST"
+
+plutil -replace CFBundleShortVersionString -string "$VERSION" "$TMP_PLIST"
+plutil -replace CFBundleVersion            -string "$BUILD"   "$TMP_PLIST"
+
+# Fail loudly if the template drifted into something Core Foundation can't
+# parse — this is the check issue #177 asks for.
+plutil -lint "$TMP_PLIST" >/dev/null
+
+TMP_PLIST=""  # disarm cleanup; the bundle owns it now
 
 echo "==> Built $APP"
