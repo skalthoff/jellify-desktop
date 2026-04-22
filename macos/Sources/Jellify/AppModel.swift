@@ -131,6 +131,15 @@ final class AppModel {
     var status: PlayerStatus
     var pollTimer: Timer?
 
+    /// Contributors on the currently-playing track, sourced from Jellyfin's
+    /// `Item.People` field. Populated by `fetchCurrentTrackDetails()` on
+    /// track changes and cleared when the track stops. See #279.
+    var currentTrackPeople: [Person] = []
+    /// The track id that `currentTrackPeople` was fetched for, so we can
+    /// skip redundant network calls when the status poll fires with the
+    /// same track still playing.
+    private var currentTrackPeopleForId: String?
+
     // MARK: - Loading / errors
     var isLoggingIn = false
     var isLoadingLibrary = false
@@ -271,6 +280,8 @@ final class AppModel {
         recentlyPlayed = []
         searchResults = nil
         searchQuery = ""
+        currentTrackPeople = []
+        currentTrackPeopleForId = nil
         resetPaginationState()
         stopPolling()
     }
@@ -299,6 +310,8 @@ final class AppModel {
         recentlyPlayed = []
         searchResults = nil
         searchQuery = ""
+        currentTrackPeople = []
+        currentTrackPeopleForId = nil
         resetPaginationState()
         stopPolling()
     }
@@ -1137,6 +1150,61 @@ final class AppModel {
         }
     }
 
+    // MARK: - Now Playing details
+
+    /// Fetch detail fields (currently just `People`) for the track that is
+    /// playing right now and publish the result on `currentTrackPeople` so
+    /// the Now Playing credits block can render them. See #279.
+    ///
+    /// Safe to call repeatedly — if the current track hasn't changed since
+    /// the last successful fetch, this is a no-op. On auth errors the
+    /// central `handleAuthError` path triggers the re-login prompt; other
+    /// errors are swallowed silently because Credits is a secondary
+    /// widget and an empty state reads better than an error banner.
+    func fetchCurrentTrackDetails() async {
+        guard let track = status.currentTrack else {
+            currentTrackPeople = []
+            currentTrackPeopleForId = nil
+            return
+        }
+        // Already have details for this track — skip.
+        if currentTrackPeopleForId == track.id { return }
+        let id = track.id
+        do {
+            let json = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.fetchItem(itemId: id, fields: ["People"])
+            }.value
+            // Ignore the response if the user skipped to a different track
+            // while we were awaiting.
+            guard status.currentTrack?.id == id else { return }
+            currentTrackPeople = Self.parsePeople(from: json)
+            currentTrackPeopleForId = id
+        } catch {
+            _ = handleAuthError(error)
+            // Silent fallback — credits is a best-effort block.
+        }
+    }
+
+    /// Parse Jellyfin's `Item.People` array out of the raw JSON returned by
+    /// `core.fetchItem`. Each person comes back as
+    /// `{ "Name": string, "Type": string, "Role": string, ... }`; only
+    /// `Name` and `Type` are retained (see `Person`). Entries missing a
+    /// non-empty `Name` are dropped so we don't render blank rows.
+    static func parsePeople(from json: String) -> [Person] {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let raw = root["People"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return raw.compactMap { entry in
+            let name = (entry["Name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let type = (entry["Type"] as? String) ?? ""
+            guard !name.isEmpty else { return nil }
+            return Person(name: name, type: type)
+        }
+    }
+
     // MARK: - Status polling
 
     private func startPolling() {
@@ -1144,7 +1212,21 @@ final class AppModel {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
+                let before = self.status.currentTrack?.id
                 self.status = self.core.status()
+                let after = self.status.currentTrack?.id
+                // Trigger a details refetch when the track changes. Scoped
+                // to the polling loop so skipping via the PlayerBar,
+                // media keys, or end-of-track auto-advance all get it
+                // for free.
+                if before != after {
+                    if after == nil {
+                        self.currentTrackPeople = []
+                        self.currentTrackPeopleForId = nil
+                    } else {
+                        Task { await self.fetchCurrentTrackDetails() }
+                    }
+                }
             }
         }
     }
