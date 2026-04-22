@@ -25,6 +25,7 @@ enum Theme {
 
     // Status
     static let danger = Color(hex: 0xFF4757)
+    static let warning = Color(hex: 0xF5A623)
 
     // Borders
     static let border = Color(rgba: (126, 114, 175, 0.18))

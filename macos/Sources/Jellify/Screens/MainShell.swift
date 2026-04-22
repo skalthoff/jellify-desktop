@@ -27,6 +27,13 @@ struct MainShell: View {
                 OfflineBanner(onRetry: { model.retryNetwork() })
                     .transition(.move(edge: .top).combined(with: .opacity))
             }
+            // Only surface the server-unreachable banner when the system is
+            // actually online — otherwise the offline banner already explains
+            // why requests are failing and stacking both would be noisy.
+            if model.network.isOnline && !model.serverReachability.isServerReachable {
+                ServerUnreachableBanner(onRetry: { model.retryServer() })
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
             mainContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 // Screen swaps should be instant when Reduce Motion is on.
@@ -34,6 +41,7 @@ struct MainShell: View {
                 .animation(reduceMotion ? nil : .default, value: model.screen)
         }
         .animation(.easeInOut(duration: 0.2), value: model.network.isOnline)
+        .animation(.easeInOut(duration: 0.2), value: model.serverReachability.isServerReachable)
     }
 
     @ViewBuilder

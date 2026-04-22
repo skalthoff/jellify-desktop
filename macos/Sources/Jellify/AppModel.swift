@@ -14,6 +14,7 @@ final class AppModel {
     let core: JellifyCore
     let audio: AudioEngine
     let network: NetworkMonitor
+    let serverReachability: ServerReachability
 
     // MARK: - Session
     var session: Session?
@@ -53,6 +54,7 @@ final class AppModel {
         self.core = core
         self.audio = AudioEngine(core: core)
         self.network = NetworkMonitor()
+        self.serverReachability = ServerReachability()
         self.status = core.status()
         self.audio.onTrackEnded = { [weak self] in
             self?.handleTrackEnded()
@@ -65,6 +67,17 @@ final class AppModel {
     /// library refetch. Wired to the offline banner's `Retry` button.
     func retryNetwork() {
         network.retry()
+        guard session != nil else { return }
+        Task { await refreshLibrary() }
+    }
+
+    /// Clears the server-reachability failure counter and retries the library
+    /// fetch. Wired to the server-unreachable banner's `Retry` button.
+    /// Resetting up-front means the banner disappears while the user waits;
+    /// if the refetch fails again, the error flow in `refreshLibrary` will
+    /// re-accumulate failures and the banner will come back.
+    func retryServer() {
+        serverReachability.reset()
         guard session != nil else { return }
         Task { await refreshLibrary() }
     }
@@ -113,7 +126,11 @@ final class AppModel {
             }.value
             self.albums = albums
             self.artists = artists
+            serverReachability.noteSuccess()
         } catch {
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
             self.errorMessage = "Library load failed: \(error.localizedDescription)"
         }
     }
@@ -125,8 +142,12 @@ final class AppModel {
                 try core.albumTracks(albumId: albumID)
             }.value
             albumTracks[albumID] = tracks
+            serverReachability.noteSuccess()
             return tracks
         } catch {
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
             errorMessage = "Album tracks failed: \(error.localizedDescription)"
             return []
         }
@@ -150,7 +171,11 @@ final class AppModel {
                 try core.search(query: query)
             }.value
             self.searchResults = results
+            serverReachability.noteSuccess()
         } catch {
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
             errorMessage = "Search failed: \(error.localizedDescription)"
         }
     }
