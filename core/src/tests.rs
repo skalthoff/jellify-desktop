@@ -486,6 +486,143 @@ async fn playlists_require_authenticated_session() {
 }
 
 #[tokio::test]
+async fn playlist_tracks_preserves_order_and_builds_query() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("ParentId", "pl-1"))
+        .and(query_param("UserId", "u1"))
+        .and(query_param("IncludeItemTypes", "Audio"))
+        .and(query_param("Limit", "50"))
+        .and(query_param("StartIndex", "0"))
+        .and(query_param("Fields", "MediaSources,ParentId,Path,SortName"))
+        .respond_with(|req: &Request| {
+            // Playlist order is load-bearing: the client must NOT send
+            // SortBy/SortOrder for this endpoint.
+            let pairs: std::collections::HashMap<_, _> =
+                req.url.query_pairs().into_owned().collect();
+            assert!(
+                !pairs.contains_key("SortBy"),
+                "playlist_tracks must not set SortBy"
+            );
+            assert!(
+                !pairs.contains_key("SortOrder"),
+                "playlist_tracks must not set SortOrder"
+            );
+            // Auth header must be present.
+            let auth = req
+                .headers
+                .get(reqwest::header::AUTHORIZATION)
+                .expect("expected Authorization header")
+                .to_str()
+                .unwrap();
+            assert!(auth.contains("Token=\"t\""), "auth header: {auth}");
+            ResponseTemplate::new(200).set_body_json(json!({
+                "Items": [
+                    {
+                        "Id": "t1", "Name": "First", "Type": "Audio",
+                        "AlbumId": "a1", "Album": "Album One",
+                        "AlbumArtist": "Artist A", "Artists": ["Artist A"],
+                        "RunTimeTicks": 1800000000u64,
+                        "ImageTags": { "Primary": "img-1" }
+                    },
+                    {
+                        "Id": "t2", "Name": "Second", "Type": "Audio",
+                        "AlbumId": "a2", "Album": "Album Two",
+                        "AlbumArtist": "Artist B", "Artists": ["Artist B"],
+                        "RunTimeTicks": 2220000000u64,
+                        "ImageTags": { "Primary": "img-2" }
+                    },
+                    {
+                        "Id": "t3", "Name": "Third", "Type": "Audio",
+                        "AlbumId": "a3", "Album": "Album Three",
+                        "AlbumArtist": "Artist C", "Artists": ["Artist C"],
+                        "RunTimeTicks": 2000000000u64,
+                        "ImageTags": { "Primary": "img-3" }
+                    }
+                ],
+                "TotalRecordCount": 3
+            }))
+        })
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client
+        .playlist_tracks("pl-1", Paging::new(0, 50))
+        .await
+        .unwrap();
+
+    // Server order must be preserved exactly.
+    assert_eq!(tracks.len(), 3);
+    assert_eq!(tracks[0].id, "t1");
+    assert_eq!(tracks[0].name, "First");
+    assert_eq!(tracks[1].id, "t2");
+    assert_eq!(tracks[1].name, "Second");
+    assert_eq!(tracks[2].id, "t3");
+    assert_eq!(tracks[2].name, "Third");
+}
+
+#[tokio::test]
+async fn playlist_tracks_uses_paging() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("ParentId", "pl-1"))
+        .and(query_param("Limit", "25"))
+        .and(query_param("StartIndex", "10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [],
+            "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client
+        .playlist_tracks("pl-1", Paging::new(10, 25))
+        .await
+        .unwrap();
+    assert!(tracks.is_empty());
+}
+
+#[tokio::test]
+async fn playlist_tracks_requires_authenticated_session() {
+    // No MockServer routes registered: the guard must short-circuit before
+    // any HTTP call. Pointing at a live MockServer means a regression would
+    // surface as an unmatched-route error instead of silently hitting a real
+    // host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .playlist_tracks("pl-1", Paging::new(0, 50))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn fetch_item_builds_expected_query_and_extracts_first() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
