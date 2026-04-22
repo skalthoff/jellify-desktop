@@ -324,6 +324,168 @@ async fn latest_albums_requires_authenticated_session() {
 }
 
 #[tokio::test]
+async fn user_playlists_filters_to_data_path_and_builds_query() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("ParentId", "lib-pl"))
+        .and(query_param("UserId", "u1"))
+        .and(query_param("IncludeItemTypes", "Playlist"))
+        .and(query_param("Limit", "20"))
+        .and(query_param("StartIndex", "5"))
+        .and(query_param("Fields", "ChildCount,Genres,Path"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "p1", "Name": "My Mix", "Type": "Playlist",
+                    "ChildCount": 12,
+                    "RunTimeTicks": 42_000_000_000u64,
+                    "Path": "/config/data/users/u1/playlists/my-mix",
+                    "ImageTags": { "Primary": "tag-1" }
+                },
+                {
+                    "Id": "p2", "Name": "Community Top 40", "Type": "Playlist",
+                    "ChildCount": 40,
+                    "Path": "/media/playlists/community-top-40",
+                    "ImageTags": {}
+                }
+            ],
+            "TotalRecordCount": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let playlists = client
+        .user_playlists("lib-pl", Paging::new(5, 20))
+        .await
+        .unwrap();
+
+    assert_eq!(playlists.len(), 1);
+    assert_eq!(playlists[0].id, "p1");
+    assert_eq!(playlists[0].name, "My Mix");
+    assert_eq!(playlists[0].track_count, 12);
+    assert_eq!(playlists[0].image_tag.as_deref(), Some("tag-1"));
+}
+
+#[tokio::test]
+async fn public_playlists_filters_out_data_path() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "p1", "Name": "My Mix", "Type": "Playlist",
+                    "ChildCount": 12,
+                    "Path": "/config/data/users/u1/playlists/my-mix"
+                },
+                {
+                    "Id": "p2", "Name": "Community Top 40", "Type": "Playlist",
+                    "ChildCount": 40,
+                    "Path": "/media/playlists/community-top-40",
+                    "ImageTags": { "Primary": "tag-2" }
+                },
+                {
+                    "Id": "p3", "Name": "No Path Public", "Type": "Playlist",
+                    "ChildCount": 5
+                }
+            ],
+            "TotalRecordCount": 3
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let playlists = client
+        .public_playlists("lib-pl", Paging::new(0, 50))
+        .await
+        .unwrap();
+
+    // Both the community playlist (non-/data/ path) and the playlist with no
+    // `Path` at all are treated as public — absence cannot prove ownership.
+    assert_eq!(playlists.len(), 2);
+    let ids: Vec<&str> = playlists.iter().map(|p| p.id.as_str()).collect();
+    assert!(ids.contains(&"p2"), "public_playlists should include p2");
+    assert!(ids.contains(&"p3"), "public_playlists should include p3");
+    let community = playlists.iter().find(|p| p.id == "p2").unwrap();
+    assert_eq!(community.track_count, 40);
+    assert_eq!(community.image_tag.as_deref(), Some("tag-2"));
+}
+
+#[tokio::test]
+async fn user_playlists_empty_when_server_returns_no_items() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let user = client
+        .user_playlists("lib-pl", Paging::new(0, 50))
+        .await
+        .unwrap();
+    let public = client
+        .public_playlists("lib-pl", Paging::new(0, 50))
+        .await
+        .unwrap();
+    assert!(user.is_empty());
+    assert!(public.is_empty());
+}
+
+#[tokio::test]
+async fn playlists_require_authenticated_session() {
+    let client = JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
+    let err = client
+        .user_playlists("lib-pl", Paging::new(0, 20))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+    let err = client
+        .public_playlists("lib-pl", Paging::new(0, 20))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn fetch_item_builds_expected_query_and_extracts_first() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))

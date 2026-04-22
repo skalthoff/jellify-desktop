@@ -295,6 +295,79 @@ impl JellyfinClient {
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
+    /// Fetch playlists the current user owns. Jellyfin stores user-owned
+    /// playlists under the user's profile directory, so the returned `Path`
+    /// contains `/data/` (e.g. `/config/data/users/<id>/playlists/...`);
+    /// public/community playlists live elsewhere and are filtered out.
+    ///
+    /// `playlist_library_id` is the Playlists view id (the CollectionFolder
+    /// with `CollectionType == "playlists"`). Resolving that id is tracked
+    /// separately; callers pass it in here.
+    pub async fn user_playlists(
+        &self,
+        playlist_library_id: &str,
+        paging: Paging,
+    ) -> Result<Vec<Playlist>> {
+        let items = self.playlists_items(playlist_library_id, paging).await?;
+        Ok(items
+            .into_iter()
+            .filter(|i| i.path.as_deref().is_some_and(|p| p.contains("/data/")))
+            .map(Playlist::from)
+            .collect())
+    }
+
+    /// Fetch playlists visible to the current user that are NOT owned by
+    /// them — i.e. public/community playlists. These live outside the user's
+    /// profile directory, so their `Path` does not contain `/data/`.
+    ///
+    /// `playlist_library_id` is the Playlists view id (the CollectionFolder
+    /// with `CollectionType == "playlists"`). Resolving that id is tracked
+    /// separately; callers pass it in here.
+    pub async fn public_playlists(
+        &self,
+        playlist_library_id: &str,
+        paging: Paging,
+    ) -> Result<Vec<Playlist>> {
+        let items = self.playlists_items(playlist_library_id, paging).await?;
+        Ok(items
+            .into_iter()
+            .filter(|i| !i.path.as_deref().is_some_and(|p| p.contains("/data/")))
+            .map(Playlist::from)
+            .collect())
+    }
+
+    /// Shared `GET /Items` request that returns all playlists under the
+    /// given Playlists library view. `user_playlists` / `public_playlists`
+    /// partition the result by `Path`.
+    async fn playlists_items(
+        &self,
+        playlist_library_id: &str,
+        paging: Paging,
+    ) -> Result<Vec<RawItem>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Items")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("ParentId", playlist_library_id);
+            q.append_pair("UserId", user_id);
+            q.append_pair("IncludeItemTypes", "Playlist");
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
+            q.append_pair("Fields", "ChildCount,Genres,Path");
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items)
+    }
+
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
         let user_id = self
             .user_id
@@ -609,6 +682,8 @@ pub struct RawItem {
     pub container: Option<String>,
     #[serde(rename = "Bitrate")]
     pub bitrate: Option<u32>,
+    #[serde(rename = "Path")]
+    pub path: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -664,6 +739,18 @@ impl From<RawItem> for Album {
             track_count: r.child_count.unwrap_or(0),
             runtime_ticks: r.runtime_ticks,
             genres: r.genres,
+            image_tag: r.image_tags.get("Primary").cloned(),
+        }
+    }
+}
+
+impl From<RawItem> for Playlist {
+    fn from(r: RawItem) -> Self {
+        Playlist {
+            id: r.id,
+            name: r.name,
+            track_count: r.child_count.unwrap_or(0),
+            runtime_ticks: r.runtime_ticks,
             image_tag: r.image_tags.get("Primary").cloned(),
         }
     }
