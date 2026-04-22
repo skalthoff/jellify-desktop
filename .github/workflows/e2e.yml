@@ -1,0 +1,142 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Nightly re-run catches regressions against new jellyfin/jellyfin:latest
+  # images even when nobody touches the repo.
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  # Credentials seeded by Scripts/e2e-setup-jellyfin.sh and consumed by the
+  # core/tests/e2e_live.rs integration tests and the jellify-cli example.
+  JELLIFY_E2E_USER: jellify-e2e
+  JELLIFY_E2E_PASS: jellify-e2e-password
+
+jobs:
+  rust-core:
+    name: Rust core (Linux, live Jellyfin)
+    runs-on: ubuntu-latest
+    services:
+      # The jellyfin image doesn't ship a healthcheck (and curl isn't
+      # guaranteed to be present in the base aspnet image), so we skip
+      # --health-cmd and let Scripts/e2e-setup-jellyfin.sh block on the
+      # server's public info endpoint from the host side instead.
+      jellyfin:
+        image: jellyfin/jellyfin:10.10.3
+        ports:
+          - 8096:8096
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-rust-core
+      - name: Complete Jellyfin first-run wizard
+        run: ./Scripts/e2e-setup-jellyfin.sh http://localhost:8096 "$JELLIFY_E2E_USER" "$JELLIFY_E2E_PASS"
+      - name: cargo test --test e2e_live
+        env:
+          JELLIFY_E2E_URL: http://localhost:8096
+        run: cargo test --package jellify_core --test e2e_live -- --nocapture --test-threads=1
+      - name: jellify-cli smoke (login + list)
+        env:
+          JELLYFIN_URL: http://localhost:8096
+          JELLYFIN_USER: ${{ env.JELLIFY_E2E_USER }}
+          JELLYFIN_PASS: ${{ env.JELLIFY_E2E_PASS }}
+        # Pipe an empty line so the "Album index" prompt falls through to [0].
+        # The CLI exits 0 cleanly when the library is empty ("No albums found").
+        run: echo "" | cargo run --package jellify-cli --bin jellify-cli
+      - name: Dump Jellyfin logs on failure
+        if: failure()
+        run: docker logs "${{ job.services.jellyfin.id }}" 2>&1 | tail -200 || true
+
+  macos-app:
+    name: macOS app (Docker Jellyfin)
+    # Slower than rust-core because Colima + Jellyfin boot on a macOS runner
+    # adds ~3-4 minutes. Keep gated to main / nightly / manual — PRs get their
+    # coverage from rust-core above.
+    if: github.event_name != 'pull_request'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: e2e-macos
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            macos/.build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData
+          key: spm-macos-15-${{ hashFiles('macos/Package.swift', 'macos/Package.resolved') }}
+          restore-keys: |
+            spm-macos-15-
+      - name: Install and start Docker (Colima)
+        # macos-15 runners don't ship docker; colima is the standard bridge.
+        # Export DOCKER_HOST for every subsequent step so `docker` and the
+        # cli/SmokeTest can reach the daemon.
+        run: |
+          brew install docker docker-compose colima
+          colima start --cpu 2 --memory 4 --disk 10
+          echo "DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock" >> "$GITHUB_ENV"
+      - name: Start Jellyfin
+        run: |
+          docker run -d --name jellyfin \
+            -p 8096:8096 \
+            -e JELLYFIN_PublishedServerUrl=http://localhost:8096 \
+            jellyfin/jellyfin:10.10.3
+      - name: Complete Jellyfin first-run wizard
+        run: ./Scripts/e2e-setup-jellyfin.sh http://localhost:8096 "$JELLIFY_E2E_USER" "$JELLIFY_E2E_PASS"
+      - name: Build xcframework
+        working-directory: macos
+        run: ./Scripts/build-core.sh
+      - name: swift build
+        working-directory: macos
+        run: swift build
+      - name: SmokeTest against live Jellyfin
+        working-directory: macos
+        env:
+          JELLYFIN_URL: http://localhost:8096
+          JELLYFIN_USER: ${{ env.JELLIFY_E2E_USER }}
+          JELLYFIN_PASS: ${{ env.JELLIFY_E2E_PASS }}
+        # SmokeTest expects a server with at least one album to exercise the
+        # AVPlayer code path. An empty library is still a useful signal — the
+        # binary prints "no albums on server" and exits 1. For CI we accept
+        # either outcome (exit 0 from playback, exit 1 from empty library) as
+        # long as login + listing worked.
+        run: |
+          set +e
+          ./.build/arm64-apple-macosx/debug/SmokeTest > /tmp/smoke.log 2>&1
+          RC=$?
+          cat /tmp/smoke.log
+          # Login must have succeeded regardless of library state.
+          if ! grep -q "logged in as" /tmp/smoke.log; then
+            echo "::error::SmokeTest never reported a successful login"
+            exit 1
+          fi
+          # Either fully played (rc=0) or bailed on empty library (rc=1 with
+          # "no albums"). Anything else is a real failure.
+          if [[ $RC -ne 0 ]] && ! grep -q "no albums on server" /tmp/smoke.log; then
+            echo "::error::SmokeTest failed with rc=$RC and non-empty-library reason"
+            exit 1
+          fi
+      - name: Dump Jellyfin logs on failure
+        if: failure()
+        run: docker logs jellyfin 2>&1 | tail -200 || true

@@ -10,32 +10,117 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
 jobs:
-  core:
-    name: Rust core
+  fmt:
+    name: rustfmt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
-      # Linux crate pulls in gtk4-rs + libadwaita which require GTK4 and
-      # libadwaita system libs for pkg-config to resolve during build.
+        with:
+          key: clippy
+      # Workspace pulls in the linux crate (gtk4-rs + libadwaita), so the
+      # pkg-config-time checks need GTK4 headers even though we don't ship a
+      # Linux binary yet.
       - name: Install GTK4 + libadwaita system deps
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             libgtk-4-dev libadwaita-1-dev build-essential pkg-config
-      - name: cargo fmt
-        run: cargo fmt --all -- --check
-      - name: cargo clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: cargo test
-        run: cargo test --workspace --all-features
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-  macos:
-    name: macOS build
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-15, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: test-${{ matrix.os }}
+      - name: Install GTK4 + libadwaita system deps (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev build-essential pkg-config
+      # On macOS / Windows the linux crate's gtk4-rs + libadwaita deps
+      # can't resolve — exclude it from the workspace build there. The
+      # Linux runner builds the whole workspace (gtk included) above.
+      - name: cargo test (Linux — full workspace)
+        if: runner.os == 'Linux'
+        run: cargo test --workspace --all-features --no-fail-fast
+      - name: cargo test (macOS / Windows — exclude linux crate)
+        if: runner.os != 'Linux'
+        run: cargo test --workspace --exclude jellify-desktop --all-features --no-fail-fast
+      - name: cargo build (examples, same exclusion rule)
+        run: |
+          if [[ "${{ runner.os }}" == "Linux" ]]; then
+            cargo build --workspace --all-targets --all-features
+          else
+            cargo build --workspace --exclude jellify-desktop --all-targets --all-features
+          fi
+        shell: bash
+
+  docs:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: docs
+      - name: Install GTK4 + libadwaita system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev build-essential pkg-config
+      - run: cargo doc --workspace --all-features --no-deps
+
+  msrv:
+    name: MSRV (Rust 1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: msrv
+      - name: Install GTK4 + libadwaita system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev build-essential pkg-config
+      - run: cargo check --workspace --all-features
+
+  macos-app:
+    name: macOS app
     runs-on: macos-15   # Xcode 16 / Swift 6 — our Package.swift declares tools 6.0
-    needs: core
     steps:
       - uses: actions/checkout@v4
       - uses: maxim-lobanov/setup-xcode@v1
@@ -45,6 +130,18 @@ jobs:
         with:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-app
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v4
+        with:
+          path: |
+            macos/.build
+            ~/Library/Caches/org.swift.swiftpm
+            ~/Library/Developer/Xcode/DerivedData
+          key: spm-${{ runner.os }}-${{ hashFiles('macos/Package.swift', 'macos/Package.resolved') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
       - name: Build xcframework
         working-directory: macos
         run: ./Scripts/build-core.sh
@@ -68,3 +165,22 @@ jobs:
             exit 1
           fi
           kill $PID
+      - name: Upload macOS app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Jellify-macos-arm64
+          path: macos/build/Jellify.app
+          if-no-files-found: error
+          retention-days: 7
+
+  # Aggregate required status — branch protection should require just this one
+  # instead of each parallel job individually.
+  ci:
+    name: CI
+    if: always()
+    needs: [fmt, clippy, test, docs, msrv, macos-app]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail if any required job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

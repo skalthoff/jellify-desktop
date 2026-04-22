@@ -1,0 +1,56 @@
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  llvm-cov:
+    name: cargo-llvm-cov
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: coverage
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - name: Install GTK4 + libadwaita system deps
+        # `--workspace` includes the linux crate (gtk4-rs + libadwaita),
+        # so the coverage run needs the matching system libs to link.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev build-essential pkg-config
+      - name: Generate coverage (lcov)
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path lcov.info
+      - name: Generate coverage (summary)
+        run: cargo llvm-cov report --summary-only
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: lcov.info
+          fail_ci_if_error: false
+          # Public repos can upload tokenless, but providing the token when it
+          # exists unlocks comment-on-PR and rate-limit bumps.
+          token: ${{ secrets.CODECOV_TOKEN }}
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov.info
+          retention-days: 14

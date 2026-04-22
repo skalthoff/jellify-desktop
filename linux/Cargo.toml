@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Jellify — native GTK4 + libadwaita Jellyfin music player for Linux"
+publish = false
 
 [[bin]]
 name = "jellify-desktop"
