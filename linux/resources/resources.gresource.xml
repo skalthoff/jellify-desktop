@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Resources bundled into the `jellify-desktop` binary at build time by
+  `build.rs` (glib-build-tools). Referenced paths are resolved against the
+  `source_dirs` passed to `compile_resources` — currently `src/` and
+  `resources/`.
+
+  As more UI lands (sidebar, screens, icons, CSS), add entries here rather
+  than loading ad-hoc files at runtime so the Flatpak binary stays
+  self-contained.
+-->
+<gresources>
+  <gresource prefix="/org/jellify/Desktop">
+    <file preprocess="xml-stripblanks" compressed="true">window.ui</file>
+  </gresource>
+</gresources>
