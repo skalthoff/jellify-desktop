@@ -123,16 +123,15 @@ impl JellifyCore {
             .block_on(client.authenticate_by_name(&username, &password))?;
 
         if let Some(server_id) = &session.server.id {
-            let _ = CredentialStore::save_token(server_id, &session.user.name, &session.access_token);
+            let _ =
+                CredentialStore::save_token(server_id, &session.user.name, &session.access_token);
         }
         {
             let inner = self.inner.lock();
             inner
                 .db
                 .set_setting("last_server_url", &session.server.url)?;
-            inner
-                .db
-                .set_setting("last_username", &session.user.name)?;
+            inner.db.set_setting("last_username", &session.user.name)?;
             if let Some(server_id) = &session.server.id {
                 inner.db.set_setting("last_server_id", server_id)?;
             }
@@ -188,7 +187,10 @@ impl JellifyCore {
         tag: Option<String>,
         max_width: u32,
     ) -> std::result::Result<String, JellifyError> {
-        self.with_client(|c| Ok(c.image_url(&item_id, tag.as_deref(), max_width)?.to_string()))
+        self.with_client(|c| {
+            Ok(c.image_url(&item_id, tag.as_deref(), max_width)?
+                .to_string())
+        })
     }
 
     // ---------- Playback ----------

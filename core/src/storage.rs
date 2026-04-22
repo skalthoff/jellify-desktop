@@ -43,9 +43,11 @@ impl Database {
             [],
         )?;
         let current: i32 = tx
-            .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "SELECT COALESCE(MAX(version), 0) FROM schema_version",
+                [],
+                |r| r.get(0),
+            )
             .unwrap_or(0);
 
         if current < 1 {
@@ -76,9 +78,7 @@ impl Database {
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
-        let row = stmt
-            .query_row(params![key], |r| r.get::<_, String>(0))
-            .ok();
+        let row = stmt.query_row(params![key], |r| r.get::<_, String>(0)).ok();
         Ok(row)
     }
 

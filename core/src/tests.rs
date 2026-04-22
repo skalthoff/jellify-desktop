@@ -125,7 +125,8 @@ async fn albums_uses_paging() {
 
 #[test]
 fn stream_url_contains_api_key() {
-    let mut client = JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
+    let mut client =
+        JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
     client.set_session("mytoken".into(), "u1".into());
     let url = client.stream_url("track-id").unwrap();
     let s = url.as_str();

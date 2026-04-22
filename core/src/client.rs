@@ -114,7 +114,11 @@ impl JellyfinClient {
 
     // ----- Auth -----
 
-    pub async fn authenticate_by_name(&mut self, username: &str, password: &str) -> Result<Session> {
+    pub async fn authenticate_by_name(
+        &mut self,
+        username: &str,
+        password: &str,
+    ) -> Result<Session> {
         let url = self.endpoint("Users/AuthenticateByName")?;
         let body = AuthByNameBody {
             username: username.to_string(),
@@ -152,7 +156,10 @@ impl JellyfinClient {
     // ----- Library queries -----
 
     pub async fn artists(&self, paging: Paging) -> Result<Vec<Artist>> {
-        let user_id = self.user_id.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
         let mut url = self.endpoint("Artists/AlbumArtists")?;
         {
             let mut q = url.query_pairs_mut();
@@ -176,7 +183,10 @@ impl JellyfinClient {
     }
 
     pub async fn albums(&self, paging: Paging) -> Result<Vec<Album>> {
-        let user_id = self.user_id.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -186,7 +196,10 @@ impl JellyfinClient {
             q.append_pair("StartIndex", &paging.offset.to_string());
             q.append_pair("SortBy", "SortName");
             q.append_pair("SortOrder", "Ascending");
-            q.append_pair("Fields", "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio");
+            q.append_pair(
+                "Fields",
+                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
+            );
         }
         let resp = self
             .http
@@ -199,7 +212,10 @@ impl JellyfinClient {
     }
 
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
-        let user_id = self.user_id.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -222,7 +238,10 @@ impl JellyfinClient {
     }
 
     pub async fn search(&self, query: &str) -> Result<SearchResults> {
-        let user_id = self.user_id.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
         {
             let mut q = url.query_pairs_mut();
