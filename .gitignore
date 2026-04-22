@@ -12,6 +12,9 @@ macos/Jellify.xcframework/
 macos/Sources/JellifyCore/Generated/
 macos/build/
 
+# Flatpak packaging (downloaded generator cache)
+linux/flatpak/.cache/
+
 # Symbol files / debug
 *.pdb
 *.dSYM/
