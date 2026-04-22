@@ -82,7 +82,7 @@ struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(Theme.ink2)
                 .font(.system(size: 18))
-            TextField("Artists, albums, tracks…", text: $query)
+            TextField("Search library", text: $query)
                 .textFieldStyle(.plain)
                 .font(Theme.font(18, weight: .medium))
                 .foregroundStyle(Theme.ink)
@@ -90,11 +90,22 @@ struct SearchView: View {
                 .onSubmit {
                     Task { await model.search(query) }
                 }
+                // Esc clears the field (without removing focus) so the user
+                // can start a new query without reaching for the mouse.
+                .onExitCommand {
+                    if !query.isEmpty {
+                        clearQuery()
+                    }
+                }
             if !query.isEmpty {
-                Button { query = ""; Task { await model.search("") } } label: {
-                    Image(systemName: "xmark").foregroundStyle(Theme.ink2)
+                Button(action: clearQuery) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Theme.ink2)
+                        .font(.system(size: 16))
                 }
                 .buttonStyle(.plain)
+                .help("Clear search")
+                .accessibilityLabel("Clear search")
             }
         }
         .padding(.horizontal, 18)
@@ -105,6 +116,15 @@ struct SearchView: View {
                 .stroke(Theme.borderStrong, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    /// Clears the current query, resets any displayed results, and keeps
+    /// keyboard focus in the field so the user can immediately type a new
+    /// search. Shared by the x-button and Esc keybinding.
+    private func clearQuery() {
+        query = ""
+        searchFieldFocused = true
+        Task { await model.search("") }
     }
 
     @ViewBuilder
