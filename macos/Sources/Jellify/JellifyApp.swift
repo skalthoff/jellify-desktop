@@ -22,6 +22,13 @@ struct JellifyApp: App {
         }
         .defaultSize(width: 1280, height: 820)
         .windowToolbarStyle(.unifiedCompact)
+
+        // Native Preferences scene. macOS wires up ⌘, and menu item for free.
+        Settings {
+            PreferencesView()
+                .environment(model)
+        }
+        .windowResizability(.contentSize)
     }
 }
 
