@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 @preconcurrency import JellifyCore
@@ -153,6 +154,98 @@ final class AppModel {
             guard !tracks.isEmpty else { return }
             play(tracks: tracks, startIndex: 0)
         }
+    }
+
+    /// Shuffle an album — loads tracks, randomises order, then plays from top.
+    func shuffle(album: Album) {
+        Task {
+            let tracks = await loadTracks(forAlbum: album.id)
+            guard !tracks.isEmpty else { return }
+            play(tracks: tracks.shuffled(), startIndex: 0)
+        }
+    }
+
+    /// Insert an album's tracks immediately after the currently-playing track.
+    /// TODO: #282 — proper Up Next vs Auto Queue separation. For now, the core
+    /// queue is replaced on every `setQueue`, so until we grow an `insertNext`
+    /// primitive this falls back to appending behaviour.
+    func playNext(album: Album) {
+        // TODO: #282 — queue "Up Next" insertion; for now, surface a log.
+        print("[AppModel] playNext(album:) not yet wired — see #282")
+        Task {
+            let tracks = await loadTracks(forAlbum: album.id)
+            guard !tracks.isEmpty else { return }
+            play(tracks: tracks, startIndex: 0)
+        }
+    }
+
+    /// Append an album's tracks to the end of the queue.
+    /// TODO: #282 — the core lacks an `appendToQueue` primitive, so this is a
+    /// stub that plays the album outright for now.
+    func addToQueue(album: Album) {
+        // TODO: #282 — queue append. Currently behaves like `play`.
+        print("[AppModel] addToQueue(album:) not yet wired — see #282")
+        play(album: album)
+    }
+
+    /// Toggle the favorite flag for an album on the Jellyfin server.
+    /// TODO: #133, #222 — wire through `set_favorite` / `unset_favorite` on
+    /// the core once the FFI surface exists.
+    func toggleFavorite(album: Album) {
+        // TODO: #133 / #222 — set_favorite FFI not yet wired.
+        print("[AppModel] toggleFavorite(album:) not yet wired — see #133 / #222")
+    }
+
+    /// Enqueue a download of every track on the album.
+    /// TODO: #70, #222 — there is no download engine yet; this is a logging
+    /// stub so the UI action has a landing pad.
+    func enqueueDownload(album: Album) {
+        // TODO: #70 / #222 — download engine not yet wired.
+        print("[AppModel] enqueueDownload(album:) not yet wired — see #70 / #222")
+    }
+
+    /// Present an "Add all to playlist" destination picker.
+    /// TODO: #72, #126, #222 — playlist picker sheet + create-playlist API.
+    func requestAddToPlaylist(album: Album) {
+        // TODO: #72 / #126 / #222 — playlist picker sheet not yet implemented.
+        print("[AppModel] requestAddToPlaylist(album:) not yet wired — see #72 / #126 / #222")
+    }
+
+    /// Navigate to the artist detail screen for this album's artist, if known.
+    func goToArtist(album: Album) {
+        guard let artistID = album.artistId else { return }
+        screen = .artist(artistID)
+    }
+
+    /// Kick off an Instant Mix ("album radio") seeded by this album.
+    /// TODO: #144, #327 — Instant Mix endpoint + modal not yet wired.
+    func startAlbumRadio(album: Album) {
+        // TODO: #144 / #327 — Instant Mix FFI not yet wired.
+        print("[AppModel] startAlbumRadio(album:) not yet wired — see #144 / #327")
+    }
+
+    // MARK: - Sharing
+
+    /// Jellyfin web URL for an album, e.g.
+    /// `https://server.example.com/web/#/details?id=<albumId>`.
+    func webURL(for album: Album) -> URL? {
+        guard !serverURL.isEmpty else { return nil }
+        let base = serverURL.hasSuffix("/") ? String(serverURL.dropLast()) : serverURL
+        return URL(string: "\(base)/web/#/details?id=\(album.id)")
+    }
+
+    /// Copy the album's web URL to the system pasteboard.
+    func copyShareLink(album: Album) {
+        guard let url = webURL(for: album) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(url.absoluteString, forType: .string)
+    }
+
+    /// Open the album in the Jellyfin web UI.
+    func openInJellyfin(album: Album) {
+        guard let url = webURL(for: album) else { return }
+        NSWorkspace.shared.open(url)
     }
 
     func pause() { audio.pause() }

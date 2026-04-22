@@ -120,5 +120,6 @@ struct AlbumCard: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        .contextMenu { AlbumContextMenu(album: album) }
     }
 }
