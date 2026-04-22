@@ -137,24 +137,46 @@ async fn latest_albums_builds_expected_query_and_parses_unwrapped_array() {
     // `/Items/Latest` returns a bare array, not `{ Items, TotalRecordCount }`.
     Mock::given(method("GET"))
         .and(path("/Items/Latest"))
-        .and(query_param("userId", "u1"))
-        .and(query_param("parentId", "lib-music"))
-        .and(query_param("includeItemTypes", "MusicAlbum"))
-        .and(query_param("limit", "24"))
-        .and(query_param("groupItems", "true"))
+        .and(query_param("UserId", "u1"))
+        .and(query_param("ParentId", "lib-music"))
+        .and(query_param("IncludeItemTypes", "MusicAlbum"))
+        .and(query_param("Limit", "24"))
+        .and(query_param("GroupItems", "true"))
         .respond_with(|req: &Request| {
             // Sanity-check that no unexpected extra params were added and that
-            // the five required ones are all present on the actual request.
+            // the full expected set (including `Fields`) is present on the
+            // actual request. Building a set from `query_pairs` and comparing
+            // to the expected set catches both extra keys and missing ones.
             let pairs: std::collections::HashMap<_, _> =
                 req.url.query_pairs().into_owned().collect();
-            assert_eq!(pairs.get("userId").map(String::as_str), Some("u1"));
-            assert_eq!(pairs.get("parentId").map(String::as_str), Some("lib-music"));
+            assert_eq!(pairs.get("UserId").map(String::as_str), Some("u1"));
+            assert_eq!(pairs.get("ParentId").map(String::as_str), Some("lib-music"));
             assert_eq!(
-                pairs.get("includeItemTypes").map(String::as_str),
+                pairs.get("IncludeItemTypes").map(String::as_str),
                 Some("MusicAlbum")
             );
-            assert_eq!(pairs.get("limit").map(String::as_str), Some("24"));
-            assert_eq!(pairs.get("groupItems").map(String::as_str), Some("true"));
+            assert_eq!(pairs.get("Limit").map(String::as_str), Some("24"));
+            assert_eq!(pairs.get("GroupItems").map(String::as_str), Some("true"));
+            assert_eq!(
+                pairs.get("Fields").map(String::as_str),
+                Some("Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio")
+            );
+            let expected_keys: std::collections::HashSet<&str> = [
+                "UserId",
+                "ParentId",
+                "IncludeItemTypes",
+                "Limit",
+                "GroupItems",
+                "Fields",
+            ]
+            .into_iter()
+            .collect();
+            let actual_keys: std::collections::HashSet<&str> =
+                pairs.keys().map(String::as_str).collect();
+            assert_eq!(
+                actual_keys, expected_keys,
+                "unexpected or missing query params on /Items/Latest request"
+            );
             ResponseTemplate::new(200).set_body_json(json!([
                 {
                     "Id": "a1", "Name": "The Deep End", "Type": "MusicAlbum",

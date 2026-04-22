@@ -231,13 +231,13 @@ impl JellyfinClient {
         let mut url = self.endpoint("Items/Latest")?;
         {
             let mut q = url.query_pairs_mut();
-            q.append_pair("userId", user_id);
-            q.append_pair("parentId", library_id);
-            q.append_pair("includeItemTypes", "MusicAlbum");
-            q.append_pair("limit", &limit.max(1).to_string());
-            q.append_pair("groupItems", "true");
+            q.append_pair("UserId", user_id);
+            q.append_pair("ParentId", library_id);
+            q.append_pair("IncludeItemTypes", "MusicAlbum");
+            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair("GroupItems", "true");
             q.append_pair(
-                "fields",
+                "Fields",
                 "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
             );
         }
