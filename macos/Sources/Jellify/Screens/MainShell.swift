@@ -70,7 +70,7 @@ struct MainShell: View {
         case .album(let id):
             AlbumDetailView(albumID: id)
         case .artist(let id):
-            ArtistView(artistID: id)
+            ArtistDetailView(artistID: id)
         case .playlist(let id):
             PlaylistView(playlistID: id)
         default:
