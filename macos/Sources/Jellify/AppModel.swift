@@ -24,6 +24,12 @@ final class AppModel {
     enum Screen: Hashable { case home, library, search, settings, album(String), artist(String), playlist(String) }
     var screen: Screen = .library
 
+    /// Toggled by the ⌘F menu command to request that `SearchView` move
+    /// keyboard focus into its text field. `SearchView` observes changes and
+    /// resets the flag after focusing so subsequent ⌘F presses fire again
+    /// even when already on the Search screen.
+    var requestSearchFocus: Bool = false
+
     // MARK: - Library
     var albums: [Album] = []
     var artists: [Artist] = []
@@ -124,6 +130,13 @@ final class AppModel {
             errorMessage = "Album tracks failed: \(error.localizedDescription)"
             return []
         }
+    }
+
+    /// Switch to the Search screen and request keyboard focus in the search
+    /// field. Called from the ⌘F menu command.
+    func focusSearch() {
+        screen = .search
+        requestSearchFocus = true
     }
 
     func search(_ query: String) async {
@@ -284,7 +297,12 @@ final class AppModel {
         switch status.state {
         case .playing: pause()
         case .paused: resume()
-        default: break
+        case .ended, .stopped, .idle, .loading:
+            // End-of-track or other non-active states: restart the current
+            // track so ⌘-Space after a song ends does the obvious thing.
+            if let track = status.currentTrack {
+                playCurrent(track)
+            }
         }
     }
 
