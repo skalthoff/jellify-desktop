@@ -5,16 +5,30 @@ struct PlayerBar: View {
     @Environment(AppModel.self) private var model
     @State private var showNowPlaying = false
 
+    /// Local scrubber position used while the user is actively dragging the
+    /// Slider. We don't bind the Slider straight to `status.positionSeconds`
+    /// because the 1Hz polling loop would fight the user's drag — every
+    /// status push would yank the thumb back to the server position. When
+    /// `isScrubbing` is true we drive the Slider from `scrubPosition`; when
+    /// it's false we fall through to the live playback position.
+    @State private var scrubPosition: Double = 0
+    @State private var isScrubbing: Bool = false
+
     var body: some View {
         HStack(spacing: 16) {
             leftMeta
                 .frame(width: 280, alignment: .leading)
+                // Tab order: primary metadata → transport → volume.
+                // See #334. Higher priority ships focus here first.
+                .accessibilitySortPriority(60)
             Spacer(minLength: 16)
             centerTransport
                 .frame(maxWidth: 640)
+                .accessibilitySortPriority(50)
             Spacer(minLength: 16)
             rightControls
                 .frame(width: 220, alignment: .trailing)
+                .accessibilitySortPriority(40)
         }
         .padding(.horizontal, 16)
         .frame(height: 78)
@@ -22,6 +36,11 @@ struct PlayerBar: View {
         .overlay(alignment: .top) {
             Rectangle().fill(Theme.border).frame(height: 1)
         }
+        // PlayerBar as a whole comes after the main content in the tab
+        // traversal, so the sidebar / content / toolbar all get focus
+        // before the persistent chrome at the bottom. See #334.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Playback controls")
         .sheet(isPresented: $showNowPlaying) {
             NowPlayingSheet()
                 .environment(model)
@@ -71,43 +90,82 @@ struct PlayerBar: View {
     private var centerTransport: some View {
         VStack(spacing: 6) {
             HStack(spacing: 20) {
-                iconBtn("shuffle")
-                iconBtn("backward.fill", size: 16) { model.skipPrevious() }
+                iconBtn("shuffle", label: "Shuffle")
+                iconBtn("backward.fill", label: "Previous track", size: 16) { model.skipPrevious() }
                 Button(action: model.togglePlayPause) {
-                    Image(systemName: model.status.state == .playing ? "pause.fill" : "play.fill")
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 15))
                         .foregroundStyle(Theme.bg)
                         .frame(width: 36, height: 36)
                         .background(Circle().fill(Theme.ink))
                 }
                 .buttonStyle(.plain)
-                iconBtn("forward.fill", size: 16) { model.skipNext() }
-                iconBtn("repeat")
+                // Bind the label to play/pause state rather than the SF
+                // Symbol name so VoiceOver reads the action the user is
+                // about to take. See #331.
+                .accessibilityLabel(Text(isPlaying ? "Pause" : "Play"))
+                iconBtn("forward.fill", label: "Next track", size: 16) { model.skipNext() }
+                iconBtn("repeat", label: "Repeat")
             }
-            HStack(spacing: 10) {
-                Text(format(model.status.positionSeconds))
-                    .font(Theme.font(10, weight: .semibold))
-                    .foregroundStyle(Theme.ink3)
-                    .monospacedDigit()
-                    .frame(width: 36, alignment: .trailing)
+            scrubber
+        }
+    }
 
-                GeometryReader { geom in
-                    let total = max(1.0, model.status.durationSeconds)
-                    let pct = min(1.0, model.status.positionSeconds / total)
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Theme.surface2)
-                        Capsule().fill(Theme.ink).frame(width: geom.size.width * CGFloat(pct))
+    /// The progress row — time labels flanking a real `Slider` (#332).
+    /// Replacing the bespoke `Capsule` scrubber with a `Slider` gets us
+    /// Voice Control / Switch Control "adjust value" out of the box and
+    /// feeds VoiceOver a native percent read-out in addition to the
+    /// custom `accessibilityValue` we set below.
+    @ViewBuilder
+    private var scrubber: some View {
+        HStack(spacing: 10) {
+            Text(format(displayPosition))
+                .font(Theme.font(10, weight: .semibold))
+                .foregroundStyle(Theme.ink3)
+                .monospacedDigit()
+                .frame(width: 36, alignment: .trailing)
+                .accessibilityHidden(true)
+
+            Slider(
+                value: Binding(
+                    get: {
+                        // Clamp `displayPosition` into the Slider's
+                        // domain. The polling loop can briefly report
+                        // a position past duration across a track
+                        // boundary; without clamping SwiftUI logs a
+                        // "value out of range" warning.
+                        min(max(0, displayPosition), sliderMax)
+                    },
+                    set: { scrubPosition = $0 }
+                ),
+                in: 0...sliderMax,
+                onEditingChanged: { editing in
+                    if editing {
+                        // Drag started — freeze the thumb on the user's
+                        // position so the polling loop doesn't fight it.
+                        scrubPosition = model.status.positionSeconds
+                        isScrubbing = true
+                    } else {
+                        // Drag ended — commit the seek and release the
+                        // local position so the next polling tick can
+                        // pull the thumb back to the live position.
+                        model.seek(toSeconds: scrubPosition)
+                        isScrubbing = false
                     }
-                    .frame(height: 4)
                 }
-                .frame(height: 4)
+            )
+            .tint(Theme.ink)
+            .disabled(model.status.currentTrack == nil)
+            .controlSize(.mini)
+            .accessibilityLabel("Playback position")
+            .accessibilityValue(accessibilityPositionValue)
 
-                Text(format(model.status.durationSeconds))
-                    .font(Theme.font(10, weight: .semibold))
-                    .foregroundStyle(Theme.ink3)
-                    .monospacedDigit()
-                    .frame(width: 36, alignment: .leading)
-            }
+            Text(format(model.status.durationSeconds))
+                .font(Theme.font(10, weight: .semibold))
+                .foregroundStyle(Theme.ink3)
+                .monospacedDigit()
+                .frame(width: 36, alignment: .leading)
+                .accessibilityHidden(true)
         }
     }
 
@@ -118,6 +176,7 @@ struct PlayerBar: View {
             Image(systemName: "speaker.wave.2.fill")
                 .font(.system(size: 14))
                 .foregroundStyle(Theme.ink2)
+                .accessibilityHidden(true)
             Slider(
                 value: Binding(
                     get: { Double(model.status.volume) },
@@ -127,11 +186,46 @@ struct PlayerBar: View {
             )
             .tint(Theme.ink2)
             .frame(width: 100)
+            .accessibilityLabel("Volume")
+            .accessibilityValue("\(Int((Double(model.status.volume) * 100).rounded())) percent")
         }
     }
 
+    /// Unified "what to render in the Slider right now" — the live playback
+    /// position most of the time, and the frozen `scrubPosition` only while
+    /// the user is actively dragging.
+    private var displayPosition: Double {
+        isScrubbing ? scrubPosition : model.status.positionSeconds
+    }
+
+    /// Upper bound for the scrubber's domain. Stays at a positive floor so
+    /// the Slider's `in:` range is always non-empty even before duration
+    /// has been reported (pre-roll / no track).
+    private var sliderMax: Double {
+        max(1.0, model.status.durationSeconds)
+    }
+
+    /// Human-readable VoiceOver value for the scrubber — "1 minute 23
+    /// seconds of 4 minutes 10 seconds". Using spoken words rather than
+    /// raw digits matches Apple Music / Podcasts behaviour.
+    private var accessibilityPositionValue: String {
+        guard model.status.currentTrack != nil else { return "No track loaded" }
+        let pos = Self.voiceOverTime(displayPosition)
+        let total = Self.voiceOverTime(model.status.durationSeconds)
+        return "\(pos) of \(total)"
+    }
+
+    private var isPlaying: Bool {
+        model.status.state == .playing
+    }
+
     @ViewBuilder
-    private func iconBtn(_ name: String, size: CGFloat = 14, action: @escaping () -> Void = {}) -> some View {
+    private func iconBtn(
+        _ name: String,
+        label: String,
+        size: CGFloat = 14,
+        action: @escaping () -> Void = {}
+    ) -> some View {
         Button(action: action) {
             Image(systemName: name)
                 .font(.system(size: size))
@@ -139,6 +233,7 @@ struct PlayerBar: View {
                 .frame(width: 28, height: 28)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Text(label))
     }
 
     private func format(_ seconds: Double) -> String {
@@ -146,5 +241,23 @@ struct PlayerBar: View {
         let m = total / 60
         let s = total % 60
         return String(format: "%d:%02d", m, s)
+    }
+
+    /// Convert a duration in seconds to a word-based string for VoiceOver.
+    /// "0 seconds", "45 seconds", "1 minute 5 seconds", "2 minutes", etc.
+    private static func voiceOverTime(_ seconds: Double) -> String {
+        let safe = seconds.isFinite ? max(0, seconds) : 0
+        let total = Int(safe.rounded())
+        let m = total / 60
+        let s = total % 60
+        switch (m, s) {
+        case (0, 0): return "0 seconds"
+        case (0, _): return s == 1 ? "1 second" : "\(s) seconds"
+        case (_, 0): return m == 1 ? "1 minute" : "\(m) minutes"
+        default:
+            let mins = m == 1 ? "1 minute" : "\(m) minutes"
+            let secs = s == 1 ? "1 second" : "\(s) seconds"
+            return "\(mins) \(secs)"
+        }
     }
 }

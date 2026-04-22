@@ -8,10 +8,15 @@ struct MainShell: View {
         @Bindable var model = model
         VStack(spacing: 0) {
             HStack(spacing: 0) {
+                // Tab order (#334): sidebar → primary content (toolbar +
+                // body) → queue inspector → player bar. Higher sort
+                // priority wins first, so sidebar is the entry point.
                 Sidebar()
+                    .accessibilitySortPriority(100)
                 Divider().background(Theme.border)
                 contentColumn
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilitySortPriority(90)
                 // Right-side Queue Inspector (#79). Hidden by default; toggled
                 // by Cmd+Opt+Q or a future PlayerBar button (BATCH-07b). Kept
                 // at 320pt so it doesn't crowd the detail column on a 13"
@@ -21,12 +26,16 @@ struct MainShell: View {
                     QueueInspector()
                         .frame(width: 320)
                         .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .accessibilitySortPriority(70)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.18), value: model.isQueueInspectorOpen)
 
+            // Persistent player bar comes last in the tab traversal so
+            // Tab / Shift+Tab lands in the main content first. See #334.
             PlayerBar()
+                .accessibilitySortPriority(50)
         }
         .background(Theme.bg)
         // Cmd+Opt+Q toggles the queue inspector (#79). Hung off a zero-sized
@@ -74,7 +83,14 @@ struct MainShell: View {
     @ViewBuilder
     private var contentColumn: some View {
         VStack(spacing: 0) {
+            // Logical tab order inside the content column (#334):
+            // mainContent receives focus before the breadcrumb/top bar.
+            // Without the explicit sort priority, SwiftUI would walk the
+            // view tree top-to-bottom and hit the breadcrumbs first, which
+            // pushes the user through non-primary chrome before the page
+            // body.
             topBar
+                .accessibilitySortPriority(70)
             if !model.network.isOnline {
                 OfflineBanner(onRetry: { model.retryNetwork() })
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -91,6 +107,7 @@ struct MainShell: View {
                 // Screen swaps should be instant when Reduce Motion is on.
                 // Otherwise, keep SwiftUI's default implicit behavior.
                 .animation(reduceMotion ? nil : .default, value: model.screen)
+                .accessibilitySortPriority(80)
         }
         .animation(.easeInOut(duration: 0.2), value: model.network.isOnline)
         .animation(.easeInOut(duration: 0.2), value: model.serverReachability.isServerReachable)

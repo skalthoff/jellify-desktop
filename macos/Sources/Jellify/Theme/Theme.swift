@@ -32,6 +32,15 @@ enum Theme {
     static let borderStrong = Color(rgba: (126, 114, 175, 0.35))
 
     // Type
+    /// Design-provided font helper. Wraps `Font.custom(_:size:relativeTo:)`
+    /// so every Figtree call site automatically scales with the user's
+    /// System Settings → Display → Larger Text preference (#337). The
+    /// choice of `relativeTo:` is driven by the design size — anything in
+    /// "chrome" territory (≤11pt) rides `.caption` so those labels scale
+    /// alongside the rest of the Dynamic-Type-aware chrome; body-range
+    /// sizes ride `.body`; headline sizes ride `.title3` / `.title2` /
+    /// `.largeTitle` depending on scale so they keep their relative rank
+    /// when the user cranks text size up.
     static func font(_ size: CGFloat, weight: Font.Weight = .regular, italic: Bool = false) -> Font {
         let name: String
         switch weight {
@@ -43,7 +52,27 @@ enum Theme {
         case .light, .thin, .ultraLight: name = "Figtree-Light"
         default: name = italic ? "Figtree-Italic" : "Figtree-Regular"
         }
-        return Font.custom(name, size: size).weight(weight)
+        return Font
+            .custom(name, size: size, relativeTo: textStyle(for: size))
+            .weight(weight)
+    }
+
+    /// Pick the text style a given design size should scale relative to.
+    /// Centralised so `.font()` and any future scaled helpers stay in sync.
+    /// Banding the sizes into a handful of styles (caption / footnote /
+    /// body / title3 / title2 / title1 / largeTitle) keeps the hierarchy
+    /// intact as Dynamic Type scales up — a 10pt caption and a 36pt hero
+    /// don't end up the same apparent weight at AX3.
+    private static func textStyle(for size: CGFloat) -> Font.TextStyle {
+        switch size {
+        case ..<11: return .caption
+        case ..<13: return .footnote
+        case ..<17: return .body
+        case ..<20: return .title3
+        case ..<26: return .title2
+        case ..<34: return .title
+        default: return .largeTitle
+        }
     }
 }
 

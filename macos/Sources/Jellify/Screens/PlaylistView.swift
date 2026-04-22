@@ -264,9 +264,19 @@ struct PlaylistView: View {
 
             // Favorite + add-to-playlist are non-interactive placeholders
             // until their backing FFI lands — see `PlaylistContextMenu` for
-            // the matching TODO stubs in `AppModel`.
-            Image(systemName: "heart").font(.system(size: 20)).foregroundStyle(Theme.ink2).frame(width: 36, height: 36)
-            Image(systemName: "plus").font(.system(size: 20)).foregroundStyle(Theme.ink2).frame(width: 36, height: 36)
+            // the matching TODO stubs in `AppModel`. Hidden from VoiceOver
+            // so assistive tech doesn't announce inert icons as tappable
+            // (#331).
+            Image(systemName: "heart")
+                .font(.system(size: 20))
+                .foregroundStyle(Theme.ink2)
+                .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
+            Image(systemName: "plus")
+                .font(.system(size: 20))
+                .foregroundStyle(Theme.ink2)
+                .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
             Spacer()
         }
         .padding(.horizontal, 32)

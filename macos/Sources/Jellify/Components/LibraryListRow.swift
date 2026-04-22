@@ -101,6 +101,24 @@ struct LibraryListRow: View {
             }
         }
         .contextMenu { contextMenu }
+        // VoiceOver hears "<primary>, <secondary>. Opens <kind> detail."
+        // The hover play button only appears on cursor hover, so we route
+        // the row's body tap (openDetail) as the single focusable target.
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(accessibilityHint)
+    }
+
+    private var accessibilityLabel: String {
+        let subtitle = secondaryText.isEmpty ? "" : ", \(secondaryText)"
+        return "\(primaryText)\(subtitle)"
+    }
+
+    private var accessibilityHint: String {
+        switch payload {
+        case .album: return "Opens album detail"
+        case .artist: return "Opens artist detail"
+        case .playlist: return "Opens playlist detail"
+        }
     }
 
     // MARK: - Payload-driven properties

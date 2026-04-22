@@ -3145,6 +3145,17 @@ final class AppModel {
         audio.seek(toSeconds: clamped)
     }
 
+    /// Absolute seek used by the PlayerBar's scrubber Slider (#332). Same
+    /// clamping + one-writer routing as `seek(by:)`, but takes an absolute
+    /// position rather than a delta so the Slider's drag handle can bind
+    /// straight through.
+    func seek(toSeconds target: Double) {
+        guard status.currentTrack != nil else { return }
+        let duration = max(0, status.durationSeconds)
+        let clamped = max(0, duration > 0 ? min(target, duration) : target)
+        audio.seek(toSeconds: clamped)
+    }
+
     func togglePlayPause() {
         switch status.state {
         case .playing: pause()

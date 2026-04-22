@@ -64,6 +64,10 @@ struct ArtistCard: View {
                     .opacity(isHovering ? 1 : 0)
                     .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
+                    // Hover overlay doesn't show for a non-mouse user, so
+                    // make sure VoiceOver can find the play affordance by
+                    // name. See #331.
+                    .accessibilityLabel("Play all tracks by \(artist.name)")
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -96,6 +100,11 @@ struct ArtistCard: View {
             }
         }
         .contextMenu { ArtistContextMenu(artist: artist) }
+        // Outer tap target reads as an artist navigation control; the
+        // inner hover Play button owns its own label. VoiceOver sees
+        // "Artist <name>, <album count>. Opens artist detail."
+        .accessibilityLabel("\(artist.name), \(albumCountLabel)")
+        .accessibilityHint("Opens artist detail")
     }
 
     /// Subline shown under the artist name. Uses `album_count` when known;

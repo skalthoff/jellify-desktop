@@ -91,6 +91,7 @@ struct CommandPalette: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.cancelAction)
+            .accessibilityLabel("Dismiss command palette")
 
             VStack(spacing: 0) {
                 paletteColumn
@@ -457,6 +458,11 @@ struct CommandPalette: View {
         .opacity(0)
         .allowsHitTesting(false)
         .frame(width: 0, height: 0)
+        // These buttons exist purely to own keyboard shortcuts — the
+        // actual visible list rows already expose themselves to VoiceOver.
+        // Hiding prevents duplicate "Up" / "Down" announcements when
+        // navigating the palette with assistive tech.
+        .accessibilityHidden(true)
     }
 
     private func moveSelection(by delta: Int) {

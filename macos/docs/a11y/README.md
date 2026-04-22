@@ -45,14 +45,14 @@ audit row green on the next run.
 
 | Finding | Source | Tracking |
 | ------- | ------ | -------- |
-| Icon-only buttons have no VoiceOver label (shuffle, repeat) | `Sources/Jellify/Components/PlayerBar.swift` — `iconBtn("shuffle")`, `iconBtn("repeat")` | [#331](https://github.com/skalthoff/jellify-desktop/issues/331) |
-| Logout button in Sidebar has no VoiceOver label | `Sources/Jellify/Components/Sidebar.swift` | [#331](https://github.com/skalthoff/jellify-desktop/issues/331) |
-| Progress bar is not an accessible slider | PlayerBar scrubber | [#332](https://github.com/skalthoff/jellify-desktop/issues/332) |
+| ~~Icon-only buttons have no VoiceOver label (shuffle, repeat)~~ | `Sources/Jellify/Components/PlayerBar.swift` — `iconBtn("shuffle")`, `iconBtn("repeat")` | ~~[#331](https://github.com/skalthoff/jellify-desktop/issues/331)~~ — fixed by BATCH-22 |
+| ~~Logout button in Sidebar has no VoiceOver label~~ | `Sources/Jellify/Components/Sidebar.swift` | ~~[#331](https://github.com/skalthoff/jellify-desktop/issues/331)~~ — fixed by BATCH-22 |
+| ~~Progress bar is not an accessible slider~~ | PlayerBar scrubber | ~~[#332](https://github.com/skalthoff/jellify-desktop/issues/332)~~ — fixed by BATCH-22 |
 | Track row sub-labels announce separately | TrackRow | [#333](https://github.com/skalthoff/jellify-desktop/issues/333) |
-| No logical tab order / Shift-Tab traversal | Focus system | [#334](https://github.com/skalthoff/jellify-desktop/issues/334) |
+| ~~No logical tab order / Shift-Tab traversal~~ | Focus system | ~~[#334](https://github.com/skalthoff/jellify-desktop/issues/334)~~ — fixed by BATCH-22 |
 | No visible themed focus ring | Focus system | [#335](https://github.com/skalthoff/jellify-desktop/issues/335) |
 | `@FocusState` not wired for search autofocus / modal focus | Search, modals | [#336](https://github.com/skalthoff/jellify-desktop/issues/336) |
-| No Dynamic Type / scaledFont support on Figtree | Theme | [#337](https://github.com/skalthoff/jellify-desktop/issues/337) |
+| ~~No Dynamic Type / scaledFont support on Figtree~~ | Theme | ~~[#337](https://github.com/skalthoff/jellify-desktop/issues/337)~~ — fixed by BATCH-22 |
 | PlayerBar and Sidebar do not reflow at large text sizes | Layout | [#338](https://github.com/skalthoff/jellify-desktop/issues/338) |
 
 Anything else the Audit panel reports — and which is not in the table above
