@@ -94,6 +94,24 @@ struct JellifyCommands: Commands {
 
             Divider()
 
+            // Full Now Playing view — #89. Swaps the detail column to the
+            // large player + lyrics/queue/about/credits tabs. When already
+            // on Now Playing, the shortcut pops back to the previous
+            // screen so pressing it again feels like a toggle.
+            Button("Show Now Playing") {
+                if model.screen == .nowPlaying {
+                    model.screen = model.previousScreen ?? .library
+                    model.previousScreen = nil
+                } else {
+                    model.previousScreen = model.screen
+                    model.screen = .nowPlaying
+                }
+            }
+            .keyboardShortcut("l", modifiers: [.command, .option])
+            .disabled(model.session == nil)
+
+            Divider()
+
             // TODO(#321): Wire to the mini-player scene once it exists.
             // Tracked separately in the macOS polish milestone.
             Button("Toggle Mini Player") {
