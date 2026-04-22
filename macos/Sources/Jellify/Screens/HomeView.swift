@@ -6,9 +6,9 @@ import SwiftUI
 /// (Recently Played, Artists You Love, Jump Back In, Your Playlists,
 /// Recently Added). See `research/06-screen-specs.md`.
 ///
-/// The quick-tiles row (#205), Recently Played carousel (#206), Pinned
-/// Stations row (#253), and Artist Radio row (#254) are the first content
-/// blocks to land. The greeting header (#204) and the remaining carousels
+/// The greeting header (#204), quick-tiles row (#205), Recently Played
+/// carousel (#206), Pinned Stations row (#253), and Artist Radio row (#254)
+/// are the first content blocks to land. The remaining carousels
 /// (#55 / #208 / #209 / #207) will slot into this scaffold in follow-up
 /// issues without needing a refactor.
 struct HomeView: View {
@@ -36,25 +36,149 @@ struct HomeView: View {
         .background(backgroundWash)
     }
 
-    /// Minimal placeholder header. The full time-aware greeting + CTAs ship
-    /// in #204 (Home greeting header). Kept tiny here so the quick tiles row
-    /// has a label and a dominant surface to sit under.
+    /// Time-of-day aware greeting header with two pill CTAs (#204).
+    ///
+    /// Layout follows `research/06-screen-specs.md`:
+    /// - Eyebrow "IN ROTATION" 12pt `ink2`, letter-spaced.
+    /// - Italic 42pt black h1 greeting. Copy branches on the current hour
+    ///   and, when a session exists, is personalised with the user's first
+    ///   name ("good morning, jane").
+    /// - 14pt `ink2` subtitle with the accent-coloured "instant mix" word.
+    /// - Right-aligned CTAs: primary "Instant Mix" (ink fill) + ghost
+    ///   "Shuffle All" (border-only). On narrow windows the header stacks
+    ///   vertically so the CTAs never clip.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("WELCOME BACK")
-                .font(Theme.font(12, weight: .bold))
-                .foregroundStyle(Theme.ink2)
-                .tracking(2)
-            // TODO: #204 — swap this for the time-aware greeting + BigBtn CTAs.
-            Text("Home")
-                .font(Theme.font(36, weight: .black, italic: true))
-                .foregroundStyle(Theme.ink)
-            if let name = model.session?.user.name, !name.isEmpty {
-                Text("Hi, \(name)")
-                    .font(Theme.font(12, weight: .medium))
-                    .foregroundStyle(Theme.ink3)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .top, spacing: 24) {
+                greetingBlock
+                Spacer(minLength: 16)
+                headerCTAs
+                    .padding(.top, 22)
+            }
+            VStack(alignment: .leading, spacing: 18) {
+                greetingBlock
+                headerCTAs
             }
         }
+    }
+
+    /// Left-hand block: eyebrow, greeting, subtitle. Pulled out of `header`
+    /// so the stacked + side-by-side layouts in `ViewThatFits` can share it.
+    @ViewBuilder
+    private var greetingBlock: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("IN ROTATION")
+                .font(Theme.font(12, weight: .bold))
+                .foregroundStyle(Theme.ink2)
+                .tracking(1.2)
+            Text(greetingText)
+                .font(Theme.font(42, weight: .black, italic: true))
+                .foregroundStyle(Theme.ink)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityAddTraits(.isHeader)
+            subtitleLine
+        }
+    }
+
+    /// Subtitle rendered as three Text pieces so the middle "instant mix"
+    /// word can be styled in accent italic — per the `06-screen-specs.md`
+    /// "inline accent italicized link" pattern. Concatenating `Text` values
+    /// preserves each run's styling while keeping the whole line wrappable.
+    private var subtitleLine: some View {
+        (
+            Text("Pick up where you left off, or start an ")
+                + Text("instant mix")
+                    .font(Theme.font(14, weight: .semibold, italic: true))
+                    .foregroundColor(Theme.accent)
+                + Text(" seeded from your library.")
+        )
+        .font(Theme.font(14, weight: .medium))
+        .foregroundStyle(Theme.ink2)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityLabel("Pick up where you left off, or start an instant mix seeded from your library.")
+    }
+
+    /// Right-hand action cluster: primary "Instant Mix" + ghost "Shuffle All".
+    /// Shuffle All dims + disables while the library hasn't loaded; Instant
+    /// Mix always remains tappable since it routes through a stub landing pad
+    /// regardless of library state (see `AppModel.startInstantMix`).
+    @ViewBuilder
+    private var headerCTAs: some View {
+        HStack(spacing: 10) {
+            Button {
+                model.startInstantMix()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Instant Mix")
+                        .font(Theme.font(13, weight: .bold))
+                }
+                .foregroundStyle(Theme.bg)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 12)
+                .background(Capsule().fill(Theme.ink))
+                .shadow(color: Theme.ink.opacity(0.18), radius: 12, y: 6)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Start Instant Mix")
+            .accessibilityHint("Generates a personalised mix seeded from your library")
+
+            Button {
+                model.shuffleLibrary()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "shuffle")
+                        .font(.system(size: 13, weight: .bold))
+                    Text("Shuffle All")
+                        .font(Theme.font(13, weight: .semibold))
+                }
+                .foregroundStyle(Theme.ink2)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    Capsule().stroke(Theme.borderStrong, lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(model.albums.isEmpty)
+            .opacity(model.albums.isEmpty ? 0.5 : 1)
+            .accessibilityLabel("Shuffle your entire library")
+        }
+    }
+
+    /// Produces the time-branched greeting per `06-screen-specs.md`:
+    /// `<5h → "still up?"`, `<12 → "good morning"`, `<18 → "good afternoon"`,
+    /// else `"good evening"`. Appends the first name when a session is in
+    /// place, so logged-out previews still render nicely.
+    private var greetingText: String {
+        let hour = Calendar.current.component(.hour, from: Date())
+        let base: String
+        switch hour {
+        case 0..<5: base = "still up?"
+        case 5..<12: base = "good morning"
+        case 12..<18: base = "good afternoon"
+        default: base = "good evening"
+        }
+        guard let first = firstName(from: model.session?.user.name), !first.isEmpty else {
+            return base
+        }
+        // "still up?" keeps its terminal punctuation — tucking a name in
+        // after the question mark reads awkwardly, so skip personalisation.
+        if base.hasSuffix("?") { return base }
+        return "\(base), \(first.lowercased())"
+    }
+
+    /// Split the Jellyfin display name on whitespace and return the first
+    /// non-empty segment. Returns `nil` for empty / whitespace-only input so
+    /// `greetingText` can fall back to the un-personalised copy.
+    private func firstName(from displayName: String?) -> String? {
+        guard let displayName else { return nil }
+        let first = displayName
+            .split(whereSeparator: { $0.isWhitespace })
+            .first
+            .map(String.init) ?? ""
+        return first.isEmpty ? nil : first
     }
 
     /// 3-column quick tiles row. Per the brief the content should rank
