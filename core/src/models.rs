@@ -198,6 +198,282 @@ impl Paging {
     }
 }
 
+// ============================================================================
+// Library resolution
+// ============================================================================
+
+/// A single entry in Jellyfin's `GET /UserViews` response. Represents a
+/// top-level library the current user can browse (Music, Playlists, Movies,
+/// TV Shows, ...). Callers typically filter by `collection_type` to find
+/// the music or playlist library.
+///
+/// `collection_type` is the server's `CollectionType` string (`"music"`,
+/// `"playlists"`, etc.). Left as a raw string so we don't have to
+/// exhaustively enumerate every possible Jellyfin library kind.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct Library {
+    pub id: String,
+    pub name: String,
+    pub collection_type: Option<String>,
+}
+
+// ============================================================================
+// Device profile — describes what this client can direct-play vs. transcode.
+// Shared by `POST /Sessions/Capabilities/Full` and `POST /Items/{id}/PlaybackInfo`.
+// ============================================================================
+
+/// A single direct-play container/codec combination the client supports.
+/// Corresponds to Jellyfin's `DirectPlayProfile` DTO.
+///
+/// `kind` is `"Audio"` / `"Video"` — we only emit `Audio` rules here since
+/// Jellify Desktop is a music app.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct DirectPlayProfile {
+    pub container: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_codec: Option<String>,
+    #[serde(rename = "Type")]
+    pub kind: String,
+}
+
+/// A single transcoding target the client will accept when the source
+/// cannot be direct-played. Corresponds to Jellyfin's `TranscodingProfile`
+/// DTO.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct TranscodingProfile {
+    pub container: String,
+    pub audio_codec: String,
+    pub protocol: String,
+    pub context: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_audio_channels: Option<String>,
+    #[serde(rename = "Type")]
+    pub kind: String,
+}
+
+/// Jellyfin's `DeviceProfile` DTO. Describes which containers/codecs the
+/// client can direct-play and which it needs transcoded, plus bitrate
+/// caps. Sent on every `POST /Items/{id}/PlaybackInfo` and
+/// `POST /Sessions/Capabilities/Full` call.
+///
+/// Only the fields a music client needs are included here — Jellify Desktop
+/// never touches video, subtitles, or DLNA codec profiles, so those array
+/// fields are simply omitted from the payload (Jellyfin treats a missing
+/// key the same as an empty array).
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct DeviceProfile {
+    pub name: String,
+    pub max_streaming_bitrate: u32,
+    pub max_static_bitrate: u32,
+    pub music_streaming_transcoding_bitrate: u32,
+    pub direct_play_profiles: Vec<DirectPlayProfile>,
+    pub transcoding_profiles: Vec<TranscodingProfile>,
+}
+
+impl DeviceProfile {
+    /// AVFoundation / CoreAudio on macOS natively plays FLAC, ALAC (in m4a),
+    /// MP3, AAC (in m4a/aac), Opus/OGG, and WAV — so we advertise those as
+    /// direct-play containers. Anything else falls back to a 320 kbps MP3
+    /// transcode, which is the universally-safe audio codec Jellyfin will
+    /// emit when asked.
+    ///
+    /// The bitrate caps are music-centric: ~320 kbps for typical streaming
+    /// and a generous `max_static_bitrate` so high-resolution direct plays
+    /// (24-bit FLAC etc.) are not clamped by a too-low cap. Tweak the cap
+    /// later if users ask for a lower ceiling in settings.
+    pub fn default_macos_profile() -> Self {
+        const AUDIO: &str = "Audio";
+        let direct = |container: &str, codec: Option<&str>| DirectPlayProfile {
+            container: container.to_string(),
+            audio_codec: codec.map(|s| s.to_string()),
+            kind: AUDIO.to_string(),
+        };
+        DeviceProfile {
+            name: "Jellify Desktop (macOS)".to_string(),
+            // 320 kbps ceiling for transcoded music; headroom for direct
+            // plays to stream the original file at full fidelity.
+            max_streaming_bitrate: 320_000,
+            max_static_bitrate: 100_000_000,
+            music_streaming_transcoding_bitrate: 320_000,
+            direct_play_profiles: vec![
+                direct("flac", None),
+                direct("alac", None),
+                direct("m4a", Some("alac")),
+                direct("mp3", None),
+                direct("aac", None),
+                direct("m4a", Some("aac")),
+                direct("opus", None),
+                direct("ogg", Some("opus")),
+                direct("ogg", Some("vorbis")),
+                direct("wav", None),
+            ],
+            transcoding_profiles: vec![TranscodingProfile {
+                container: "mp3".to_string(),
+                audio_codec: "mp3".to_string(),
+                protocol: "http".to_string(),
+                context: "Streaming".to_string(),
+                max_audio_channels: Some("2".to_string()),
+                kind: AUDIO.to_string(),
+            }],
+        }
+    }
+}
+
+// ============================================================================
+// Capabilities — sent once post-auth so the server knows we're a playback
+// target and can offer "Play on macOS" from Jellyfin Web.
+// ============================================================================
+
+/// The body for `POST /Sessions/Capabilities/Full`. Sent after auth so the
+/// server registers this session as a music playback target.
+///
+/// `playable_media_types` / `supported_commands` are left as PascalCase
+/// strings the server parses (e.g. `"Audio"`, `"VolumeUp"`, `"Pause"`).
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct ClientCapabilities {
+    pub playable_media_types: Vec<String>,
+    pub supported_commands: Vec<String>,
+    pub supports_media_control: bool,
+    pub supports_persistent_identifier: bool,
+    pub device_profile: DeviceProfile,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app_store_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon_url: Option<String>,
+}
+
+// ============================================================================
+// PlaybackInfo — resolves the right media source + transcode url before
+// every stream.
+// ============================================================================
+
+/// Optional overrides for `POST /Items/{id}/PlaybackInfo`. All fields map
+/// 1:1 onto Jellyfin's `PlaybackInfoDto`. `device_profile` is the only
+/// field callers will almost always populate — the rest default to the
+/// server's preferred behaviour when omitted.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct PlaybackInfoOpts {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub user_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start_time_ticks: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_streaming_bitrate: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_direct_play: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_direct_stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enable_transcoding: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_open_live_stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_profile: Option<DeviceProfile>,
+}
+
+/// A playable media source returned by `PlaybackInfo`. Mirrors the subset
+/// of `MediaSourceInfo` a music client needs to decide between direct play
+/// and transcoding. Anything video/subtitle-related is elided.
+///
+/// `transcoding_url` is the path the client should hit when direct play
+/// is not viable — it's already annotated with the caller's `PlaySessionId`
+/// so callers should pass it through verbatim rather than re-building it.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct MediaSourceInfo {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub container: Option<String>,
+    #[serde(default)]
+    pub bitrate: Option<u32>,
+    #[serde(default)]
+    pub size: Option<i64>,
+    #[serde(default)]
+    pub run_time_ticks: Option<i64>,
+    #[serde(default)]
+    pub supports_direct_play: bool,
+    #[serde(default)]
+    pub supports_direct_stream: bool,
+    #[serde(default)]
+    pub supports_transcoding: bool,
+    #[serde(default)]
+    pub transcoding_url: Option<String>,
+    #[serde(default)]
+    pub transcoding_sub_protocol: Option<String>,
+    #[serde(default)]
+    pub transcoding_container: Option<String>,
+}
+
+/// Response body for `POST /Items/{id}/PlaybackInfo`. Carries every
+/// playable media source for the item plus the `PlaySessionId` the
+/// caller must echo back on subsequent `/Sessions/Playing` reports so
+/// the server can correlate them.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct PlaybackInfoResponse {
+    #[serde(default)]
+    pub media_sources: Vec<MediaSourceInfo>,
+    #[serde(default)]
+    pub play_session_id: Option<String>,
+    #[serde(default)]
+    pub error_code: Option<String>,
+}
+
+// ============================================================================
+// Playback start report — sent to `POST /Sessions/Playing` on track load so
+// Jellyfin shows "Now playing on macOS" for this device.
+// ============================================================================
+
+/// The body for `POST /Sessions/Playing`. Mirrors Jellyfin's
+/// `PlaybackStartInfo`, which is itself a subset of `PlaybackProgressInfo`
+/// — everything optional is skipped when `None` to keep the wire payload
+/// small.
+///
+/// `position_ticks` / `playback_start_time_ticks` are in Jellyfin's 100-ns
+/// tick units (`seconds * 10_000_000`).
+///
+/// `play_method` is one of `"DirectPlay"`, `"DirectStream"`, `"Transcode"`
+/// — left as a raw string so callers forward whatever the `/PlaybackInfo`
+/// response implied without a round-trip through a local enum.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct PlaybackStartInfo {
+    pub item_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_stream_index: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_ticks: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playback_start_time_ticks: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_level: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playlist_index: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playlist_length: Option<i32>,
+    pub can_seek: bool,
+    pub is_paused: bool,
+    pub is_muted: bool,
+}
+
 /// Jellyfin image variants served from `GET /Items/{id}/Images/{type}`.
 /// Mirrors the `ImageType` routes defined by the Jellyfin `ImageController`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]

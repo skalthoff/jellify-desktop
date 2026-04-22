@@ -1,5 +1,6 @@
 use crate::error::{JellifyError, Result};
 use crate::models::*;
+use parking_lot::Mutex;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::{Client as HttpClient, Response};
 use serde::{Deserialize, Serialize};
@@ -8,6 +9,19 @@ use url::Url;
 const CLIENT_NAME: &str = "Jellify Desktop";
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// Per-client memoization of the library-resolution lookups behind
+/// [`JellyfinClient::music_library_id`] and
+/// [`JellyfinClient::playlist_library_id`]. Both endpoints are hit once at
+/// sign-in by the UI and then again by nearly every library query, so a
+/// plain in-memory cache pays for itself immediately. Invalidated on
+/// [`JellyfinClient::set_session`] so re-auth against a different user or
+/// server picks up fresh ids.
+#[derive(Default)]
+struct LibraryCache {
+    music: Option<String>,
+    playlist: Option<String>,
+}
+
 pub struct JellyfinClient {
     http: HttpClient,
     base_url: Url,
@@ -15,6 +29,7 @@ pub struct JellyfinClient {
     device_name: String,
     token: Option<String>,
     user_id: Option<String>,
+    library_cache: Mutex<LibraryCache>,
 }
 
 impl JellyfinClient {
@@ -36,6 +51,7 @@ impl JellyfinClient {
             device_name,
             token: None,
             user_id: None,
+            library_cache: Mutex::new(LibraryCache::default()),
         })
     }
 
@@ -58,6 +74,9 @@ impl JellyfinClient {
     pub fn set_session(&mut self, token: String, user_id: String) {
         self.token = Some(token);
         self.user_id = Some(user_id);
+        // Library ids are tied to `(server, user)`, so re-auth must drop
+        // the memoized lookups before the new session resumes traffic.
+        *self.library_cache.lock() = LibraryCache::default();
     }
 
     fn auth_header(&self) -> String {
@@ -978,6 +997,243 @@ impl JellyfinClient {
         Ok(())
     }
 
+    /// Report that playback of an item has just started. Backed by
+    /// `POST /Sessions/Playing` with a `PlaybackStartInfo` body.
+    ///
+    /// Jellyfin uses this to mark the session as "Now Playing" — other
+    /// clients (Jellyfin Web etc.) then surface this device in the
+    /// remote-control panel. Callers send it once per track load, right
+    /// after the audio engine has begun decoding.
+    ///
+    /// Serialises every field in PascalCase to match the server's
+    /// `PlaybackStartInfo` DTO. Optional fields are omitted when `None` so
+    /// unused flags don't flip the server's default behaviour.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn report_playback_started(&self, info: PlaybackStartInfo) -> Result<()> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let url = self.endpoint("Sessions/Playing")?;
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .json(&info)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
+    /// Register this session's capabilities with the server. Backed by
+    /// `POST /Sessions/Capabilities/Full` with a `ClientCapabilitiesDto`
+    /// body.
+    ///
+    /// Called once post-auth (and whenever the device profile changes) so
+    /// Jellyfin knows we're a music playback target. Populates the
+    /// remote-control surface Jellyfin Web exposes — without this the
+    /// "Play on macOS" option never appears.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn post_capabilities(&self, caps: ClientCapabilities) -> Result<()> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let url = self.endpoint("Sessions/Capabilities/Full")?;
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .json(&caps)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
+    /// Resolve the playable media source and transcoding strategy for an
+    /// item. Backed by `POST /Items/{itemId}/PlaybackInfo`.
+    ///
+    /// This is the canonical pre-stream hop: the server inspects the
+    /// client's `DeviceProfile`, decides direct-play vs. transcode, and
+    /// returns both a `PlaySessionId` (to echo on subsequent
+    /// `/Sessions/Playing*` reports) and the `TranscodingUrl` to hit when
+    /// direct play is not viable.
+    ///
+    /// `opts.user_id` is filled in from the current session when the
+    /// caller leaves it `None` — Jellyfin requires `UserId` either in the
+    /// body or as a query arg, and we prefer the body.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn playback_info(
+        &self,
+        item_id: &str,
+        opts: PlaybackInfoOpts,
+    ) -> Result<PlaybackInfoResponse> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        // Fill in the user id from the live session if the caller did not
+        // override it. Jellyfin accepts either the body's `UserId` or a
+        // `?userId=` query param; the body wins when both are supplied.
+        let mut body = opts;
+        if body.user_id.is_none() {
+            body.user_id = Some(user_id.clone());
+        }
+        let url = self.endpoint(&format!("Items/{item_id}/PlaybackInfo"))?;
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .json(&body)
+            .send()
+            .await?;
+        Self::check(resp).await?.json().await.map_err(Into::into)
+    }
+
+    // ----- Library resolution -----
+
+    /// Fetch every user view visible to the current user. Backed by
+    /// `GET /UserViews?userId={id}`.
+    ///
+    /// Each entry is a top-level library (Music, Playlists, Movies, ...).
+    /// Callers typically filter by `collection_type` — `"music"` for the
+    /// music library id, `"playlists"` for the playlists library id.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn user_views(&self) -> Result<Vec<Library>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("UserViews")?;
+        url.query_pairs_mut().append_pair("userId", user_id);
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawLibrary> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Library::from).collect())
+    }
+
+    /// Resolve the music library's id — the CollectionFolder with
+    /// `CollectionType == "music"`. Cached on the client after the first
+    /// call; invalidated on [`JellyfinClient::set_session`].
+    ///
+    /// Errors with [`JellifyError::NotAuthenticated`] if no session is
+    /// active, or [`JellifyError::Server`] with status 404 when the
+    /// server has no music library (a genuinely empty install).
+    pub async fn music_library_id(&self) -> Result<String> {
+        if let Some(id) = self.library_cache.lock().music.clone() {
+            return Ok(id);
+        }
+        let views = self.user_views().await?;
+        let id = views
+            .into_iter()
+            .find(|v| v.collection_type.as_deref() == Some("music"))
+            .map(|v| v.id)
+            .ok_or_else(|| JellifyError::Server {
+                status: 404,
+                message: "no music library found in user views".into(),
+            })?;
+        self.library_cache.lock().music = Some(id.clone());
+        Ok(id)
+    }
+
+    /// Resolve the playlists library's id — the ManualPlaylistsFolder with
+    /// `CollectionType == "playlists"`. Backed by
+    /// `GET /Items?userId={id}&includeItemTypes=ManualPlaylistsFolder&excludeItemTypes=CollectionFolder`
+    /// (the view's own id isn't surfaced by `/UserViews`). Cached on the
+    /// client after the first call; invalidated on
+    /// [`JellyfinClient::set_session`].
+    ///
+    /// Errors with [`JellifyError::NotAuthenticated`] if no session is
+    /// active, or [`JellifyError::Server`] with status 404 when the
+    /// server has no playlist library (rare — Jellyfin synthesises one
+    /// the first time a playlist is created).
+    pub async fn playlist_library_id(&self) -> Result<String> {
+        if let Some(id) = self.library_cache.lock().playlist.clone() {
+            return Ok(id);
+        }
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Items")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("userId", user_id);
+            q.append_pair("includeItemTypes", "ManualPlaylistsFolder");
+            q.append_pair("excludeItemTypes", "CollectionFolder");
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawLibrary> = Self::check(resp).await?.json().await?;
+        let id = raw
+            .items
+            .into_iter()
+            .find(|item| item.collection_type.as_deref() == Some("playlists"))
+            .map(|item| item.id)
+            .ok_or_else(|| JellifyError::Server {
+                status: 404,
+                message: "no playlist library found".into(),
+            })?;
+        self.library_cache.lock().playlist = Some(id.clone());
+        Ok(id)
+    }
+
+    // ----- Playlist mutation -----
+
+    /// Remove one or more entries from a playlist. Backed by
+    /// `DELETE /Playlists/{playlistId}/Items?entryIds=...`.
+    ///
+    /// The `entry_ids` here are `PlaylistItemId` values — the per-entry
+    /// id Jellyfin exposes on playlist children, NOT the underlying item
+    /// id. A single item appearing twice in a playlist has two distinct
+    /// `PlaylistItemId`s, which is why the controller keys the delete on
+    /// entry ids rather than item ids.
+    ///
+    /// Server responds 204 on success, 403 when the caller is not the
+    /// playlist owner (or lacks an edit share), 404 when the playlist
+    /// doesn't exist or an `entryId` isn't in it. Callers should treat
+    /// 404 as "already gone" rather than fatal.
+    ///
+    /// Returns `Ok(())` without contacting the server when `entry_ids` is
+    /// empty — saves a pointless round-trip for multi-select UIs where
+    /// the selection can be cleared after checkbox toggles.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn remove_from_playlist(
+        &self,
+        playlist_id: &str,
+        entry_ids: &[String],
+    ) -> Result<()> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        if entry_ids.is_empty() {
+            return Ok(());
+        }
+        let mut url = self.endpoint(&format!("Playlists/{playlist_id}/Items"))?;
+        url.query_pairs_mut()
+            .append_pair("entryIds", &entry_ids.join(","));
+        let resp = self
+            .http
+            .delete(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
     // ----- Streaming -----
 
     /// Fetch the full audio payload for a track, authenticated. Returns the
@@ -1222,6 +1478,29 @@ pub struct NamedItem {
     pub id: String,
     #[serde(rename = "Name", default)]
     pub name: String,
+}
+
+/// A trimmed `BaseItemDto` used by library-resolution endpoints
+/// (`/UserViews`, `GET /Items?includeItemTypes=ManualPlaylistsFolder`).
+/// Only the fields the client needs to partition libraries by type.
+#[derive(Debug, Default, Deserialize)]
+pub struct RawLibrary {
+    #[serde(rename = "Id")]
+    pub id: String,
+    #[serde(rename = "Name", default)]
+    pub name: String,
+    #[serde(rename = "CollectionType")]
+    pub collection_type: Option<String>,
+}
+
+impl From<RawLibrary> for Library {
+    fn from(r: RawLibrary) -> Self {
+        Library {
+            id: r.id,
+            name: r.name,
+            collection_type: r.collection_type,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Default)]
