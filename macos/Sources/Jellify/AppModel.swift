@@ -273,6 +273,104 @@ final class AppModel {
         NSWorkspace.shared.open(url)
     }
 
+    // MARK: - Playlist actions
+    //
+    // Parallels the album actions above. Issue #313.
+    //
+    // Most of these are TODO stubs pending follow-up FFI work (the core does
+    // not yet expose playlist-tracks lookup, queue-append, favorites, playlist
+    // mutation, or a download engine). The UI component (`PlaylistContextMenu`)
+    // is wired up now so that when each backing endpoint lands the action just
+    // needs its stub swapped for a real call.
+
+    /// Fetch a playlist's tracks and start playback from the top.
+    /// TODO: #125 — the core does not yet expose `playlist_tracks`. Until it
+    /// does, this is a logging stub so the UI action has a landing pad.
+    func play(playlist: Playlist) {
+        // TODO: #125 — playlist_tracks FFI not yet wired.
+        print("[AppModel] play(playlist:) not yet wired — see #125")
+    }
+
+    /// Shuffle a playlist — once `playlist_tracks` lands, this should load the
+    /// track list, randomise it, and play from the top (matching `shuffle(album:)`).
+    /// TODO: #125 — see `play(playlist:)`.
+    func shuffle(playlist: Playlist) {
+        // TODO: #125 — playlist_tracks FFI not yet wired.
+        print("[AppModel] shuffle(playlist:) not yet wired — see #125")
+    }
+
+    /// Insert a playlist's tracks immediately after the currently-playing track.
+    /// TODO: #125, #282 — needs both `playlist_tracks` and an `insertNext`
+    /// queue primitive. For now, a logging stub.
+    func playNext(playlist: Playlist) {
+        // TODO: #125 / #282 — playlist_tracks + Up Next insertion not yet wired.
+        print("[AppModel] playNext(playlist:) not yet wired — see #125 / #282")
+    }
+
+    /// Append a playlist's tracks to the end of the queue.
+    /// TODO: #125, #282 — needs both `playlist_tracks` and an `appendToQueue`
+    /// queue primitive. For now, a logging stub.
+    func addToQueue(playlist: Playlist) {
+        // TODO: #125 / #282 — playlist_tracks + queue append not yet wired.
+        print("[AppModel] addToQueue(playlist:) not yet wired — see #125 / #282")
+    }
+
+    /// Toggle the favorite flag for a playlist on the Jellyfin server.
+    /// TODO: #133, #222 — wire through `set_favorite` / `unset_favorite` on
+    /// the core once the FFI surface exists.
+    func toggleFavorite(playlist: Playlist) {
+        // TODO: #133 / #222 — set_favorite FFI not yet wired.
+        print("[AppModel] toggleFavorite(playlist:) not yet wired — see #133 / #222")
+    }
+
+    /// Enqueue a download of every track in the playlist.
+    /// TODO: #70, #222 — there is no download engine yet; this is a logging
+    /// stub so the UI action has a landing pad.
+    func enqueueDownload(playlist: Playlist) {
+        // TODO: #70 / #222 — download engine not yet wired.
+        print("[AppModel] enqueueDownload(playlist:) not yet wired — see #70 / #222")
+    }
+
+    /// Present a rename prompt for a playlist.
+    /// TODO: #75, #130 — rename UI sheet + `update_playlist` FFI not yet wired.
+    func requestRename(playlist: Playlist) {
+        // TODO: #75 / #130 — rename sheet + update_playlist FFI not yet wired.
+        print("[AppModel] requestRename(playlist:) not yet wired — see #75 / #130")
+    }
+
+    /// Present a delete confirmation for a playlist.
+    /// TODO: #75, #131 — delete confirm alert + `delete_playlist` FFI not yet
+    /// wired.
+    func requestDelete(playlist: Playlist) {
+        // TODO: #75 / #131 — delete confirm + delete_playlist FFI not yet wired.
+        print("[AppModel] requestDelete(playlist:) not yet wired — see #75 / #131")
+    }
+
+    // MARK: - Playlist sharing
+
+    /// Jellyfin web URL for a playlist, e.g.
+    /// `https://server.example.com/web/#/details?id=<playlistId>`. The Jellyfin
+    /// web UI uses the same `details` route for albums, artists, and playlists.
+    func webURL(for playlist: Playlist) -> URL? {
+        guard !serverURL.isEmpty else { return nil }
+        let base = serverURL.hasSuffix("/") ? String(serverURL.dropLast()) : serverURL
+        return URL(string: "\(base)/web/#/details?id=\(playlist.id)")
+    }
+
+    /// Copy the playlist's web URL to the system pasteboard.
+    func copyShareLink(playlist: Playlist) {
+        guard let url = webURL(for: playlist) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(url.absoluteString, forType: .string)
+    }
+
+    /// Open the playlist in the Jellyfin web UI.
+    func openInJellyfin(playlist: Playlist) {
+        guard let url = webURL(for: playlist) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     func pause() { audio.pause() }
     func resume() { audio.resume() }
     func stop() { audio.stop() }
