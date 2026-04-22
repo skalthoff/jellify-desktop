@@ -330,11 +330,48 @@ impl JellyfinClient {
     }
 
     /// Build image URL for a track/album/artist primary image.
+    ///
+    /// Retained for backwards compatibility; delegates to
+    /// [`JellyfinClient::image_url_of_type`] with `ImageType::Primary`.
     pub fn image_url(&self, item_id: &str, tag: Option<&str>, max_width: u32) -> Result<Url> {
-        let mut url = self.endpoint(&format!("Items/{item_id}/Images/Primary"))?;
+        self.image_url_of_type(
+            item_id,
+            ImageType::Primary,
+            None,
+            tag,
+            Some(max_width),
+            None,
+        )
+    }
+
+    /// Build a Jellyfin image URL for any [`ImageType`].
+    ///
+    /// Endpoint: `GET /Items/{id}/Images/{type}/{index?}` with optional query
+    /// parameters `maxWidth`, `maxHeight`, `quality`, and `tag`. `index` is
+    /// meaningful for types that are keyed (notably `Backdrop`, which has one
+    /// URL per entry in `BackdropImageTags`).
+    pub fn image_url_of_type(
+        &self,
+        item_id: &str,
+        image_type: ImageType,
+        index: Option<u32>,
+        tag: Option<&str>,
+        max_width: Option<u32>,
+        max_height: Option<u32>,
+    ) -> Result<Url> {
+        let path = match index {
+            Some(i) => format!("Items/{item_id}/Images/{}/{i}", image_type.as_path()),
+            None => format!("Items/{item_id}/Images/{}", image_type.as_path()),
+        };
+        let mut url = self.endpoint(&path)?;
         {
             let mut q = url.query_pairs_mut();
-            q.append_pair("maxWidth", &max_width.to_string());
+            if let Some(w) = max_width {
+                q.append_pair("maxWidth", &w.to_string());
+            }
+            if let Some(h) = max_height {
+                q.append_pair("maxHeight", &h.to_string());
+            }
             q.append_pair("quality", "90");
             if let Some(t) = tag {
                 q.append_pair("tag", t);

@@ -1,5 +1,5 @@
 use crate::client::JellyfinClient;
-use crate::models::Paging;
+use crate::models::{ImageType, Paging};
 use crate::storage::Database;
 use serde_json::json;
 use wiremock::matchers::{method, path};
@@ -133,6 +133,84 @@ fn stream_url_contains_api_key() {
     assert!(s.contains("api_key=mytoken"), "url: {s}");
     assert!(s.contains("DeviceId=dev"), "url: {s}");
     assert!(s.contains("/Audio/track-id/universal"), "url: {s}");
+}
+
+#[test]
+fn image_url_primary_is_backwards_compatible() {
+    let client = mock_client("https://example.com");
+    let url = client.image_url("item-1", Some("tag-1"), 400).unwrap();
+    let s = url.as_str();
+    assert!(
+        s.contains("/Items/item-1/Images/Primary"),
+        "url missing Primary path: {s}"
+    );
+    assert!(s.contains("maxWidth=400"), "url missing maxWidth: {s}");
+    assert!(s.contains("quality=90"), "url missing quality: {s}");
+    assert!(s.contains("tag=tag-1"), "url missing tag: {s}");
+    // No index segment when index is omitted.
+    assert!(
+        !s.contains("/Images/Primary/"),
+        "unexpected index segment: {s}"
+    );
+}
+
+#[test]
+fn image_url_of_type_primary_matches_legacy_shape() {
+    let client = mock_client("https://example.com");
+    let url = client
+        .image_url_of_type(
+            "item-1",
+            ImageType::Primary,
+            None,
+            Some("tag-1"),
+            Some(400),
+            None,
+        )
+        .unwrap();
+    let s = url.as_str();
+    assert!(s.contains("/Items/item-1/Images/Primary"), "url: {s}");
+    assert!(s.contains("maxWidth=400"), "url: {s}");
+    assert!(s.contains("tag=tag-1"), "url: {s}");
+    // Neither index nor maxHeight should leak in when not provided.
+    assert!(!s.contains("maxHeight="), "url: {s}");
+}
+
+#[test]
+fn image_url_of_type_backdrop_includes_index_segment() {
+    let client = mock_client("https://example.com");
+    let url = client
+        .image_url_of_type(
+            "item-2",
+            ImageType::Backdrop,
+            Some(1),
+            Some("bd-tag"),
+            Some(1600),
+            Some(900),
+        )
+        .unwrap();
+    let s = url.as_str();
+    assert!(
+        s.contains("/Items/item-2/Images/Backdrop/1"),
+        "url missing Backdrop/1: {s}"
+    );
+    assert!(s.contains("maxWidth=1600"), "url: {s}");
+    assert!(s.contains("maxHeight=900"), "url: {s}");
+    assert!(s.contains("tag=bd-tag"), "url: {s}");
+}
+
+#[test]
+fn image_url_of_type_thumb_without_index_or_sizes() {
+    let client = mock_client("https://example.com");
+    let url = client
+        .image_url_of_type("item-3", ImageType::Thumb, None, None, None, None)
+        .unwrap();
+    let s = url.as_str();
+    assert!(s.contains("/Items/item-3/Images/Thumb"), "url: {s}");
+    assert!(!s.contains("/Thumb/"), "url should not have index: {s}");
+    assert!(!s.contains("maxWidth="), "url: {s}");
+    assert!(!s.contains("maxHeight="), "url: {s}");
+    assert!(!s.contains("tag="), "url: {s}");
+    assert!(s.contains("quality=90"), "url: {s}");
 }
 
 #[test]
