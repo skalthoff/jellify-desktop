@@ -1,12 +1,27 @@
 # zizmor config. Docs: https://docs.zizmor.sh/configuration/
 #
-# We deliberately use @vX floating tags for well-known first-party actions
-# (actions/*, dtolnay/rust-toolchain, Swatinem/rust-cache, github/codeql-*)
-# because pinning to a commit SHA creates more churn than it prevents in a
-# project this small. The `unpinned-uses` audit is therefore relaxed.
+# We deliberately use @vX floating tags for every action we depend on
+# because pinning each to a commit SHA creates more churn than it prevents
+# in a project this small (and dependabot handles version bumps for us).
+# The `unpinned-uses` audit is therefore relaxed across the board.
+#
+# First-party namespaces (actions/*, github/*) are listed explicitly so
+# the intent is obvious even when the blanket policy is eventually
+# tightened.
 rules:
   unpinned-uses:
     config:
       policies:
         actions/*: ref-pin
         github/codeql-action/*: ref-pin
+        # Catch-all for every third-party action we pull in
+        # (dtolnay, Swatinem, maxim-lobanov, EmbarkStudios, astral-sh,
+        # codecov, taiki-e, crate-ci, rustsec, ...). Revisit once the
+        # dep set stabilizes and we can afford SHA-pinning.
+        '*': ref-pin
+  # Same spirit: the jellyfin/jellyfin container in e2e.yml is pinned
+  # to a tag (`10.10.3`), which is sufficient for CI reproducibility
+  # without the overhead of tracking image digests by hand.
+  unpinned-images:
+    ignore:
+      - e2e.yml

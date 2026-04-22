@@ -40,13 +40,37 @@ wait_for_server() {
 json_post() {
 	local path="$1"
 	local body="${2:-}"
-	if [[ -n "$body" ]]; then
-		curl -fsS -X POST "$URL$path" \
-			-H 'Content-Type: application/json' \
-			--data "$body"
-	else
-		curl -fsS -X POST "$URL$path"
-	fi
+	local attempts="${3:-15}"
+	local tmp
+	tmp="$(mktemp)"
+	# Jellyfin's startup endpoints are reachable before the server fully
+	# finishes initializing — /Startup/User in particular has been seen to
+	# 500 a handful of times immediately after /System/Info/Public starts
+	# responding. Retry each call with a short backoff and surface the
+	# response body if every attempt fails.
+	local i=1
+	while (( i <= attempts )); do
+		local http_code
+		if [[ -n "$body" ]]; then
+			http_code=$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$URL$path" \
+				-H 'Content-Type: application/json' \
+				--data "$body" || echo "000")
+		else
+			http_code=$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$URL$path" || echo "000")
+		fi
+		if [[ "$http_code" =~ ^2[0-9][0-9]$ ]]; then
+			cat "$tmp"
+			rm -f "$tmp"
+			return 0
+		fi
+		log "POST $path attempt $i/$attempts -> HTTP $http_code"
+		(( i < attempts )) && sleep 2
+		i=$((i + 1))
+	done
+	log "POST $path failed after $attempts attempts. Last response body:"
+	cat "$tmp" >&2 || true
+	rm -f "$tmp"
+	return 1
 }
 
 # Emit arguments as a compact JSON object. Avoids a python/jq dep and keeps
