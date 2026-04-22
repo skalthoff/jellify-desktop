@@ -377,6 +377,23 @@ impl JellifyCore {
         let _ = self.inner.lock().db.record_play(&track.id, now);
     }
 
+    /// Report that playback has stopped for an item — backed by
+    /// `POST /Sessions/Playing/Stopped`.
+    ///
+    /// Drives Jellyfin's server-side PlayCount increment for tracks. Callers
+    /// invoke this on track end, user-driven skip, and app quit. When a song
+    /// completed normally, pass the full `RunTimeTicks` as `position_ticks`.
+    pub fn report_playback_stopped(
+        &self,
+        item_id: String,
+        position_ticks: i64,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.report_playback_stopped(&item_id, position_ticks))
+        })
+    }
+
     pub fn mark_state(&self, state: PlaybackState) {
         self.player.mark_state(state);
     }
