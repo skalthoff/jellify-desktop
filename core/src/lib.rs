@@ -266,7 +266,7 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.albums(Paging::new(offset, limit))))
     }
 
-    /// Artists in the user's library, paginated. See [`list_albums`].
+    /// Artists in the user's library, paginated. See [`Self::list_albums`].
     pub fn list_artists(
         &self,
         offset: u32,
@@ -649,7 +649,7 @@ impl JellifyCore {
 
     /// Returns the fully-authenticated stream URL for a track. The platform
     /// audio engine (AVPlayer etc.) fetches from this, attaching the
-    /// `Authorization` header returned by [`auth_header`].
+    /// `Authorization` header returned by [`Self::auth_header`].
     pub fn stream_url(&self, track_id: String) -> std::result::Result<String, JellifyError> {
         self.with_client(|c| Ok(c.stream_url(&track_id)?.to_string()))
     }

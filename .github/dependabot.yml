@@ -1,0 +1,40 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - 'area:core'
+      - 'kind:chore'
+    groups:
+      patch-level:
+        update-types:
+          - patch
+      tokio-ecosystem:
+        patterns:
+          - tokio
+          - tokio-*
+          - futures
+          - futures-*
+      serde-ecosystem:
+        patterns:
+          - serde
+          - serde_*
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - 'area:ci'
+      - 'kind:chore'
+    groups:
+      actions-patch:
+        update-types:
+          - patch
+          - minor

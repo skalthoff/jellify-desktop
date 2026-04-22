@@ -1,0 +1,12 @@
+# zizmor config. Docs: https://docs.zizmor.sh/configuration/
+#
+# We deliberately use @vX floating tags for well-known first-party actions
+# (actions/*, dtolnay/rust-toolchain, Swatinem/rust-cache, github/codeql-*)
+# because pinning to a commit SHA creates more churn than it prevents in a
+# project this small. The `unpinned-uses` audit is therefore relaxed.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        actions/*: ref-pin
+        github/codeql-action/*: ref-pin

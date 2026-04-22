@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Minimal CLI exercising jellify_core — login, list, play"
+publish = false
 
 [[bin]]
 name = "jellify-cli"
