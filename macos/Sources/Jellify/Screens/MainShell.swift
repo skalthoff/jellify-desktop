@@ -71,6 +71,8 @@ struct MainShell: View {
             AlbumDetailView(albumID: id)
         case .artist(let id):
             ArtistView(artistID: id)
+        case .playlist(let id):
+            PlaylistView(playlistID: id)
         default:
             LibraryView()
         }
@@ -122,8 +124,14 @@ struct MainShell: View {
             } else {
                 segments.append("Artist")
             }
-        case .playlist(_):
+        case .playlist(let id):
+            segments.append("Library")
             segments.append("Playlists")
+            if let playlist = model.playlist(id: id) {
+                segments.append(playlist.name)
+            } else {
+                segments.append("Playlist")
+            }
         case .settings:
             segments.append("Settings")
         }
@@ -134,8 +142,8 @@ struct MainShell: View {
     /// the current `model.screen` and the tapped index, so the component stays
     /// agnostic of label strings (no brittle title matching). Index 0 is the
     /// root ("Jellify") and always returns to the library. For nested screens
-    /// (e.g. album/artist detail), intermediate indices pop to the library;
-    /// the final index is the current location and is a no-op.
+    /// (e.g. album/artist/playlist detail), intermediate indices pop to the
+    /// library; the final index is the current location and is a no-op.
     private func navigate(toBreadcrumbDepth idx: Int) {
         // Index 0 is always the root and pops to library.
         guard idx > 0 else {
@@ -144,12 +152,12 @@ struct MainShell: View {
         }
 
         switch model.screen {
-        case .home, .discover, .library, .search, .settings, .playlist:
+        case .home, .discover, .library, .search, .settings:
             // Shape: ["Jellify", <current>] — only the final index, which is
             // the current location and non-navigable. Nothing to do.
             break
-        case .album, .artist:
-            // Shape: ["Jellify", "Library", "<Albums|Artists>", <name>].
+        case .album, .artist, .playlist:
+            // Shape: ["Jellify", "Library", "<Albums|Artists|Playlists>", <name>].
             // idx 1 = "Library" and idx 2 = the section both pop to library;
             // idx 3 is the current location and is a no-op.
             if idx < 3 {
