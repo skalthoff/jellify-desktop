@@ -699,6 +699,39 @@ impl JellyfinClient {
         })
     }
 
+    // ----- Playback reporting -----
+
+    /// Report that playback of an item has stopped.
+    ///
+    /// Backed by `POST /Sessions/Playing/Stopped` with body
+    /// `{ItemId, PositionTicks}`. Drives Jellyfin's server-side PlayCount
+    /// increment (for tracks) — the server treats a stop report with
+    /// `PositionTicks` near `RunTimeTicks` as a completed play.
+    ///
+    /// Callers invoke this on track end, user-driven skip, and app quit.
+    /// Pass the full `RunTimeTicks` as `position_ticks` when a song
+    /// completed normally.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn report_playback_stopped(&self, item_id: &str, position_ticks: i64) -> Result<()> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let url = self.endpoint("Sessions/Playing/Stopped")?;
+        let body = PlaybackStoppedBody {
+            item_id: item_id.to_string(),
+            position_ticks,
+        };
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .json(&body)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
     // ----- Streaming -----
 
     /// Fetch the full audio payload for a track, authenticated. Returns the
@@ -833,6 +866,14 @@ struct PlaybackProgressBody {
     position_ticks: i64,
     #[serde(rename = "IsPaused")]
     is_paused: bool,
+}
+
+#[derive(Serialize)]
+struct PlaybackStoppedBody {
+    #[serde(rename = "ItemId")]
+    item_id: String,
+    #[serde(rename = "PositionTicks")]
+    position_ticks: i64,
 }
 
 #[derive(Debug, Deserialize)]

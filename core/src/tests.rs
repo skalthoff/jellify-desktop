@@ -1186,6 +1186,74 @@ async fn report_playback_progress_without_session_returns_not_authenticated() {
     );
 }
 
+#[tokio::test]
+async fn report_playback_stopped_posts_expected_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Playing/Stopped"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .report_playback_stopped("track-xyz", 2_220_000_000)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Sessions/Playing/Stopped")
+        .expect("expected POST to /Sessions/Playing/Stopped");
+    let body: serde_json::Value = serde_json::from_slice(&post.body).expect("json body");
+    assert_eq!(
+        body.get("ItemId").and_then(|v| v.as_str()),
+        Some("track-xyz")
+    );
+    assert_eq!(
+        body.get("PositionTicks").and_then(|v| v.as_i64()),
+        Some(2_220_000_000)
+    );
+    // Only the minimum set of fields we send.
+    let keys: std::collections::HashSet<&str> = body
+        .as_object()
+        .expect("object body")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    let expected: std::collections::HashSet<&str> =
+        ["ItemId", "PositionTicks"].into_iter().collect();
+    assert_eq!(keys, expected, "unexpected body keys: {keys:?}");
+}
+
+#[tokio::test]
+async fn report_playback_stopped_requires_authenticated_session() {
+    // No MockServer endpoints registered for /Sessions/Playing/Stopped:
+    // the auth guard must short-circuit before any HTTP call. We still
+    // point at a live MockServer so that a regression would surface as
+    // an unmatched-route error rather than silently hitting a real host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .report_playback_stopped("anything", 0)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =
