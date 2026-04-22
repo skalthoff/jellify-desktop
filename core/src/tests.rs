@@ -2346,8 +2346,9 @@ async fn toggle_favorite_dispatches_to_set_when_true() {
 
     let requests = server.received_requests().await.unwrap();
     assert!(
-        requests.iter().any(|r| r.method.as_str() == "POST"
-            && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "POST" && r.url.path() == "/UserFavoriteItems/item-xyz"),
         "expected POST to /UserFavoriteItems on toggle_favorite(true)"
     );
     assert!(
@@ -2392,8 +2393,9 @@ async fn toggle_favorite_dispatches_to_unset_when_false() {
     // Auth is also a POST — we only care that we don't hit the favorite
     // endpoint with POST.
     assert!(
-        !requests.iter().any(|r| r.method.as_str() == "POST"
-            && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        !requests
+            .iter()
+            .any(|r| r.method.as_str() == "POST" && r.url.path() == "/UserFavoriteItems/item-xyz"),
         "toggle_favorite(false) must not issue a POST to the favorite endpoint"
     );
 }
