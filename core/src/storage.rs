@@ -82,6 +82,13 @@ impl Database {
         Ok(row)
     }
 
+    pub fn delete_setting(&self, key: &str) -> Result<()> {
+        self.conn
+            .lock()
+            .execute("DELETE FROM settings WHERE key = ?1", params![key])?;
+        Ok(())
+    }
+
     pub fn record_play(&self, track_id: &str, played_at: i64) -> Result<()> {
         self.conn.lock().execute(
             "INSERT INTO play_history (track_id, played_at) VALUES (?1, ?2)",

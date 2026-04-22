@@ -135,9 +135,77 @@ impl JellifyCore {
             if let Some(server_id) = &session.server.id {
                 inner.db.set_setting("last_server_id", server_id)?;
             }
+            inner.db.set_setting("last_user_id", &session.user.id)?;
         }
         self.inner.lock().client = Some(client);
         Ok(session)
+    }
+
+    /// Rehydrate the previous session from persisted state. Returns
+    /// `Ok(Some(session))` when all of `last_server_url`, `last_username`,
+    /// `last_server_id`, `last_user_id`, and the keyring token for that
+    /// user/server pair are present; otherwise `Ok(None)` so the caller can
+    /// fall back to the login screen.
+    ///
+    /// Best-effort hydration: `server.name` and `user.primary_image_tag` are
+    /// left blank — the next library call will refresh them, and we do NOT
+    /// block this call on network availability so users launching offline
+    /// still see their cached library instantly.
+    pub fn resume_session(&self) -> std::result::Result<Option<Session>, JellifyError> {
+        let (device_id, device_name, server_url, username, server_id, user_id) = {
+            let inner = self.inner.lock();
+            let server_url = match inner.db.get_setting("last_server_url")? {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+            let username = match inner.db.get_setting("last_username")? {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+            let server_id = match inner.db.get_setting("last_server_id")? {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+            let user_id = match inner.db.get_setting("last_user_id")? {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+            (
+                inner.device_id.clone(),
+                inner.device_name.clone(),
+                server_url,
+                username,
+                server_id,
+                user_id,
+            )
+        };
+
+        let token = match CredentialStore::load_token(&server_id, &username)? {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+
+        let mut client = JellyfinClient::new(&server_url, device_id, device_name)?;
+        client.set_session(token.clone(), user_id.clone());
+        let resolved_url = client.base_url().to_string();
+        self.inner.lock().client = Some(client);
+
+        Ok(Some(Session {
+            server: Server {
+                url: resolved_url,
+                name: String::new(),
+                version: None,
+                id: Some(server_id.clone()),
+            },
+            user: User {
+                id: user_id,
+                name: username,
+                server_id: Some(server_id),
+                primary_image_tag: None,
+            },
+            access_token: token,
+            device_id: self.inner.lock().device_id.clone(),
+        }))
     }
 
     pub fn logout(&self) -> std::result::Result<(), JellifyError> {
@@ -149,6 +217,34 @@ impl JellifyCore {
             ) {
                 let _ = CredentialStore::delete_token(&server_id, &username);
             }
+            // Clearing persisted session pointers on an explicit logout so the
+            // next launch doesn't try to auto-restore a session the user just
+            // signed out of. `forget_token` is the softer variant that keeps
+            // the server URL / username around for a quick re-auth.
+            let _ = inner.db.delete_setting("last_server_url");
+            let _ = inner.db.delete_setting("last_username");
+            let _ = inner.db.delete_setting("last_server_id");
+            let _ = inner.db.delete_setting("last_user_id");
+        }
+        self.inner.lock().client = None;
+        self.player.clear();
+        Ok(())
+    }
+
+    /// Drop the stored access token (and the ids that key into it) without
+    /// wiping the remembered server URL / username. Used by the auth-expired
+    /// sheet so the login form pre-fills on the re-auth attempt.
+    pub fn forget_token(&self) -> std::result::Result<(), JellifyError> {
+        {
+            let inner = self.inner.lock();
+            if let (Ok(Some(server_id)), Ok(Some(username))) = (
+                inner.db.get_setting("last_server_id"),
+                inner.db.get_setting("last_username"),
+            ) {
+                let _ = CredentialStore::delete_token(&server_id, &username);
+            }
+            let _ = inner.db.delete_setting("last_server_id");
+            let _ = inner.db.delete_setting("last_user_id");
         }
         self.inner.lock().client = None;
         self.player.clear();
