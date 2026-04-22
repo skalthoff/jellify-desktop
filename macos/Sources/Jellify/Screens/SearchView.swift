@@ -17,39 +17,38 @@ struct SearchView: View {
                     searchField
                 }
                 if let results = model.searchResults {
-                    if !results.artists.isEmpty {
-                        section("Artists")
-                        VStack(spacing: 2) {
-                            ForEach(results.artists, id: \.id) { a in
-                                resultRow(title: a.name, subtitle: a.genres.first ?? "Artist", seed: a.name)
+                    if results.artists.isEmpty && results.albums.isEmpty && results.tracks.isEmpty {
+                        NoSearchResultsState(query: model.searchQuery)
+                    } else {
+                        if !results.artists.isEmpty {
+                            section("Artists")
+                            VStack(spacing: 2) {
+                                ForEach(results.artists, id: \.id) { a in
+                                    resultRow(title: a.name, subtitle: a.genres.first ?? "Artist", seed: a.name)
+                                }
+                            }
+                        }
+                        if !results.albums.isEmpty {
+                            section("Albums")
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 180))], alignment: .leading, spacing: 18) {
+                                ForEach(results.albums, id: \.id) { alb in
+                                    AlbumCard(album: alb)
+                                }
+                            }
+                        }
+                        if !results.tracks.isEmpty {
+                            section("Tracks")
+                            VStack(spacing: 0) {
+                                ForEach(Array(results.tracks.enumerated()), id: \.element.id) { idx, t in
+                                    TrackRow(
+                                        track: t,
+                                        number: idx + 1,
+                                        onPlay: { model.play(tracks: results.tracks, startIndex: idx) }
+                                    )
+                                }
                             }
                         }
                     }
-                    if !results.albums.isEmpty {
-                        section("Albums")
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 180))], alignment: .leading, spacing: 18) {
-                            ForEach(results.albums, id: \.id) { alb in
-                                AlbumCard(album: alb)
-                            }
-                        }
-                    }
-                    if !results.tracks.isEmpty {
-                        section("Tracks")
-                        VStack(spacing: 0) {
-                            ForEach(Array(results.tracks.enumerated()), id: \.element.id) { idx, t in
-                                TrackRow(
-                                    track: t,
-                                    number: idx + 1,
-                                    onPlay: { model.play(tracks: results.tracks, startIndex: idx) }
-                                )
-                            }
-                        }
-                    }
-                } else if !query.isEmpty {
-                    Text("No results")
-                        .font(Theme.font(13, weight: .medium))
-                        .foregroundStyle(Theme.ink3)
-                        .padding(.top, 40)
                 }
                 Spacer(minLength: 32)
             }
