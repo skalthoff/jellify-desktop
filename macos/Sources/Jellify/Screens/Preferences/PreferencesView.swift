@@ -2,46 +2,54 @@ import SwiftUI
 
 /// Top-level Preferences window. Presented via the `Settings { ... }` scene in
 /// `JellifyApp` so macOS handles the ⌘, shortcut and standard window behavior
-/// automatically. The shell (issue #258) started with every pane as a
-/// placeholder; real settings land in follow-up issues as they ship. Account
-/// (#259) is implemented in `PreferencesAccount.swift` and Playback (#260) in
-/// `PreferencesPlayback.swift`; the rest are still placeholders awaiting their
-/// respective tickets (#263 Appearance, #264 Library, #265 Downloads,
-/// #266 Keyboard, #267 Advanced).
+/// automatically.
+///
+/// Matches the native macOS System Settings two-pane layout: left sidebar
+/// lists sections, the right pane shows the currently selected one. Section
+/// order and naming come from the spec in `research/03-ux-patterns.md` — the
+/// shipping p0 set is **General / Server / Playback / Audio / Library /
+/// Appearance / Downloads / About**. Advanced, Keyboard, and Lyrics source
+/// live in follow-up work and intentionally aren't listed here yet.
+///
+/// Issues closed here: #114 (top-level org), #115 (Server section), #116
+/// (Playback gap-fill), #117 (Audio quality section). The Server pane
+/// incorporates the Account workflow previously split under its own sidebar
+/// entry (still available as `PreferencesAccount` for any other caller that
+/// wants the minimal account view).
 struct PreferencesView: View {
     enum Pane: String, CaseIterable, Hashable, Identifiable {
-        case account, general, playback, appearance, library, downloads, keyboard, advanced
+        case general, server, playback, audio, library, appearance, downloads, about
 
         var id: String { rawValue }
 
         var title: String {
             switch self {
-            case .account: return "Account"
             case .general: return "General"
+            case .server: return "Server"
             case .playback: return "Playback"
-            case .appearance: return "Appearance"
+            case .audio: return "Audio"
             case .library: return "Library"
+            case .appearance: return "Appearance"
             case .downloads: return "Downloads"
-            case .keyboard: return "Keyboard"
-            case .advanced: return "Advanced"
+            case .about: return "About"
             }
         }
 
         var icon: String {
             switch self {
-            case .account: return "person.circle"
             case .general: return "gearshape"
+            case .server: return "server.rack"
             case .playback: return "play.circle"
-            case .appearance: return "paintpalette"
+            case .audio: return "speaker.wave.2"
             case .library: return "music.note.list"
+            case .appearance: return "paintpalette"
             case .downloads: return "arrow.down.circle"
-            case .keyboard: return "keyboard"
-            case .advanced: return "wrench.and.screwdriver"
+            case .about: return "info.circle"
             }
         }
     }
 
-    @State private var selection: Pane = .account
+    @State private var selection: Pane = .general
 
     var body: some View {
         HStack(spacing: 0) {
@@ -59,20 +67,20 @@ struct PreferencesView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Theme.bg)
         }
-        .frame(width: 780, height: 520)
+        .frame(width: 780, height: 560)
     }
 
     @ViewBuilder
     private func pane(for selection: Pane) -> some View {
         switch selection {
-        case .account: PreferencesAccount()
-        case .general: GeneralPane()
+        case .general: PreferencesGeneral()
+        case .server: PreferencesServer()
         case .playback: PreferencesPlayback()
+        case .audio: PreferencesAudio()
+        case .library: PreferencesLibrary()
         case .appearance: AppearancePane()
-        case .library: LibraryPane()
-        case .downloads: DownloadsPane()
-        case .keyboard: KeyboardPane()
-        case .advanced: AdvancedPane()
+        case .downloads: PreferencesDownloads()
+        case .about: PreferencesAbout()
         }
     }
 }
@@ -140,74 +148,6 @@ private struct PreferencesNav: View {
         .buttonStyle(.plain)
         .accessibilityLabel(pane.title)
         .accessibilityAddTraits(active ? [.isSelected] : [])
-    }
-}
-
-// MARK: - Placeholder panes
-// Each pane is a thin shell; real content lands in follow-up issues.
-
-private struct PlaceholderPane: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(Theme.font(28, weight: .black, italic: true))
-                .foregroundStyle(Theme.ink)
-            Text(subtitle)
-                .font(Theme.font(13, weight: .medium))
-                .foregroundStyle(Theme.ink3)
-            Text("Coming soon…")
-                .font(Theme.font(13, weight: .semibold))
-                .foregroundStyle(Theme.ink2)
-                .padding(.top, 24)
-        }
-    }
-}
-
-private struct GeneralPane: View {
-    var body: some View {
-        PlaceholderPane(
-            title: "General",
-            subtitle: "Launch-at-login, menubar, and default window behavior."
-        )
-    }
-}
-
-private struct LibraryPane: View {
-    var body: some View {
-        PlaceholderPane(
-            title: "Library",
-            subtitle: "Refresh, resync, and local cache."
-        )
-    }
-}
-
-private struct DownloadsPane: View {
-    var body: some View {
-        PlaceholderPane(
-            title: "Downloads",
-            subtitle: "Offline storage location, quality, and limits."
-        )
-    }
-}
-
-private struct KeyboardPane: View {
-    var body: some View {
-        PlaceholderPane(
-            title: "Keyboard",
-            subtitle: "Shortcut editor for transport and navigation commands."
-        )
-    }
-}
-
-private struct AdvancedPane: View {
-    var body: some View {
-        PlaceholderPane(
-            title: "Advanced",
-            subtitle: "Logs, developer options, and experimental features."
-        )
     }
 }
 
