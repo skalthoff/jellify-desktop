@@ -85,7 +85,7 @@ struct AlbumDetailView: View {
             .overlay(alignment: .bottom) {
                 Rectangle().fill(Theme.border).frame(height: 1)
             }
-            .contextMenu { AlbumContextMenu(album: album) }
+            .contextMenu { AlbumContextMenu(album: album, showGoToAlbum: false) }
         }
     }
 

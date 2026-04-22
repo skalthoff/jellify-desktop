@@ -2,13 +2,20 @@ import SwiftUI
 @preconcurrency import JellifyCore
 
 /// Shared right-click / long-press context menu for playlist surfaces
-/// (sidebar rows + playlist detail hero, once those land).
+/// (sidebar rows, library grid cards, playlist detail hero).
 ///
-/// Issue: #313. Parallels `AlbumContextMenu` (#311). Many of the backing
-/// actions are TODO stubs pending follow-up FFI work: playlist mutation
-/// (#126 create, #130 update/rename, #131 delete), queue append (#282),
-/// favorites (#133), and the download engine (#70). See the individual
-/// `AppModel` methods for the full list of issue references.
+/// Menu order follows Apple Music + Spotify convention and the spec in #98:
+///
+///     Play, Shuffle, Play Next, Add to Queue
+///     ─
+///     Rename (inline), Duplicate, Delete (with confirm)
+///     ─
+///     Export as .m3u8…, Copy Link
+///
+/// The destructive Delete action opens a `.confirmationDialog` on the parent
+/// view via `AppModel.playlistPendingDelete`. Destructive mutations
+/// (rename, duplicate, delete) call through to BATCH-06 stubs in
+/// `AppModel`; those forward to real core calls when #126 / #130 / #131 land.
 struct PlaylistContextMenu: View {
     @Environment(AppModel.self) private var model
     let playlist: Playlist
@@ -21,18 +28,20 @@ struct PlaylistContextMenu: View {
 
         Divider()
 
-        Button("Favorite", systemImage: "heart") { model.toggleFavorite(playlist: playlist) }
-        Button("Download", systemImage: "arrow.down.circle") { model.enqueueDownload(playlist: playlist) }
-        Button("Rename…", systemImage: "pencil") { model.requestRename(playlist: playlist) }
+        Button("Rename", systemImage: "pencil") { model.requestRename(playlist: playlist) }
+        Button("Duplicate", systemImage: "plus.square.on.square") {
+            model.requestDuplicate(playlist: playlist)
+        }
         Button("Delete", systemImage: "trash", role: .destructive) {
-            model.requestDelete(playlist: playlist)
+            model.confirmDelete(playlist: playlist)
         }
 
         Divider()
 
-        Button("Share Link", systemImage: "link") { model.copyShareLink(playlist: playlist) }
-            .disabled(model.webURL(for: playlist) == nil)
-        Button("Show in Jellyfin", systemImage: "safari") { model.openInJellyfin(playlist: playlist) }
+        Button("Export as .m3u8…", systemImage: "square.and.arrow.up.on.square") {
+            model.exportPlaylist(playlist: playlist)
+        }
+        Button("Copy Link", systemImage: "link") { model.copyShareLink(playlist: playlist) }
             .disabled(model.webURL(for: playlist) == nil)
     }
 }

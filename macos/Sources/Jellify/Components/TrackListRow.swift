@@ -106,6 +106,7 @@ struct TrackListRow: View {
                 withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
             }
         }
+        .contextMenu { TrackContextMenu(selection: [track]) }
         .accessibilityLabel("\(track.name) by \(track.artistName)")
     }
 }
