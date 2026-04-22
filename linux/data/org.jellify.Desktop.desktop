@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Jellify
+Comment=Music player for Jellyfin
+Exec=jellify-desktop %U
+Icon=org.jellify.Desktop
+Type=Application
+Categories=AudioVideo;Audio;Player;GNOME;GTK;
+StartupNotify=true
+Keywords=music;audio;jellyfin;player;
+MimeType=x-scheme-handler/jellify;
+X-GNOME-UsesNotifications=true
