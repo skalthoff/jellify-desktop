@@ -976,12 +976,67 @@ final class AppModel {
         play(album: album)
     }
 
-    /// Toggle the favorite flag for an album on the Jellyfin server.
-    /// TODO: #133, #222 — wire through `set_favorite` / `unset_favorite` on
-    /// the core once the FFI surface exists.
+    /// In-memory favorite flag keyed by item id (album/track/artist/playlist).
+    /// Populated lazily: when the user toggles the heart on the album detail
+    /// screen we record the server's authoritative return value here, and the
+    /// UI reads this map rather than passing fragile per-screen state around.
+    ///
+    /// Not persisted across launches — the server is the source of truth and
+    /// a fresh load refetches. A future #133 follow-up hydrates this from
+    /// the initial library fetch so favourites show up without a per-item
+    /// round-trip.
+    var favoriteById: [String: Bool] = [:]
+
+    /// Toggle the favorite flag for an album on the Jellyfin server. Reads
+    /// the current state from `favoriteById` (falling back to `false` on a
+    /// cold start) and calls the opposite side of `set_favorite` /
+    /// `unset_favorite` on the core. The returned [`FavoriteState`] is the
+    /// server's authoritative answer and is written back to `favoriteById`
+    /// so the heart glyph reflects the saved state.
+    ///
+    /// Errors surface the generic `errorMessage` banner — a failed toggle is
+    /// rare enough that swallowing it would hide real trouble (token
+    /// revoked, network flapping), but not so load-bearing that we want a
+    /// modal.
     func toggleFavorite(album: Album) {
-        // TODO: #133 / #222 — set_favorite FFI not yet wired.
-        print("[AppModel] toggleFavorite(album:) not yet wired — see #133 / #222")
+        Task { await setFavorite(itemId: album.id, enabled: !isFavorite(id: album.id)) }
+    }
+
+    /// Toggle the favorite flag for a track. Same contract as
+    /// `toggleFavorite(album:)` — see its doc for the state-cache semantics.
+    func toggleFavorite(track: Track) {
+        Task { await setFavorite(itemId: track.id, enabled: !isFavorite(id: track.id)) }
+    }
+
+    /// Check the local favorite-state cache. Returns `false` when the item
+    /// hasn't been toggled this session — callers that need server truth on
+    /// first paint should trigger a refetch via #133 when that lands.
+    func isFavorite(id: String) -> Bool {
+        favoriteById[id] ?? false
+    }
+
+    /// Internal helper — hits `set_favorite` / `unset_favorite` on the core
+    /// and mirrors the server's answer into `favoriteById`. Kept private so
+    /// the public API stays `toggleFavorite(...)` and the desired-state
+    /// boolean is always computed at the call site.
+    private func setFavorite(itemId: String, enabled: Bool) async {
+        do {
+            let state = try await Task.detached(priority: .userInitiated) { [core] in
+                if enabled {
+                    return try core.setFavorite(itemId: itemId)
+                } else {
+                    return try core.unsetFavorite(itemId: itemId)
+                }
+            }.value
+            favoriteById[itemId] = state.isFavorite
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Favorite failed: \(error.localizedDescription)"
+        }
     }
 
     /// Enqueue a download of every track on the album.
@@ -993,10 +1048,123 @@ final class AppModel {
     }
 
     /// Present an "Add all to playlist" destination picker.
-    /// TODO: #72, #126, #222 — playlist picker sheet + create-playlist API.
+    ///
+    /// The album detail screen has its own inline popover that does the
+    /// actual picking; this entry point is kept for menu-bar / context-menu
+    /// callers that don't own a popover anchor. When the new
+    /// `addToPlaylist(...)` helper below lands for every surface, this
+    /// becomes a no-op wrapper.
+    /// TODO: #72, #126 — menu-bar picker sheet for surfaces without their
+    /// own popover anchor.
     func requestAddToPlaylist(album: Album) {
-        // TODO: #72 / #126 / #222 — playlist picker sheet not yet implemented.
-        print("[AppModel] requestAddToPlaylist(album:) not yet wired — see #72 / #126 / #222")
+        // TODO: #72 / #126 — standalone picker sheet for non-popover callers.
+        print("[AppModel] requestAddToPlaylist(album:) not yet wired — see #72 / #126")
+    }
+
+    /// Append a batch of tracks to an existing playlist via `add_to_playlist`
+    /// on the core. Used by the album detail popover (#222) and any other
+    /// caller that has already resolved a target playlist. Returns `true` on
+    /// success so UI can dismiss the popover / show a confirmation tick.
+    ///
+    /// Errors surface on `errorMessage` rather than throwing so the popover
+    /// can stay presentation-only. An empty `trackIds` short-circuits before
+    /// the FFI hop since the server would reject it anyway.
+    @discardableResult
+    func addToPlaylist(trackIds: [String], playlistId: String) async -> Bool {
+        guard !trackIds.isEmpty else { return false }
+        do {
+            try await Task.detached(priority: .userInitiated) { [core] in
+                try core.addToPlaylist(playlistId: playlistId, itemIds: trackIds)
+            }.value
+            serverReachability.noteSuccess()
+            return true
+        } catch {
+            if handleAuthError(error) { return false }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Add to playlist failed: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Fetch the album's hydrated detail fields (label, premiere date, and
+    /// aggregated People credits) via `fetch_item`. Returned as a compact
+    /// [`AlbumDetail`] value type so the view layer can render the
+    /// liner-note credits section (#65) without a second parse pass.
+    ///
+    /// Silent on errors: the liner-note section degrades to whatever fields
+    /// are present on the cached `Album` so a 404 or a stripped-down server
+    /// doesn't take down the whole detail page.
+    func loadAlbumDetail(albumId: String) async -> AlbumDetail {
+        do {
+            let json = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.fetchItem(
+                    itemId: albumId,
+                    fields: ["People", "Studios", "PremiereDate", "DateCreated", "ProductionYear"]
+                )
+            }.value
+            return Self.parseAlbumDetail(from: json)
+        } catch {
+            _ = handleAuthError(error)
+            return AlbumDetail(label: nil, releaseDate: nil, people: [])
+        }
+    }
+
+    /// Parse the subset of the album item JSON that the liner-note section
+    /// cares about. Static + internal so tests can hit it without wiring
+    /// the full model. Missing fields become `nil`; the parser never throws.
+    static func parseAlbumDetail(from json: String) -> AlbumDetail {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return AlbumDetail(label: nil, releaseDate: nil, people: [])
+        }
+
+        // Jellyfin ships `Studios` as an array of `{ Name, Id }` objects. Pick
+        // the first non-empty label — servers with multiple labels tend to
+        // list the primary one first.
+        let label: String? = {
+            guard let studios = root["Studios"] as? [[String: Any]] else { return nil }
+            for entry in studios {
+                if let name = entry["Name"] as? String {
+                    let trimmed = name.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty { return trimmed }
+                }
+            }
+            return nil
+        }()
+
+        // `PremiereDate` is an ISO 8601 string; fall back to `DateCreated`
+        // if absent. We only keep the yyyy-MM-dd portion since the hero
+        // already shows the year and the liner-note section wants "Released
+        // 19 Apr 2013".
+        let releaseDate: Date? = {
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            for key in ["PremiereDate", "DateCreated"] {
+                if let raw = root[key] as? String, !raw.isEmpty {
+                    if let d = iso.date(from: raw) { return d }
+                    iso.formatOptions = [.withInternetDateTime]
+                    if let d = iso.date(from: raw) { return d }
+                }
+            }
+            return nil
+        }()
+
+        let people: [Person] = {
+            guard let raw = root["People"] as? [[String: Any]] else { return [] }
+            return raw.compactMap { entry in
+                let name = (entry["Name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+                let type = (entry["Type"] as? String) ?? ""
+                let rawId = (entry["Id"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+                let id = rawId.isEmpty ? nil : rawId
+                guard !name.isEmpty else { return nil }
+                return Person(name: name, type: type, id: id)
+            }
+        }()
+
+        return AlbumDetail(label: label, releaseDate: releaseDate, people: people)
     }
 
     /// Navigate to the artist detail screen for this album's artist, if known.
@@ -1375,8 +1543,10 @@ final class AppModel {
         return raw.compactMap { entry in
             let name = (entry["Name"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
             let type = (entry["Type"] as? String) ?? ""
+            let rawId = (entry["Id"] as? String)?.trimmingCharacters(in: .whitespaces) ?? ""
+            let id = rawId.isEmpty ? nil : rawId
             guard !name.isEmpty else { return nil }
-            return Person(name: name, type: type)
+            return Person(name: name, type: type, id: id)
         }
     }
 
@@ -1430,4 +1600,23 @@ extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
     }
+}
+
+/// Hydrated album fields fetched on demand by
+/// `AppModel.loadAlbumDetail(albumId:)`. Lives in the AppModel file because
+/// its parser does; the album detail screen is the only consumer today.
+struct AlbumDetail: Equatable {
+    /// First non-empty entry in Jellyfin's `Studios` array — treated as the
+    /// record label in the liner-note section. `nil` when the field is
+    /// absent or empty.
+    let label: String?
+    /// Album release date parsed from `PremiereDate` (falling back to
+    /// `DateCreated`). `nil` when neither is parseable, in which case the
+    /// liner-note section leans on the cached `Album.year` for "Released".
+    let releaseDate: Date?
+    /// Aggregated `People` array from the album item — composers,
+    /// producers, mixers, engineers, etc. The album detail view groups
+    /// these by role. Empty when the server didn't populate `People` (a
+    /// surprising number don't).
+    let people: [Person]
 }

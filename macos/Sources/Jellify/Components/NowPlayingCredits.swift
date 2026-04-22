@@ -136,15 +136,29 @@ extension Credit {
     }
 }
 
-/// A contributor on a Jellyfin item, flattened from `BaseItemPerson`. Only
-/// the fields relevant to the Credits block are kept — `Id` and other
-/// metadata are dropped at the parse boundary so the UI layer stays narrow.
+/// A contributor on a Jellyfin item, flattened from `BaseItemPerson`. The
+/// fields kept here are the ones any of the Credits surfaces need — name and
+/// type are load-bearing, `id` is optional (not every server populates it,
+/// and the Now Playing card doesn't need it) but lets the album liner-note
+/// chips navigate to the artist detail screen when present.
 struct Person: Equatable {
     let name: String
     /// Jellyfin's `Type` enum as a raw string — kept untyped because new
     /// server versions can introduce new variants and we don't want a
     /// decoding failure to mask the whole Credits block.
     let type: String
+    /// Jellyfin's `Id` for this person, when the server returns one. The
+    /// id points at a `MusicArtist`-ish item for music credits, so the
+    /// album liner-note chips feed it straight into `screen = .artist(id)`.
+    /// Nil when the field is absent on the raw JSON — callers should render
+    /// the chip as non-interactive in that case.
+    let id: String?
+
+    init(name: String, type: String, id: String? = nil) {
+        self.name = name
+        self.type = type
+        self.id = id
+    }
 }
 
 #Preview("Credits — populated") {
