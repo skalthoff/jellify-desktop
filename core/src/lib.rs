@@ -238,6 +238,20 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.search(&query)))
     }
 
+    /// Fast typeahead search — backed by Jellyfin's `/Search/Hints`.
+    ///
+    /// Use this for debounced omnibox queries. It returns a single flat
+    /// list of [`SearchHint`] entries carrying the server-supplied `Type`
+    /// so the UI can split results into typed sections without extra
+    /// round-trips. Prefer [`JellifyCore::search`] for "see all results".
+    pub fn search_hints(
+        &self,
+        query: String,
+        limit: u32,
+    ) -> std::result::Result<SearchHintResults, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.search_hints(&query, limit)))
+    }
+
     /// Mark an item (track, album, artist, playlist) as a favorite for the
     /// current user. Returns the updated [`FavoriteState`] so the UI can
     /// refresh without refetching. Errors with

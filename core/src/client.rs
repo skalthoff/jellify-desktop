@@ -587,6 +587,47 @@ impl JellyfinClient {
         })
     }
 
+    /// Fast typeahead search backed by `GET /Search/Hints`.
+    ///
+    /// Unlike [`JellyfinClient::search`], which issues a full
+    /// `Users/{id}/Items` query and returns fully-hydrated records, this
+    /// endpoint returns the server's trimmed [`SearchHint`] DTO: just the
+    /// columns an omnibox/typeahead needs (`Name`, `Type`, `AlbumArtist`,
+    /// `PrimaryImageTag`, `MatchedTerm`, ...). That makes it the right
+    /// call for the debounced-per-keystroke case — cheap to fetch, cheap
+    /// to render, and the results include `Type`/`MediaType` so a single
+    /// flat list can be split into typed sections client-side.
+    ///
+    /// Scoped to music by default
+    /// (`includeItemTypes=Audio,MusicAlbum,MusicArtist,Playlist`). Requires
+    /// an authenticated session; returns [`JellifyError::NotAuthenticated`]
+    /// if no `user_id` is set.
+    pub async fn search_hints(&self, query: &str, limit: u32) -> Result<SearchHintResults> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Search/Hints")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("userId", user_id);
+            q.append_pair("searchTerm", query);
+            q.append_pair("includeItemTypes", "Audio,MusicAlbum,MusicArtist,Playlist");
+            q.append_pair("limit", &limit.max(1).to_string());
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawSearchHintResults = Self::check(resp).await?.json().await?;
+        Ok(SearchHintResults {
+            search_hints: raw.search_hints.into_iter().map(SearchHint::from).collect(),
+            total_record_count: raw.total_record_count,
+        })
+    }
+
     // ----- Streaming -----
 
     /// Fetch the full audio payload for a track, authenticated. Returns the
@@ -804,6 +845,70 @@ pub struct RawUserData {
     pub is_favorite: bool,
     #[serde(rename = "PlayCount", default)]
     pub play_count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawSearchHintResults {
+    #[serde(rename = "SearchHints", default)]
+    search_hints: Vec<RawSearchHint>,
+    #[serde(rename = "TotalRecordCount", default)]
+    total_record_count: u32,
+}
+
+#[derive(Debug, Deserialize)]
+struct RawSearchHint {
+    #[serde(rename = "Id")]
+    id: String,
+    #[serde(rename = "Name", default)]
+    name: String,
+    #[serde(rename = "Type")]
+    kind: Option<String>,
+    #[serde(rename = "MediaType")]
+    media_type: Option<String>,
+    #[serde(rename = "Album")]
+    album: Option<String>,
+    #[serde(rename = "AlbumId")]
+    album_id: Option<String>,
+    #[serde(rename = "AlbumArtist")]
+    album_artist: Option<String>,
+    #[serde(rename = "MatchedTerm")]
+    matched_term: Option<String>,
+    #[serde(rename = "PrimaryImageTag")]
+    primary_image_tag: Option<String>,
+    #[serde(rename = "ProductionYear")]
+    production_year: Option<i32>,
+    #[serde(rename = "IndexNumber")]
+    index_number: Option<u32>,
+    #[serde(rename = "ParentIndexNumber")]
+    parent_index_number: Option<u32>,
+    #[serde(rename = "RunTimeTicks")]
+    run_time_ticks: Option<u64>,
+    #[serde(rename = "Artists", default)]
+    artists: Vec<String>,
+    #[serde(rename = "IsFolder")]
+    is_folder: Option<bool>,
+}
+
+impl From<RawSearchHint> for SearchHint {
+    fn from(r: RawSearchHint) -> Self {
+        SearchHint {
+            id: r.id,
+            name: r.name,
+            kind: r.kind,
+            media_type: r.media_type,
+            album: r.album,
+            album_id: r.album_id,
+            album_artist: r.album_artist,
+            matched_term: r.matched_term,
+            primary_image_tag: r.primary_image_tag,
+            production_year: r.production_year,
+            index_number: r.index_number,
+            parent_index_number: r.parent_index_number,
+            runtime_ticks: r.run_time_ticks,
+            artists: r.artists,
+            is_folder: r.is_folder,
+        }
+    }
 }
 
 // ============================================================================
