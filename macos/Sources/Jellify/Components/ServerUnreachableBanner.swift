@@ -11,10 +11,32 @@ import SwiftUI
 /// left border, and a `Retry` action that refetches the library via
 /// `AppModel`. Hides automatically when a subsequent fetch succeeds
 /// (`ServerReachability.noteSuccess`).
+///
+/// ## Variants
+///
+/// - **Default** — `ServerUnreachableBanner(onRetry:)` renders the generic
+///   copy ("Can't reach your server.") for backwards compatibility with the
+///   existing call site in `MainShell`.
+/// - **Named server** — `ServerUnreachableBanner(host:onRetry:)` threads
+///   the configured host (optionally `host:port`) into the copy, matching
+///   issue #101's "Can't reach {server}. Trying again…" design.
 struct ServerUnreachableBanner: View {
+    /// Host (or `host:port`) displayed in the copy. `nil` falls back to the
+    /// generic "your server" wording.
+    let host: String?
     let onRetry: () -> Void
 
-    private let message = "Can't reach your server."
+    init(host: String? = nil, onRetry: @escaping () -> Void) {
+        self.host = host
+        self.onRetry = onRetry
+    }
+
+    private var message: String {
+        if let host, !host.isEmpty {
+            return "Can't reach \(host). Trying again\u{2026}"
+        }
+        return "Can't reach your server."
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -64,8 +86,16 @@ struct ServerUnreachableBanner: View {
     }
 }
 
-#Preview("Server unreachable banner") {
+#Preview("Server unreachable — generic") {
     ServerUnreachableBanner(onRetry: {})
+        .frame(width: 720)
+        .padding()
+        .background(Theme.bg)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Server unreachable — named host") {
+    ServerUnreachableBanner(host: "jellyfin.example.com:8096", onRetry: {})
         .frame(width: 720)
         .padding()
         .background(Theme.bg)

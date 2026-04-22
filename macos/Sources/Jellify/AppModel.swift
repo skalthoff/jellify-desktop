@@ -182,6 +182,19 @@ final class AppModel {
     /// tracked separately in #440 — this flag only powers the prompt.
     var authExpired: Bool = false
 
+    /// Toggled `true` for a brief window when a track fails to stream, so the
+    /// `PlayerBar` can flash a 10% danger tint as a peripheral-vision cue.
+    /// `StreamErrorToast` is the foreground surface; this flag is the
+    /// subtle accompanying signal (see issue #302).
+    ///
+    /// The toast + flash pair is published here so the reliability wiring
+    /// (`BATCH-21`) can flip it without reaching into view code. `PlayerBar`
+    /// observes the flag via the usual `@Environment(AppModel.self)` channel;
+    /// callers that raise an error should flip this on, then flip it off
+    /// after ~2s (the flash duration). No animation is driven from here — the
+    /// consumer owns the tween.
+    var streamErrorFlash: Bool = false
+
     init() throws {
         let core = try JellifyCore(
             config: CoreConfig(dataDir: "", deviceName: "Jellify macOS")

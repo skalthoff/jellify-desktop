@@ -6,10 +6,32 @@ import SwiftUI
 /// border, and a `Retry` action that re-evaluates network state and refetches
 /// the library via `AppModel`. The banner hides automatically when
 /// connectivity returns (debounced by `NetworkMonitor`).
+///
+/// ## Variants
+///
+/// - **Default** — `OfflineBanner(onRetry:)` renders the generic offline
+///   message: "You're offline. Playing from downloaded tracks only."
+/// - **Named server** — `OfflineBanner(host:onRetry:)` renders the
+///   issue-#101 copy: "Can't reach {host}. Trying again…" with the same
+///   Retry action. Use this when the caller knows the configured server
+///   host and wants to thread that into the copy.
 struct OfflineBanner: View {
+    /// Optional server host/URL surfaced in the copy. When `nil`, falls
+    /// back to the generic offline message.
+    let host: String?
     let onRetry: () -> Void
 
-    private let message = "You're offline. Playing from downloaded tracks only."
+    init(host: String? = nil, onRetry: @escaping () -> Void) {
+        self.host = host
+        self.onRetry = onRetry
+    }
+
+    private var message: String {
+        if let host, !host.isEmpty {
+            return "Can't reach \(host). Trying again\u{2026}"
+        }
+        return "You're offline. Playing from downloaded tracks only."
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -59,8 +81,16 @@ struct OfflineBanner: View {
     }
 }
 
-#Preview("Offline banner") {
+#Preview("Offline banner — generic") {
     OfflineBanner(onRetry: {})
+        .frame(width: 720)
+        .padding()
+        .background(Theme.bg)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Offline banner — named server (#101)") {
+    OfflineBanner(host: "jellyfin.example.com", onRetry: {})
         .frame(width: 720)
         .padding()
         .background(Theme.bg)
