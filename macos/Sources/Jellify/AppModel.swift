@@ -154,6 +154,54 @@ final class AppModel {
     /// regardless of which view / keystroke triggered the original fetch.
     var searchTask: Task<Void, Never>?
 
+    // MARK: - Full search page (#86 / #242 / #244 / #245 / #246)
+    //
+    // State specific to `SearchView`'s full-page surface. Kept distinct from
+    // `searchResults` (which may later back the toolbar instant dropdown)
+    // so the two can evolve independently — the page supports scope filters,
+    // per-section pagination and persistent recents; the instant dropdown
+    // is a lightweight top-result affordance.
+
+    /// Per-scope buckets of results for the full search page. Keyed by the
+    /// `SearchScope.storageKey` string ("artists", "albums", "tracks",
+    /// "playlists", "genres") so it round-trips cleanly through
+    /// `@Observable` without needing a dedicated record type. Missing keys
+    /// render as "nothing here for this scope yet".
+    var searchPageResults: [String: [SearchItem]] = [:]
+
+    /// The query that drove `searchPageResults`. Stored separately from
+    /// `searchQuery` so the page doesn't race with whatever the instant
+    /// dropdown is showing when that surface lands.
+    var searchPageQuery: String = ""
+
+    /// Scope chip the user has selected on the full search page. `.all`
+    /// shows every section; anything else filters the page down to a single
+    /// typed section. See #242.
+    var activeSearchScope: SearchScope = .all
+
+    /// Server-reported `TotalRecordCount` for the current page search.
+    /// Used by "Load more" to decide whether a follow-up fetch would yield
+    /// new rows from the server vs. just drawing from already-buffered
+    /// bucket contents.
+    var searchPageTotal: UInt32 = 0
+
+    /// Combined count of raw items we've pulled from the server for this
+    /// query. Paired with `searchPageTotal` to drive backend pagination
+    /// when the visible-per-section cap runs out of buffered items.
+    var searchPageLoaded: Int = 0
+
+    /// A full-search pass is in flight. Views use this to show a spinner
+    /// and to debounce re-entrant submits from the Return key.
+    var isLoadingFullSearch: Bool = false
+
+    /// Combined page size for `runFullSearch`. Chosen so each typed
+    /// section (artists / albums / tracks) usually gets well above the
+    /// "~20 per category" the UI aims to display without needing a
+    /// follow-up fetch. Jellyfin's `/Items` endpoint returns MusicArtist,
+    /// MusicAlbum, and Audio in one response, so the bucket sizes vary by
+    /// query — 100 is a practical middle ground.
+    private let searchPagePageSize: UInt32 = 100
+
     /// Collection-view id of the Jellyfin "Playlists" library. Resolved
     /// lazily on first `refreshPlaylists()` — see `ensurePlaylistLibraryId`.
     /// Cached across the session; cleared on logout.
@@ -659,9 +707,17 @@ final class AppModel {
         favoriteAlbumsVisible = []
         searchResults = nil
         searchQuery = ""
+
         instantSearchResults = .empty
         searchTask?.cancel()
         searchTask = nil
+        searchPageResults = [:]
+        searchPageQuery = ""
+        activeSearchScope = .all
+        searchPageTotal = 0
+        searchPageLoaded = 0
+        isLoadingFullSearch = false
+
         currentTrackPeople = []
         currentTrackPeopleForId = nil
         currentLyrics = nil
@@ -706,9 +762,17 @@ final class AppModel {
         favoriteAlbumsVisible = []
         searchResults = nil
         searchQuery = ""
+
         instantSearchResults = .empty
         searchTask?.cancel()
         searchTask = nil
+        searchPageResults = [:]
+        searchPageQuery = ""
+        activeSearchScope = .all
+        searchPageTotal = 0
+        searchPageLoaded = 0
+        isLoadingFullSearch = false
+
         currentTrackPeople = []
         currentTrackPeopleForId = nil
         currentLyrics = nil
@@ -1969,6 +2033,7 @@ final class AppModel {
         }
     }
 
+
     /// Debounced instant search for the dropdown shown under the toolbar
     /// search field. Cancels any previous in-flight pass, waits 250ms for
     /// more keystrokes, then hits `core.search`. On success we rank a
@@ -2078,6 +2143,189 @@ final class AppModel {
             if pa != pb { return pa > pb }
             return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
         }
+    }
+
+    /// Drive the full Search page (`SearchView`). Issues a combined-type
+    /// search against Jellyfin, buckets results into `searchPageResults`
+    /// by scope key, and stores the active scope so the view's scope chips
+    /// can render without re-querying. Called on Return-key commit in the
+    /// field, and again when the user taps a scope chip.
+    ///
+    /// The underlying `core.search` endpoint returns MusicArtist,
+    /// MusicAlbum, and Audio mixed together with a single total — there
+    /// is no per-kind pagination on the server. `searchPagePageSize` is
+    /// large enough that each typed section typically fills well past the
+    /// "~20 per category" the page aims for. Callers hit `loadMoreFullSearch`
+    /// to request another combined page when the user has exhausted the
+    /// local buffer within a section.
+    ///
+    /// Genres are derived client-side from the `genres` arrays on albums
+    /// and artists since Jellyfin doesn't return them as standalone items
+    /// on this endpoint. Playlists are likewise not returned today — the
+    /// bucket stays empty until the core exposes them via `search`, at
+    /// which point the view already knows how to render them.
+    ///
+    /// Issues: #86 (full results page), #242 (scope chips), #244 (sections
+    /// layout), #245 (zero-results state).
+    func runFullSearch(query: String, scope: SearchScope) async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeSearchScope = scope
+        searchPageQuery = trimmed
+
+        guard !trimmed.isEmpty else {
+            searchPageResults = [:]
+            searchPageTotal = 0
+            searchPageLoaded = 0
+            isLoadingFullSearch = false
+            return
+        }
+
+        isLoadingFullSearch = true
+        defer { isLoadingFullSearch = false }
+        do {
+            let pageSize = searchPagePageSize
+            let results = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.search(query: trimmed, offset: 0, limit: pageSize)
+            }.value
+            searchPageResults = Self.bucketSearchResults(results)
+            searchPageTotal = results.totalRecordCount
+            searchPageLoaded = results.artists.count + results.albums.count + results.tracks.count
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Search failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Fetch another combined page for the current full-search query.
+    /// Invoked by the "Load more" button on a scope tab when that tab has
+    /// already revealed every buffered item but the server still reports
+    /// more matches overall. Merges the new page into `searchPageResults`
+    /// with per-id dedupe so flaky ordering on Jellyfin's side doesn't
+    /// double a row. No-op when the buckets already cover `searchPageTotal`.
+    func loadMoreFullSearch() async {
+        guard !isLoadingFullSearch, !searchPageQuery.isEmpty else { return }
+        guard searchPageLoaded < Int(searchPageTotal) else { return }
+        isLoadingFullSearch = true
+        defer { isLoadingFullSearch = false }
+        let offset = UInt32(searchPageLoaded)
+        let query = searchPageQuery
+        do {
+            let pageSize = searchPagePageSize
+            let page = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.search(query: query, offset: offset, limit: pageSize)
+            }.value
+
+            var merged = searchPageResults
+            let incoming = Self.bucketSearchResults(page)
+            for (key, newItems) in incoming {
+                var existing = merged[key] ?? []
+                var seen = Set(existing.map(\.id))
+                for item in newItems where seen.insert(item.id).inserted {
+                    existing.append(item)
+                }
+                merged[key] = existing
+            }
+            searchPageResults = merged
+            searchPageTotal = page.totalRecordCount
+            searchPageLoaded += page.artists.count + page.albums.count + page.tracks.count
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Search failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Partition a core `SearchResults` into the per-scope buckets the
+    /// full search page renders. Genres are reconstructed from the
+    /// `genres` arrays that Jellyfin attaches to albums and artists —
+    /// we dedupe and alpha-sort so the Genres chip has something useful
+    /// to show even though the API doesn't return genre items directly.
+    nonisolated static func bucketSearchResults(_ results: SearchResults) -> [String: [SearchItem]] {
+        var buckets: [String: [SearchItem]] = [:]
+        buckets[SearchScope.artists.storageKey] = results.artists.map(SearchItem.artist)
+        buckets[SearchScope.albums.storageKey] = results.albums.map(SearchItem.album)
+        buckets[SearchScope.tracks.storageKey] = results.tracks.map(SearchItem.track)
+        // Playlists aren't surfaced by the current `core.search` endpoint.
+        // Leave the bucket absent; the view renders an empty scope state
+        // for the user when the Playlists chip is active.
+        buckets[SearchScope.playlists.storageKey] = []
+        // Genres: harvest distinct names from every album and artist in
+        // the response. Uses case-insensitive de-dupe so "Rock" vs "rock"
+        // collapse to a single chip-worthy entry.
+        var seenGenres = Set<String>()
+        var genreItems: [SearchItem] = []
+        let allGenres = results.albums.flatMap(\.genres) + results.artists.flatMap(\.genres)
+        for raw in allGenres {
+            let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty else { continue }
+            let key = name.lowercased()
+            guard seenGenres.insert(key).inserted else { continue }
+            genreItems.append(.genre(Genre(name: name)))
+        }
+        genreItems.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        buckets[SearchScope.genres.storageKey] = genreItems
+        return buckets
+    }
+
+    /// Append a committed query to the recent-searches `@AppStorage` list,
+    /// deduping and capping to the 10-most-recent. The view owns the
+    /// storage binding; this helper mutates the decoded list in-place so
+    /// the JSON round-trip stays in one place.
+    ///
+    /// Uses `String` (rather than `[String]`) storage because
+    /// `@AppStorage` doesn't support arrays directly. The view decodes on
+    /// read, encodes on write.
+    static func addRecentSearch(_ query: String, into json: inout String) {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var list = decodeRecentSearches(json)
+        list.removeAll { $0.caseInsensitiveCompare(trimmed) == .orderedSame }
+        list.insert(trimmed, at: 0)
+        if list.count > 10 {
+            list = Array(list.prefix(10))
+        }
+        json = encodeRecentSearches(list)
+    }
+
+    /// Remove a single term from the recent-searches list. Used by the
+    /// per-row × button in the empty-query state. Mutates the shared JSON
+    /// string so the caller's `@AppStorage` binding picks up the change.
+    static func removeRecentSearch(_ query: String, from json: inout String) {
+        var list = decodeRecentSearches(json)
+        list.removeAll { $0.caseInsensitiveCompare(query) == .orderedSame }
+        json = encodeRecentSearches(list)
+    }
+
+    /// Reset the recent-searches list. Wired to the "Clear history" footer
+    /// button under the recents list.
+    static func clearRecentSearches(_ json: inout String) {
+        json = "[]"
+    }
+
+    /// Decode the recents JSON into a plain `[String]`. Returns `[]` on
+    /// malformed data so a stale shape from a prior build doesn't prevent
+    /// the page from rendering.
+    static func decodeRecentSearches(_ json: String) -> [String] {
+        guard let data = json.data(using: .utf8),
+              let decoded = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return decoded
+    }
+
+    /// Encode a `[String]` back to the JSON string `@AppStorage` persists.
+    private static func encodeRecentSearches(_ list: [String]) -> String {
+        guard let data = try? JSONEncoder().encode(list),
+              let s = String(data: data, encoding: .utf8)
+        else { return "[]" }
+        return s
+
     }
 
     func imageURL(for itemID: String, tag: String?, maxWidth: UInt32 = 400) -> URL? {
@@ -3295,6 +3543,59 @@ struct AlbumDetail: Equatable {
     /// surprising number don't).
     let people: [Person]
 }
+
+// MARK: - Full search page types
+//
+// Types owned by the full `SearchView` page. Kept in the AppModel file so
+// the ranker / bucketer that produce them live in the same place as the
+// state they drive.
+
+/// Scope chip on the full search page. Distinct from any instant-dropdown
+/// scoping — this is the "I committed to a search, now let me filter
+/// sections" tab. Spec: #242.
+///
+/// `storageKey` is the string used as the `searchPageResults` dictionary
+/// key. `All` is a virtual scope that unions the typed buckets, so it
+/// doesn't correspond to a storage bucket.
+enum SearchScope: String, Hashable, CaseIterable, Sendable {
+    case all
+    case artists
+    case albums
+    case tracks
+    case playlists
+    case genres
+
+    /// Label rendered on the chip and in accessibility text.
+    var label: String {
+        switch self {
+        case .all: return "All"
+        case .artists: return "Artists"
+        case .albums: return "Albums"
+        case .tracks: return "Tracks"
+        case .playlists: return "Playlists"
+        case .genres: return "Genres"
+        }
+    }
+
+    /// Key into `AppModel.searchPageResults`. `all` has no bucket — the
+    /// page renders every scope's bucket in sequence when `.all` is active.
+    var storageKey: String {
+        rawValue
+    }
+
+    /// Section header copy shown above the bucket on the full page. Singular
+    /// vs plural matches the label; kept as a property so copy changes land
+    /// in one place.
+    var sectionHeader: String {
+        label
+    }
+}
+
+// NOTE: `SearchItem` is defined above (next to `InstantSearchResults`) with
+// `case genre(Genre)`. The full-page search surface below uses that same
+// type — the duplicate `case genre(String)` variant originally added here
+// was collapsed into the canonical enum when #535 (instant dropdown, which
+// introduced `Genre`) landed alongside this PR.
 
 // MARK: - MediaSessionDelegate
 
