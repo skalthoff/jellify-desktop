@@ -157,19 +157,25 @@ impl JellifyCore {
 
     // ---------- Library ----------
 
+    /// Albums in the user's library, paginated.
+    ///
+    /// Returns a [`PaginatedAlbums`] whose `total_count` is the full server
+    /// total so callers can drive "N of M" indicators and near-end
+    /// load-more triggers without issuing a separate count query.
     pub fn list_albums(
         &self,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<Vec<Album>, JellifyError> {
+    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.albums(Paging::new(offset, limit))))
     }
 
+    /// Artists in the user's library, paginated. See [`list_albums`].
     pub fn list_artists(
         &self,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<Vec<Artist>, JellifyError> {
+    ) -> std::result::Result<PaginatedArtists, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.artists(Paging::new(offset, limit))))
     }
 
@@ -182,12 +188,23 @@ impl JellifyCore {
     /// Server-side filtering respects the user's parental controls; the
     /// response is grouped by album so loose tracks never appear. Callers
     /// resolve `library_id` (the music collection view id) once at sign-in.
+    ///
+    /// Pagination caveat: Jellyfin's `/Items/Latest` endpoint does not
+    /// accept `StartIndex`, so `offset` is applied client-side by slicing
+    /// the top of the returned "most-recent" window. See
+    /// [`JellyfinClient::latest_albums`] for details. `total_count` on the
+    /// returned [`PaginatedAlbums`] is the number of items the server
+    /// returned for this request, not the library total.
     pub fn latest_albums(
         &self,
         library_id: String,
+        offset: u32,
         limit: u32,
-    ) -> std::result::Result<Vec<Album>, JellifyError> {
-        self.with_client(|c| self.runtime.block_on(c.latest_albums(&library_id, limit)))
+    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.latest_albums(&library_id, Paging::new(offset, limit)))
+        })
     }
 
     /// Recently played tracks for the current user, sorted by server-side
@@ -198,7 +215,7 @@ impl JellifyCore {
         music_library_id: Option<String>,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<Vec<Track>, JellifyError> {
+    ) -> std::result::Result<PaginatedTracks, JellifyError> {
         self.with_client(|c| {
             self.runtime.block_on(
                 c.recently_played(music_library_id.as_deref(), Paging::new(offset, limit)),
@@ -207,13 +224,16 @@ impl JellifyCore {
     }
 
     /// Playlists owned by the current user. Filtered client-side based on
-    /// whether `Path` contains `/data/` (profile directory).
+    /// whether `Path` contains `/data/` (profile directory). `total_count`
+    /// on the returned [`PaginatedPlaylists`] is the server's unfiltered
+    /// count across both user- and public-owned playlists — see
+    /// [`JellyfinClient::user_playlists`].
     pub fn user_playlists(
         &self,
         playlist_library_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<Vec<Playlist>, JellifyError> {
+    ) -> std::result::Result<PaginatedPlaylists, JellifyError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.user_playlists(&playlist_library_id, Paging::new(offset, limit)))
@@ -227,7 +247,7 @@ impl JellifyCore {
         playlist_library_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<Vec<Playlist>, JellifyError> {
+    ) -> std::result::Result<PaginatedPlaylists, JellifyError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.public_playlists(&playlist_library_id, Paging::new(offset, limit)))
@@ -236,21 +256,35 @@ impl JellifyCore {
 
     /// Tracks on a playlist, in the server's playlist order. Pass `offset`
     /// and `limit` for paging; the underlying `/Items` request does NOT sort
-    /// server-side so the playlist's stored order is preserved.
+    /// server-side so the playlist's stored order is preserved. The
+    /// returned [`PaginatedTracks`] carries the server total so callers can
+    /// drive a page-until-done loop.
     pub fn playlist_tracks(
         &self,
         playlist_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<Vec<Track>, JellifyError> {
+    ) -> std::result::Result<PaginatedTracks, JellifyError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.playlist_tracks(&playlist_id, Paging::new(offset, limit)))
         })
     }
 
-    pub fn search(&self, query: String) -> std::result::Result<SearchResults, JellifyError> {
-        self.with_client(|c| self.runtime.block_on(c.search(&query)))
+    /// Full-search query. Returns hydrated records split into typed
+    /// sections (artists / albums / tracks), plus `total_record_count` so
+    /// the UI can offer "Show all N results" affordances when more are
+    /// available past the current page.
+    pub fn search(
+        &self,
+        query: String,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<SearchResults, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.search(&query, Paging::new(offset, limit)))
+        })
     }
 
     /// Fast typeahead search — backed by Jellyfin's `/Search/Hints`.
@@ -259,12 +293,19 @@ impl JellifyCore {
     /// list of [`SearchHint`] entries carrying the server-supplied `Type`
     /// so the UI can split results into typed sections without extra
     /// round-trips. Prefer [`JellifyCore::search`] for "see all results".
+    ///
+    /// `offset` maps to Jellyfin's `startIndex`; `total_record_count` on
+    /// the returned [`SearchHintResults`] is stable across pages.
     pub fn search_hints(
         &self,
         query: String,
+        offset: u32,
         limit: u32,
     ) -> std::result::Result<SearchHintResults, JellifyError> {
-        self.with_client(|c| self.runtime.block_on(c.search_hints(&query, limit)))
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.search_hints(&query, Paging::new(offset, limit)))
+        })
     }
 
     /// Mark an item (track, album, artist, playlist) as a favorite for the

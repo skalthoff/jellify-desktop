@@ -123,19 +123,21 @@ async fn recently_played_builds_query_and_parses() {
                     "ImageTags": { "Primary": "img" }
                 }
             ],
-            "TotalRecordCount": 1
+            "TotalRecordCount": 1234
         })))
         .mount(&server)
         .await;
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let tracks = client
+    let page = client
         .recently_played(Some("lib-1"), Paging::new(0, 50))
         .await
         .unwrap();
 
-    assert_eq!(tracks.len(), 1);
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.total_count, 1234);
+    let tracks = page.items;
     assert_eq!(tracks[0].name, "Echo");
     assert_eq!(tracks[0].play_count, 3);
 
@@ -225,6 +227,101 @@ async fn albums_uses_paging() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let _ = client.albums(Paging::new(10, 50)).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("Limit=50"), "query: {q}");
+    assert!(q.contains("StartIndex=10"), "query: {q}");
+    assert!(q.contains("IncludeItemTypes=MusicAlbum"), "query: {q}");
+}
+
+#[tokio::test]
+async fn albums_exposes_total_record_count() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "a1", "Name": "First", "Type": "MusicAlbum",
+                    "AlbumArtist": "Artist",
+                    "ProductionYear": 2020, "ChildCount": 8,
+                    "ImageTags": { "Primary": "t1" }
+                },
+                {
+                    "Id": "a2", "Name": "Second", "Type": "MusicAlbum",
+                    "AlbumArtist": "Artist",
+                    "ProductionYear": 2021, "ChildCount": 10,
+                    "ImageTags": { "Primary": "t2" }
+                }
+            ],
+            "TotalRecordCount": 4321
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client.albums(Paging::new(0, 2)).await.unwrap();
+    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.total_count, 4321);
+    assert_eq!(page.items[0].name, "First");
+    assert_eq!(page.items[1].name, "Second");
+}
+
+#[tokio::test]
+async fn artists_exposes_total_record_count_and_paging() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Artists/AlbumArtists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "ar1", "Name": "Colleen", "Type": "MusicArtist",
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 999
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client.artists(Paging::new(25, 100)).await.unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.total_count, 999);
+    assert_eq!(page.items[0].name, "Colleen");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("Limit=100"), "query: {q}");
+    assert!(q.contains("StartIndex=25"), "query: {q}");
+    assert!(q.contains("IncludeItemTypes=MusicArtist"), "query: {q}");
 }
 
 #[tokio::test]
@@ -302,8 +399,15 @@ async fn latest_albums_builds_expected_query_and_parses_unwrapped_array() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let albums = client.latest_albums("lib-music", 24).await.unwrap();
+    let page = client
+        .latest_albums("lib-music", Paging::new(0, 24))
+        .await
+        .unwrap();
+    let albums = page.items;
     assert_eq!(albums.len(), 2);
+    // `/Items/Latest` doesn't report TotalRecordCount, so `total_count` is
+    // the raw number of items the server returned for this request.
+    assert_eq!(page.total_count, 2);
     assert_eq!(albums[0].name, "The Deep End");
     assert_eq!(albums[0].artist_name, "Saloli");
     assert_eq!(albums[0].year, Some(2020));
@@ -314,9 +418,63 @@ async fn latest_albums_builds_expected_query_and_parses_unwrapped_array() {
 }
 
 #[tokio::test]
+async fn latest_albums_applies_offset_client_side() {
+    // `/Items/Latest` doesn't support `StartIndex`, so `latest_albums`
+    // fetches `offset + limit` items and slices the tail client-side.
+    // The server sees `Limit=offset+limit` on the outbound request.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items/Latest"))
+        .respond_with(|req: &Request| {
+            let pairs: std::collections::HashMap<_, _> =
+                req.url.query_pairs().into_owned().collect();
+            // `Limit` is the requested offset+limit so the slice has what to
+            // skip. `StartIndex` must NOT be sent — the endpoint rejects it.
+            assert_eq!(pairs.get("Limit").map(String::as_str), Some("7"));
+            assert!(
+                !pairs.contains_key("StartIndex"),
+                "latest_albums must not send StartIndex"
+            );
+            ResponseTemplate::new(200).set_body_json(json!([
+                { "Id": "a1", "Name": "One", "Type": "MusicAlbum", "ImageTags": {} },
+                { "Id": "a2", "Name": "Two", "Type": "MusicAlbum", "ImageTags": {} },
+                { "Id": "a3", "Name": "Three", "Type": "MusicAlbum", "ImageTags": {} },
+                { "Id": "a4", "Name": "Four", "Type": "MusicAlbum", "ImageTags": {} },
+                { "Id": "a5", "Name": "Five", "Type": "MusicAlbum", "ImageTags": {} },
+                { "Id": "a6", "Name": "Six", "Type": "MusicAlbum", "ImageTags": {} },
+                { "Id": "a7", "Name": "Seven", "Type": "MusicAlbum", "ImageTags": {} }
+            ]))
+        })
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    // offset=4, limit=3 → request Limit=7, skip 4, take 3 → items 5..7
+    let page = client
+        .latest_albums("lib-music", Paging::new(4, 3))
+        .await
+        .unwrap();
+    let names: Vec<&str> = page.items.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(names, vec!["Five", "Six", "Seven"]);
+    assert_eq!(page.total_count, 7);
+}
+
+#[tokio::test]
 async fn latest_albums_requires_authenticated_session() {
     let client = JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
-    let err = client.latest_albums("lib-music", 24).await.unwrap_err();
+    let err = client
+        .latest_albums("lib-music", Paging::new(0, 24))
+        .await
+        .unwrap_err();
     assert!(
         matches!(err, crate::error::JellifyError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
@@ -365,12 +523,17 @@ async fn user_playlists_filters_to_data_path_and_builds_query() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let playlists = client
+    let page = client
         .user_playlists("lib-pl", Paging::new(5, 20))
         .await
         .unwrap();
+    let playlists = page.items;
 
     assert_eq!(playlists.len(), 1);
+    // `total_count` surfaces the server's unfiltered TotalRecordCount —
+    // the paging UI needs this to know when a follow-up page would yield
+    // more results even if the client-side /data/ filter removed some.
+    assert_eq!(page.total_count, 2);
     assert_eq!(playlists[0].id, "p1");
     assert_eq!(playlists[0].name, "My Mix");
     assert_eq!(playlists[0].track_count, 12);
@@ -415,14 +578,16 @@ async fn public_playlists_filters_out_data_path() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let playlists = client
+    let page = client
         .public_playlists("lib-pl", Paging::new(0, 50))
         .await
         .unwrap();
+    let playlists = page.items;
 
     // Both the community playlist (non-/data/ path) and the playlist with no
     // `Path` at all are treated as public — absence cannot prove ownership.
     assert_eq!(playlists.len(), 2);
+    assert_eq!(page.total_count, 3);
     let ids: Vec<&str> = playlists.iter().map(|p| p.id.as_str()).collect();
     assert!(ids.contains(&"p2"), "public_playlists should include p2");
     assert!(ids.contains(&"p3"), "public_playlists should include p3");
@@ -460,8 +625,10 @@ async fn user_playlists_empty_when_server_returns_no_items() {
         .public_playlists("lib-pl", Paging::new(0, 50))
         .await
         .unwrap();
-    assert!(user.is_empty());
-    assert!(public.is_empty());
+    assert!(user.items.is_empty());
+    assert_eq!(user.total_count, 0);
+    assert!(public.items.is_empty());
+    assert_eq!(public.total_count, 0);
 }
 
 #[tokio::test]
@@ -557,13 +724,15 @@ async fn playlist_tracks_preserves_order_and_builds_query() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let tracks = client
+    let page = client
         .playlist_tracks("pl-1", Paging::new(0, 50))
         .await
         .unwrap();
+    let tracks = page.items;
 
     // Server order must be preserved exactly.
     assert_eq!(tracks.len(), 3);
+    assert_eq!(page.total_count, 3);
     assert_eq!(tracks[0].id, "t1");
     assert_eq!(tracks[0].name, "First");
     assert_eq!(tracks[1].id, "t2");
@@ -590,18 +759,21 @@ async fn playlist_tracks_uses_paging() {
         .and(query_param("StartIndex", "10"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "Items": [],
-            "TotalRecordCount": 0
+            "TotalRecordCount": 1200
         })))
         .mount(&server)
         .await;
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let tracks = client
+    let page = client
         .playlist_tracks("pl-1", Paging::new(10, 25))
         .await
         .unwrap();
-    assert!(tracks.is_empty());
+    assert!(page.items.is_empty());
+    // Even when this page is empty, callers can still see there's more to
+    // fetch — important for the "page until total_count" loop in AppModel.
+    assert_eq!(page.total_count, 1200);
 }
 
 #[tokio::test]
@@ -742,6 +914,7 @@ async fn search_hints_builds_expected_query_and_parses() {
             "Audio,MusicAlbum,MusicArtist,Playlist",
         ))
         .and(query_param("limit", "24"))
+        .and(query_param("startIndex", "0"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "SearchHints": [
                 {
@@ -788,7 +961,10 @@ async fn search_hints_builds_expected_query_and_parses() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let results = client.search_hints("colleen", 24).await.unwrap();
+    let results = client
+        .search_hints("colleen", Paging::new(0, 24))
+        .await
+        .unwrap();
 
     assert_eq!(results.total_record_count, 3);
     assert_eq!(results.search_hints.len(), 3);
@@ -819,7 +995,10 @@ async fn search_hints_builds_expected_query_and_parses() {
 async fn search_hints_requires_authenticated_session() {
     let server = MockServer::start().await;
     let client = mock_client(&server.uri());
-    let err = client.search_hints("anything", 24).await.unwrap_err();
+    let err = client
+        .search_hints("anything", Paging::new(0, 24))
+        .await
+        .unwrap_err();
     assert!(
         matches!(err, crate::error::JellifyError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
@@ -849,9 +1028,122 @@ async fn search_hints_clamps_zero_limit_to_one() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let results = client.search_hints("x", 0).await.unwrap();
+    let results = client.search_hints("x", Paging::new(0, 0)).await.unwrap();
     assert_eq!(results.total_record_count, 0);
     assert!(results.search_hints.is_empty());
+}
+
+#[tokio::test]
+async fn search_paginates_and_exposes_total_record_count() {
+    // The combined-type search endpoint must forward offset/limit as
+    // StartIndex/Limit and surface TotalRecordCount so the UI can offer
+    // "Show all N results" affordances. Items are bucketed by `Type` into
+    // the SearchResults struct's three arrays.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .and(query_param("SearchTerm", "mountain"))
+        .and(query_param(
+            "IncludeItemTypes",
+            "MusicArtist,MusicAlbum,Audio",
+        ))
+        .and(query_param("Limit", "25"))
+        .and(query_param("StartIndex", "10"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "artist-1", "Name": "Mountain Goats", "Type": "MusicArtist",
+                    "ImageTags": { "Primary": "a1" }
+                },
+                {
+                    "Id": "album-1", "Name": "All Hail West Texas", "Type": "MusicAlbum",
+                    "AlbumArtist": "The Mountain Goats", "Artists": ["The Mountain Goats"],
+                    "ProductionYear": 2002, "ChildCount": 14,
+                    "ImageTags": { "Primary": "b1" }
+                },
+                {
+                    "Id": "track-1", "Name": "The Best Ever Death Metal Band Out Of Denton", "Type": "Audio",
+                    "AlbumId": "album-1", "Album": "All Hail West Texas",
+                    "AlbumArtist": "The Mountain Goats", "Artists": ["The Mountain Goats"],
+                    "RunTimeTicks": 1680000000u64,
+                    "ImageTags": { "Primary": "c1" }
+                }
+            ],
+            "TotalRecordCount": 147
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let results = client
+        .search("mountain", Paging::new(10, 25))
+        .await
+        .unwrap();
+
+    assert_eq!(results.total_record_count, 147);
+    assert_eq!(results.artists.len(), 1);
+    assert_eq!(results.albums.len(), 1);
+    assert_eq!(results.tracks.len(), 1);
+    assert_eq!(results.artists[0].name, "Mountain Goats");
+    assert_eq!(results.albums[0].name, "All Hail West Texas");
+    assert_eq!(
+        results.tracks[0].name,
+        "The Best Ever Death Metal Band Out Of Denton"
+    );
+}
+
+#[tokio::test]
+async fn search_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .search("anything", Paging::new(0, 50))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn search_hints_forwards_offset_as_start_index() {
+    // Regression check for pagination on the typeahead: `paging.offset`
+    // must appear as `startIndex` on the outbound request so "Show more"
+    // can fetch the next page.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Search/Hints"))
+        .and(query_param("limit", "20"))
+        .and(query_param("startIndex", "40"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "SearchHints": [],
+            "TotalRecordCount": 100
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let results = client.search_hints("q", Paging::new(40, 20)).await.unwrap();
+    assert_eq!(results.total_record_count, 100);
 }
 
 #[tokio::test]
