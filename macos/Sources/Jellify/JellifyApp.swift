@@ -164,10 +164,12 @@ struct JellifyCommands: Commands {
             .keyboardShortcut("f", modifiers: .command)
             .disabled(model.session == nil)
 
-            // TODO(#305): Replace with a dedicated command palette once the
-            // palette UI lands. For now ⌘K mirrors ⌘F.
-            Button("Command Palette") {
-                model.focusSearch()
+            // Command Palette (#305). Full-screen ⌘K overlay with library
+            // search + static action verbs. Toggling the flag here and
+            // letting `RootView` mount the overlay keeps the palette
+            // independent of whichever screen is currently focused.
+            Button("Command Palette\u{2026}") {
+                model.isCommandPaletteOpen.toggle()
             }
             .keyboardShortcut("k", modifiers: .command)
             .disabled(model.session == nil)
@@ -225,6 +227,17 @@ struct RootView: View {
         .animation(reduceMotion ? nil : .default, value: model.session != nil)
         .animation(reduceMotion ? nil : .default, value: model.isRestoringSession)
         .animation(reduceMotion ? nil : .default, value: hasCompletedOnboarding)
+        // Command Palette (#305). Owned at the root so the overlay
+        // floats above every screen — Home, Library, Now Playing, and
+        // any modal sheet. The palette itself pulls `AppModel` out of
+        // the environment to drive search + action dispatch.
+        .overlay {
+            if model.isCommandPaletteOpen && model.session != nil {
+                CommandPalette()
+                    .transition(.opacity)
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: model.isCommandPaletteOpen)
         .task {
             // Kick off session restore exactly once, on the first appearance
             // of the root view. `attemptRestoreSession` guards against
