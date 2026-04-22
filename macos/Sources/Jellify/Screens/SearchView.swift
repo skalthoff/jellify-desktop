@@ -25,6 +25,7 @@ struct SearchView: View {
                             VStack(spacing: 2) {
                                 ForEach(results.artists, id: \.id) { a in
                                     resultRow(title: a.name, subtitle: a.genres.first ?? "Artist", seed: a.name)
+                                        .contextMenu { ArtistContextMenu(artist: a) }
                                 }
                             }
                         }
