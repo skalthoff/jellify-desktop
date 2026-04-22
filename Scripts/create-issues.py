@@ -24,6 +24,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass, field
 
 RESEARCH_DIR = pathlib.Path("/tmp/jellify-research")
@@ -189,13 +190,26 @@ def main() -> None:
         if args.dry_run:
             print(f"[dry] {issue.title}  labels={issue.labels}  ms={issue.milestone}")
             continue
-        result = subprocess.run(issue.cli_args, capture_output=True, text=True)
-        if result.returncode != 0:
-            print(f"FAIL: {issue.title}\n  {result.stderr.strip()}", file=sys.stderr)
-        else:
-            url = result.stdout.strip().splitlines()[-1]
-            print(f"  created: {url}  — {issue.title}")
-            created += 1
+        # Retry on secondary rate limits with exponential backoff.
+        attempts = 0
+        while attempts < 5:
+            result = subprocess.run(issue.cli_args, capture_output=True, text=True)
+            if result.returncode == 0:
+                url = result.stdout.strip().splitlines()[-1]
+                print(f"  created: {url}  — {issue.title}")
+                created += 1
+                break
+            err = result.stderr.strip()
+            if "secondary rate limit" in err.lower() or "abuse detection" in err.lower():
+                wait = 30 * (attempts + 1)
+                print(f"  rate-limited, sleeping {wait}s…", file=sys.stderr)
+                time.sleep(wait)
+                attempts += 1
+                continue
+            print(f"FAIL: {issue.title}\n  {err}", file=sys.stderr)
+            break
+        # Gentle inter-issue pacing — stays well under GitHub's 80/min soft cap.
+        time.sleep(0.75)
 
     print(f"\nsummary: created={created}  skipped={skipped}  total_parsed={len(all_issues)}")
 
