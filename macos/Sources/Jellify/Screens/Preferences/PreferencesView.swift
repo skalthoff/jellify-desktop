@@ -3,9 +3,11 @@ import SwiftUI
 /// Top-level Preferences window. Presented via the `Settings { ... }` scene in
 /// `JellifyApp` so macOS handles the ⌘, shortcut and standard window behavior
 /// automatically. The shell (issue #258) started with every pane as a
-/// placeholder; real settings land in follow-up issues as they ship. Playback
-/// (#260) is implemented in `PreferencesPlayback.swift`; the rest are still
-/// placeholders awaiting their respective tickets.
+/// placeholder; real settings land in follow-up issues as they ship. Account
+/// (#259) is implemented in `PreferencesAccount.swift` and Playback (#260) in
+/// `PreferencesPlayback.swift`; the rest are still placeholders awaiting their
+/// respective tickets (#263 Appearance, #264 Library, #265 Downloads,
+/// #266 Keyboard, #267 Advanced).
 struct PreferencesView: View {
     enum Pane: String, CaseIterable, Hashable, Identifiable {
         case account, general, playback, appearance, library, downloads, keyboard, advanced
@@ -64,7 +66,7 @@ struct PreferencesView: View {
     @ViewBuilder
     private func pane(for selection: Pane) -> some View {
         switch selection {
-        case .account: AccountPane()
+        case .account: PreferencesAccount()
         case .general: GeneralPane()
         case .playback: PreferencesPlayback()
         case .appearance: AppearancePane()
@@ -162,15 +164,6 @@ private struct PlaceholderPane: View {
                 .foregroundStyle(Theme.ink2)
                 .padding(.top, 24)
         }
-    }
-}
-
-private struct AccountPane: View {
-    var body: some View {
-        PlaceholderPane(
-            title: "Account",
-            subtitle: "Server, user, and sign-in state."
-        )
     }
 }
 
