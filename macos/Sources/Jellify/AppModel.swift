@@ -298,6 +298,91 @@ final class AppModel {
         NSWorkspace.shared.open(url)
     }
 
+    // MARK: - Artist actions
+
+    /// Play every track by an artist in catalog order.
+    /// TODO: #156 / #465 — artist-tracks FFI (and an ItemsQuery filter for
+    /// `artist_id`) isn't wired yet, so this is a logging stub.
+    func playAll(artist: Artist) {
+        // TODO: #156 / #465 — artist-tracks FFI not yet wired.
+        print("[AppModel] playAll(artist:) not yet wired — see #156 / #465")
+    }
+
+    /// Shuffle every track by an artist.
+    /// TODO: #156 / #465 — same artist-tracks FFI dependency as `playAll`.
+    func shuffle(artist: Artist) {
+        // TODO: #156 / #465 — artist-tracks FFI not yet wired.
+        print("[AppModel] shuffle(artist:) not yet wired — see #156 / #465")
+    }
+
+    /// Play the artist's top tracks (play-count-weighted).
+    /// TODO: #229 — Top Tracks endpoint not yet wired.
+    func playTopTracks(artist: Artist) {
+        // TODO: #229 — Top Tracks endpoint not yet wired.
+        print("[AppModel] playTopTracks(artist:) not yet wired — see #229")
+    }
+
+    /// Toggle the favorite flag for an artist on the Jellyfin server.
+    /// TODO: #133, #64 — wire through `set_favorite` / `unset_favorite` on
+    /// the core once the FFI surface exists.
+    func toggleFavorite(artist: Artist) {
+        // TODO: #133 / #64 — set_favorite FFI not yet wired.
+        print("[AppModel] toggleFavorite(artist:) not yet wired — see #133 / #64")
+    }
+
+    /// Toggle the follow flag for an artist.
+    /// TODO: #64, #228 — follow/unfollow semantics + core support TBD.
+    func toggleFollow(artist: Artist) {
+        // TODO: #64 / #228 — follow/unfollow not yet wired.
+        print("[AppModel] toggleFollow(artist:) not yet wired — see #64 / #228")
+    }
+
+    /// Kick off an Instant Mix ("artist radio") seeded by this artist.
+    /// TODO: #144 — Instant Mix (polymorphic) FFI not yet wired.
+    func startArtistRadio(artist: Artist) {
+        // TODO: #144 — Instant Mix FFI not yet wired.
+        print("[AppModel] startArtistRadio(artist:) not yet wired — see #144")
+    }
+
+    /// Navigate to the artist detail screen, anchored on the discography.
+    /// The artist detail screen itself is tracked in #58 / #60 / #408; for now
+    /// we just route to `.artist(id)` and let that view (when it lands) pick
+    /// up the discography anchor.
+    func goToDiscography(artist: Artist) {
+        screen = .artist(artist.id)
+    }
+
+    /// Show artists similar to this one.
+    /// TODO: #146 — similar_artists FFI not yet wired.
+    func showSimilar(artist: Artist) {
+        // TODO: #146 — similar_artists FFI not yet wired.
+        print("[AppModel] showSimilar(artist:) not yet wired — see #146")
+    }
+
+    // MARK: - Artist sharing
+
+    /// Jellyfin web URL for an artist, e.g.
+    /// `https://server.example.com/web/#/details?id=<artistId>`.
+    func webURL(for artist: Artist) -> URL? {
+        guard !serverURL.isEmpty else { return nil }
+        let base = serverURL.hasSuffix("/") ? String(serverURL.dropLast()) : serverURL
+        return URL(string: "\(base)/web/#/details?id=\(artist.id)")
+    }
+
+    /// Copy the artist's web URL to the system pasteboard.
+    func copyShareLink(artist: Artist) {
+        guard let url = webURL(for: artist) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(url.absoluteString, forType: .string)
+    }
+
+    /// Open the artist in the Jellyfin web UI.
+    func openInJellyfin(artist: Artist) {
+        guard let url = webURL(for: artist) else { return }
+        NSWorkspace.shared.open(url)
+    }
+
     // MARK: - Playlist actions
     //
     // Parallels the album actions above. Issue #313.
