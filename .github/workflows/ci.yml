@@ -173,12 +173,39 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  windows:
+    name: Windows build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc, aarch64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Install uniffi-bindgen-cs
+        # Pin the bindgen tag in lockstep with the workspace `uniffi`
+        # crate version (currently 0.29.x — see Cargo.toml).
+        run: cargo install uniffi-bindgen-cs --git https://github.com/NordSecurity/uniffi-bindgen-cs --tag v0.10.0+v0.29.4 --locked
+      - name: Build native core (x64 + arm64)
+        shell: pwsh
+        run: pwsh windows/tools/build-core.ps1 -Configuration Release
+      - name: Generate C# bindings
+        shell: pwsh
+        run: pwsh windows/tools/gen-bindings.ps1 -Configuration Release
+      - name: dotnet build (x64)
+        run: dotnet build windows/Jellify.sln -c Release -p:Platform=x64
+
   # Aggregate required status — branch protection should require just this one
   # instead of each parallel job individually.
   ci:
     name: CI
     if: always()
-    needs: [fmt, clippy, test, docs, msrv, macos-app]
+    needs: [fmt, clippy, test, docs, msrv, macos-app, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job failed or was cancelled

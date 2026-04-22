@@ -2,6 +2,24 @@
 
 Thanks for your interest. This project is early — shapes and conventions are still settling.
 
+## Toolchain
+
+- **Rust**: 1.88 or newer.
+  - Floor: `core/` itself compiles on Rust 1.75 (the workspace MSRV), but
+    the Windows port's `uniffi-bindgen-cs` requires 1.88 — so any
+    contributor regenerating bindings (any platform) needs 1.88+ on
+    PATH.
+  - Workspace pins `uniffi = "0.29"`. Regenerated bindings (Swift
+    xcframework, C#) must be produced by a matching bindgen build:
+    macOS uses the in-tree `uniffi-bindgen` binary; Windows uses
+    `uniffi-bindgen-cs v0.10.0+v0.29.4`.
+- **macOS targets**: `aarch64-apple-darwin` (Apple Silicon dev), Xcode
+  15+ for `swift build`.
+- **Windows targets**: `x86_64-pc-windows-msvc` and
+  `aarch64-pc-windows-msvc`. Install with
+  `rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc`.
+- **No `cargo-ndk`** — the Windows path uses pure MSVC cross-targets.
+
 ## Development loop
 
 ### macOS
@@ -13,6 +31,16 @@ swift build
 ./.build/arm64-apple-macosx/debug/Jellify       # unbundled (dev)
 # or
 ./Scripts/make-bundle.sh && open build/Jellify.app  # bundled
+```
+
+### Windows
+
+See `windows/README.md` for the full prerequisites list. Quick path:
+
+```pwsh
+pwsh windows/tools/build-core.ps1     # cross-builds jellify_core.dll for x64+arm64
+pwsh windows/tools/gen-bindings.ps1   # uniffi-bindgen-cs → Generated/*.cs
+dotnet build windows/Jellify.sln -c Debug -p:Platform=x64
 ```
 
 ### Core
@@ -27,6 +55,12 @@ Regenerate Swift bindings when the Rust API changes:
 
 ```sh
 cd macos && ./Scripts/build-core.sh
+```
+
+Regenerate C# bindings when the Rust API changes:
+
+```pwsh
+pwsh windows/tools/gen-bindings.ps1
 ```
 
 ## Flatpak packaging
