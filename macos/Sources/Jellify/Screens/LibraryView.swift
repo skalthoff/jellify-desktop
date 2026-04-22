@@ -1,6 +1,36 @@
 import SwiftUI
 @preconcurrency import JellifyCore
 
+/// Shared hover state for the Library grid. A single optional item ID lives
+/// on the `LibraryView` root and gets read by every `AlbumCard` / `ArtistCard`,
+/// so cells in the 5k+ library grid don't each carry their own
+/// `@State var isHovering`. See #428.
+///
+/// `AlbumCard` is also rendered by `SearchView` without a container tracker —
+/// the env default carries `isActive = false`, and cells fall back to a local
+/// `@State` on that path so hover affordance keeps working outside the
+/// library. The library path (`isActive = true`) uses the shared ID
+/// exclusively and the cell's local state stays inert.
+struct LibraryHoverBinding {
+    var id: Binding<String?>
+    /// `true` when a container lifted hover tracking up; cells on this path
+    /// read/write the shared ID and ignore their local fallback state.
+    var isActive: Bool
+
+    static let inactive = LibraryHoverBinding(id: .constant(nil), isActive: false)
+}
+
+private struct LibraryHoverIDKey: EnvironmentKey {
+    static let defaultValue = LibraryHoverBinding.inactive
+}
+
+extension EnvironmentValues {
+    var libraryHoverID: LibraryHoverBinding {
+        get { self[LibraryHoverIDKey.self] }
+        set { self[LibraryHoverIDKey.self] = newValue }
+    }
+}
+
 /// Library tab options. The active tab filters what the library grid shows
 /// and drives the count subline. See `Chip` / `ChipRow` in
 /// `Components/Chips.swift` and spec issue #212.
@@ -33,6 +63,10 @@ struct LibraryView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("libraryViewMode") private var viewMode: LibraryViewMode = .grid
     @State private var selectedTab: LibraryTab = .albums
+    /// Single shared hover ID for the grid. Published via
+    /// `.libraryHoverID` env so every cell reads from (and writes to) the same
+    /// binding — avoids N `@State`s on a 5k-item grid. See #428.
+    @State private var hoverID: String?
 
     private let columns = [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 18)]
 
@@ -56,6 +90,10 @@ struct LibraryView: View {
             .padding(.bottom, 32)
         }
         .background(backgroundWash)
+        .environment(
+            \.libraryHoverID,
+            LibraryHoverBinding(id: $hoverID, isActive: true)
+        )
     }
 
     /// Jellyfin's web UI lives at `/web/` on the server host. Falls back to
@@ -430,11 +468,31 @@ struct LibraryViewToggle: View {
     }
 }
 
+/// Square grid tile used in the Library Albums tab. When a container has
+/// lifted hover tracking (Library), hover state reads the single shared
+/// `libraryHoverID` binding instead of a per-cell `@State` — that's the
+/// key to keeping a 5k-item grid lightweight (see #428). When `AlbumCard`
+/// renders outside the library (e.g. search results), `isActive` is false
+/// and the cell falls back to a local `@State` so hover affordance is
+/// preserved on those surfaces.
 struct AlbumCard: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.libraryHoverID) private var hoverTracker
     let album: Album
-    @State private var isHovering = false
+    /// Fallback hover flag for non-library hosts. Stays `false` forever when
+    /// `hoverTracker.isActive` is true (library path), so it doesn't drive
+    /// any view invalidations in the 5k-grid case.
+    @State private var localHovering = false
+
+    /// True when the container's shared hover tracker points at this album —
+    /// or when we're on the fallback path and the cursor is over the cell.
+    private var isHovering: Bool {
+        if hoverTracker.isActive {
+            return hoverTracker.id.wrappedValue == album.id
+        }
+        return localHovering
+    }
 
     var body: some View {
         Button {
@@ -446,7 +504,11 @@ struct AlbumCard: View {
                         url: model.imageURL(for: album.id, tag: album.imageTag, maxWidth: 400),
                         seed: album.name,
                         size: 180,
-                        radius: 8
+                        radius: 8,
+                        // 180pt @ 3x = 540px — enough headroom for a 5K
+                        // external display without decoding source (often
+                        // 1024px+ from Jellyfin). See #427.
+                        targetPixelSize: CGSize(width: 540, height: 540)
                     )
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
@@ -491,7 +553,17 @@ struct AlbumCard: View {
             )
         }
         .buttonStyle(.plain)
-        .onHover { isHovering = $0 }
+        .onHover { hovering in
+            if hoverTracker.isActive {
+                if hovering {
+                    hoverTracker.id.wrappedValue = album.id
+                } else if hoverTracker.id.wrappedValue == album.id {
+                    hoverTracker.id.wrappedValue = nil
+                }
+            } else {
+                localHovering = hovering
+            }
+        }
         .contextMenu { AlbumContextMenu(album: album) }
     }
 }
