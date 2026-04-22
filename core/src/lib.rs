@@ -206,6 +206,34 @@ impl JellifyCore {
         })
     }
 
+    /// Playlists owned by the current user. Filtered client-side based on
+    /// whether `Path` contains `/data/` (profile directory).
+    pub fn user_playlists(
+        &self,
+        playlist_library_id: String,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<Vec<Playlist>, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.user_playlists(&playlist_library_id, Paging::new(offset, limit)))
+        })
+    }
+
+    /// Public / community playlists visible to the current user — anything
+    /// under the Playlists library whose `Path` does NOT contain `/data/`.
+    pub fn public_playlists(
+        &self,
+        playlist_library_id: String,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<Vec<Playlist>, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.public_playlists(&playlist_library_id, Paging::new(offset, limit)))
+        })
+    }
+
     pub fn search(&self, query: String) -> std::result::Result<SearchResults, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.search(&query)))
     }
