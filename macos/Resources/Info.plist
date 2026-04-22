@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist template for Jellify.app.
+
+  Do NOT edit $VERSION / $BUILD in place. `macos/Scripts/make-bundle.sh`
+  copies this file into the bundle and then uses `plutil -replace` to fill
+  in CFBundleShortVersionString / CFBundleVersion from the env vars
+  $VERSION and $BUILD (or, when unset, from `git describe` and the commit
+  count). Keep those string literals unique so `plutil -replace` targets
+  the right keys if anything else ever needs similar substitution.
+
+  Keys intentionally omitted:
+    - LSUIElement: Jellify is a Dock-visible app.
+    - NSMicrophoneUsageDescription / NSCameraUsageDescription / similar
+      TCC usage strings: we do not touch those APIs yet. Apple's notary
+      rejects unused purpose strings on newer tool versions.
+    - App Sandbox keys: we are NOT targeting the Mac App Store. Hardened
+      runtime + notarization is sufficient for Developer ID distribution.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleExecutable</key>
+    <string>Jellify</string>
+    <key>CFBundleIdentifier</key>
+    <string>org.jellify.desktop</string>
+    <key>CFBundleName</key>
+    <string>Jellify</string>
+    <key>CFBundleDisplayName</key>
+    <string>Jellify</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+
+    <!-- Version fields. These placeholders are overwritten by
+         make-bundle.sh via `plutil -replace` at build time. -->
+    <key>CFBundleShortVersionString</key>
+    <string>$VERSION</string>
+    <key>CFBundleVersion</key>
+    <string>$BUILD</string>
+
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.music</string>
+
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026 Jellify. GPL-3.0-only.</string>
+    <key>NSSupportsAutomaticTermination</key>
+    <true/>
+    <key>NSSupportsSuddenTermination</key>
+    <true/>
+
+    <!-- Custom URL scheme for Jellyfin OAuth / quick-connect callbacks.
+         The Rust core receives these via the AppDelegate URL handler. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>org.jellify.desktop</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>jellify</string>
+            </array>
+        </dict>
+    </array>
+</dict>
+</plist>

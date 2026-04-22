@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Minimal hardened-runtime entitlements for Developer ID distribution.
+
+  We deliberately avoid the App Sandbox (com.apple.security.app-sandbox) —
+  Jellify is shipped outside the Mac App Store, and sandboxing would force
+  the Rust core's SQLite / keyring store into a container path and require
+  user-selected filesystem entitlements for downloads.
+
+  Omitted on purpose:
+    - allow-jit / allow-unsigned-executable-memory: the Rust core is AOT.
+    - device.audio-input: AVPlayer is output-only; TCC doesn't prompt.
+    - files.downloads.read-write: NSSavePanel grants via Powerbox.
+    - app-sandbox: see above.
+-->
+<plist version="1.0">
+<dict>
+    <!-- Outbound network connections to arbitrary Jellyfin servers. -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!-- Apple Events, used by MediaPlayer / now-playing integrations and
+         any system services we script (e.g. `osascript` for media keys on
+         older macOS releases). Required under the hardened runtime even
+         when the target is the system itself. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>
