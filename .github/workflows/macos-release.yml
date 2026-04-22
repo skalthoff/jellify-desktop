@@ -1,0 +1,230 @@
+name: macOS Release
+
+# Triggered by pushing a `v*` tag. The tag name drives the human-readable
+# version string embedded in Info.plist and the release title, so tags
+# must stay in semver-ish shape (`v1.2.3`, `v1.2.3-beta.1`).
+on:
+  push:
+    tags:
+      - "v*"
+  # Manual dispatch lets a maintainer re-cut a release artifact without
+  # rewriting a tag — useful when only the appcast needs regenerating.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (e.g. v0.2.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: macos-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write     # gh release create / upload
+  pages: write        # gh-pages appcast publish
+  id-token: write     # required by deploy-pages if we switch to Pages action
+
+jobs:
+  build:
+    name: Build, sign, notarize, publish
+    runs-on: macos-14
+    env:
+      # Resolve the tag from either push or workflow_dispatch. `github.ref_name`
+      # for a tag push is the tag; for dispatch we take the input.
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Full history so `generate_appcast` can diff against prior
+          # releases if we ever migrate that logic off the GitHub release
+          # API.
+          fetch-depth: 0
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install Rust (universal)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # Universal binary: both Apple Silicon and Intel. Intel still
+          # matters for the long tail of 2019-2020 MacBook Pros that
+          # aren't upgrading to Apple Silicon anytime soon.
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Keyed by tag — release builds are infrequent and we don't
+          # want a stale incremental cache to mask a genuine rebuild bug.
+          key: macos-release-${{ env.RELEASE_TAG }}
+          # Cache across workflow runs on the same ref so back-to-back
+          # dispatch re-cuts hit the cache.
+          shared-key: macos-release
+
+      - name: Resolve version
+        id: version
+        run: |
+          tag="${RELEASE_TAG}"
+          version="${tag#v}"              # strip leading 'v' for CFBundleShortVersionString
+          build=$(date -u +%Y%m%d%H%M)    # UTC timestamp — monotonically increasing CFBundleVersion
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "build=$build"
+          } >> "$GITHUB_OUTPUT"
+
+      # ------------------------------------------------------------------
+      # Build the universal Rust xcframework and the Swift app.
+      # ------------------------------------------------------------------
+      - name: Build universal xcframework
+        working-directory: macos
+        env:
+          # The existing build-core.sh builds arm64-only. For release we
+          # want a universal static library; the flag is picked up by the
+          # M4 universal build work landing alongside this workflow.
+          JELLIFY_UNIVERSAL: "1"
+        run: ./Scripts/build-core.sh --release
+
+      - name: Swift build (release)
+        working-directory: macos
+        run: swift build -c release
+
+      - name: Make app icon
+        working-directory: macos
+        run: ./Scripts/make-iconset.sh
+
+      - name: Bundle .app
+        working-directory: macos
+        env:
+          JELLIFY_BUILD_CONFIG: "release"
+          JELLIFY_VERSION: ${{ steps.version.outputs.version }}
+          JELLIFY_BUILD: ${{ steps.version.outputs.build }}
+          SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+        run: ./Scripts/make-bundle.sh
+
+      # ------------------------------------------------------------------
+      # Sign + notarize. The individual scripts (sign.sh, notarize.sh,
+      # make-dmg.sh) are introduced in BATCH-18. Each one is idempotent
+      # and reads its own secrets — we just make sure the env is populated
+      # before handing off.
+      # ------------------------------------------------------------------
+      - name: Import Developer ID certificate
+        env:
+          APPLE_DEVELOPER_ID_CERT_P12: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12 }}
+          APPLE_DEVELOPER_ID_CERT_P12_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERT_P12_PASSWORD }}
+        run: |
+          # Keychain lives for the life of the runner; the runner is
+          # ephemeral so we don't bother deleting it at the end.
+          KEYCHAIN="$RUNNER_TEMP/jellify.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          echo "$APPLE_DEVELOPER_ID_CERT_P12" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN" \
+            -P "$APPLE_DEVELOPER_ID_CERT_P12_PASSWORD" \
+            -T /usr/bin/codesign
+          rm -f "$CERT_PATH"
+
+          # `codesign` looks at the default search list — prepend our
+          # ephemeral keychain so the Developer ID Application identity
+          # wins over anything on the runner image.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          echo "KEYCHAIN_PASSWORD=$KEYCHAIN_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Sign .app
+        working-directory: macos
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+        run: ./Scripts/sign.sh
+
+      - name: Make DMG
+        working-directory: macos
+        env:
+          JELLIFY_VERSION: ${{ steps.version.outputs.version }}
+        run: ./Scripts/make-dmg.sh
+
+      - name: Notarize DMG
+        working-directory: macos
+        env:
+          APPLE_NOTARY_PROFILE: ${{ secrets.APPLE_NOTARY_PROFILE }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: ./Scripts/notarize.sh
+
+      # ------------------------------------------------------------------
+      # Publish the release.
+      # ------------------------------------------------------------------
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          # Don't clobber a release that already exists (re-runs via
+          # workflow_dispatch). Instead, upload the freshly built DMG to
+          # the existing release with --clobber so the asset is replaced.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — uploading asset with --clobber"
+            gh release upload "$TAG" macos/build/*.dmg --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Jellify $TAG" \
+              --generate-notes \
+              --verify-tag \
+              macos/build/*.dmg
+          fi
+
+      # ------------------------------------------------------------------
+      # Regenerate appcast.xml from the freshly published release and push
+      # it to gh-pages so existing installs get the update notification.
+      # ------------------------------------------------------------------
+      - name: Generate appcast
+        env:
+          SPARKLE_ED25519_PRIVATE: ${{ secrets.SPARKLE_ED25519_PRIVATE }}
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: ./macos/Scripts/generate-appcast.sh
+
+      - name: Publish appcast to gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Dedicated worktree so the main checkout stays on the tag
+          # commit and we never accidentally merge release-only content
+          # back into main.
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          WORKTREE="$RUNNER_TEMP/gh-pages"
+          rm -rf "$WORKTREE"
+          git fetch origin gh-pages:gh-pages || git branch gh-pages
+          git worktree add "$WORKTREE" gh-pages
+
+          cp docs/appcast.xml "$WORKTREE/appcast.xml"
+
+          pushd "$WORKTREE" >/dev/null
+          git add appcast.xml
+          if git diff --cached --quiet; then
+            echo "appcast unchanged — nothing to publish"
+          else
+            git commit -m "appcast: ${RELEASE_TAG}"
+            git push origin gh-pages
+          fi
+          popd >/dev/null
+
+          git worktree remove --force "$WORKTREE"
+

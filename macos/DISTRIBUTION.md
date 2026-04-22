@@ -279,8 +279,205 @@ ID, not MAS.
 
 ---
 
-## CI and auto-update
+---
 
-Intentionally out of scope here. CI wiring, Sparkle appcast/EdDSA key,
-and auto-update delta channel are tracked separately in the BATCH-19
-milestone.
+## CI, release workflow, and auto-update
+
+
+How we get a Jellify build from a tag in git to a signed, notarized,
+auto-updating `.app` on someone's Mac.
+
+## Pipeline at a glance
+
+```
+  git tag v0.2.0  ── push ──►  .github/workflows/macos-release.yml
+       │
+       ├─ build universal xcframework (arm64 + x86_64)
+       ├─ swift build -c release
+       ├─ make-iconset.sh            → Resources/Jellify.icns
+       ├─ make-bundle.sh             → build/Jellify.app
+       ├─ sign.sh                    → codesign + hardened runtime
+       ├─ make-dmg.sh                → build/Jellify-<ver>.dmg
+       ├─ notarize.sh                → Apple notary + stapled ticket
+       ├─ gh release create          → DMG attached to v0.2.0
+       ├─ generate-appcast.sh        → docs/appcast.xml
+       └─ push to gh-pages           → https://skalthoff.github.io/jellify-desktop/appcast.xml
+```
+
+Sparkle on the client side polls the appcast URL, pulls the new DMG,
+verifies the Ed25519 signature on the enclosed feed entry, and swaps
+itself in place.
+
+## Required GitHub Actions secrets
+
+Set each of these under **Settings → Secrets and variables → Actions**.
+All values must be populated before the first tag push — the workflow
+fails fast if any are missing.
+
+| Secret | What | How to produce |
+|---|---|---|
+| `APPLE_DEVELOPER_ID_CERT_P12` | Base64-encoded `.p12` export of the Developer ID Application certificate (and its private key). | Export from Keychain Access → right-click the identity → Export. Pick `.p12`. Then `base64 -i cert.p12 \| pbcopy`. |
+| `APPLE_DEVELOPER_ID_CERT_P12_PASSWORD` | Password you typed during the `.p12` export. | Free-form; pick something long, store in a password manager. |
+| `APPLE_DEVELOPER_ID_IDENTITY` | Common-name of the identity codesign looks up (e.g. `Developer ID Application: Soren Althoff (XXXXXXXXXX)`). | `security find-identity -v -p codesigning` on a machine with the cert installed. Copy the `"..."` string. |
+| `APPLE_TEAM_ID` | 10-character team identifier. | Apple Developer → Membership → Team ID. |
+| `APPLE_ID` | Apple ID email used for notarization. | Usually the account that owns the developer program. |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated for notarization. | appleid.apple.com → Sign-In and Security → App-Specific Passwords. Label it "Jellify notarization". |
+| `APPLE_NOTARY_PROFILE` | Profile name used by `xcrun notarytool store-credentials` if notarize.sh relies on a stored profile rather than raw credentials. | Pick any slug; `notarize.sh` regenerates the profile from the three secrets above on each run. |
+| `SPARKLE_PUBLIC_ED_KEY` | Base64 Ed25519 **public** key. Substituted into Info.plist at build time. | `generate_keys` (see below) prints both halves. |
+| `SPARKLE_ED25519_PRIVATE` | Base64 Ed25519 **private** key. Never leaves the runner; only used by `generate-appcast.sh`. | Same generator. |
+
+### Sparkle key generation (one-time, on a trusted Mac)
+
+Sparkle ships a `generate_keys` helper inside its distribution. Run it
+once, store the outputs in a password manager, and never commit the
+private half anywhere.
+
+```bash
+# 1. Fetch the Sparkle tarball for the version pinned in
+#    macos/Scripts/generate-appcast.sh (SPARKLE_VERSION).
+SPARKLE_VERSION=2.6.4
+curl -fsSL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
+  | tar -xJ
+cd "Sparkle-${SPARKLE_VERSION}"
+
+# 2. Generate the keypair. This creates an item in your login keychain
+#    AND prints the two base64 blobs. Copy them straight out of the
+#    terminal into your password manager.
+./bin/generate_keys
+
+# Expected output looks like:
+#   A key has been generated and saved in your keychain. Add the
+#   following to the Info.plist of each app using this key:
+#
+#       <key>SUPublicEDKey</key>
+#       <string>AAAAA...base64...=</string>
+#
+#   ED private key (base64, save this in a secure place):
+#       /BBBBB...base64...==
+
+# 3. Paste the public half into the SPARKLE_PUBLIC_ED_KEY secret.
+# 4. Paste the private half into SPARKLE_ED25519_PRIVATE.
+# 5. Lock the keychain item (or delete it once the secrets are stored).
+```
+
+Rotating these keys is a breaking change for every already-installed
+Jellify — older copies won't trust feeds signed by the new key. If a
+rotation is ever required, bump the feed URL to a new path (e.g.
+`appcast-v2.xml`) and ship one last update against the old key that
+points existing installs at the new URL.
+
+## Icon source
+
+`Scripts/make-iconset.sh` looks for the icon source in this order:
+
+1. `design/icons/jellify-app.svg` — the canonical path once the final
+   app icon is designed.
+2. `design/project/assets/teal-icon.svg` — placeholder currently in the
+   repo.
+
+Drop a finished SVG at path 1 and the script picks it up with no
+further changes. `sips` handles the rasterization, with `qlmanage` as
+an emergency fallback when `sips` can't resolve a gradient.
+
+## Running the first release manually
+
+Before trusting the workflow on a live tag, do one dry run locally on a
+signed, notarization-enabled Mac to confirm the secrets are shaped
+right.
+
+```bash
+# 0. On a clean branch (so DMG leftovers don't pollute main).
+git switch -c dry-run-release
+
+# 1. Build the xcframework (release).
+./macos/Scripts/build-core.sh --release
+
+# 2. Build the Swift app.
+(cd macos && swift build -c release)
+
+# 3. Generate the .icns (sips renders, iconutil compiles).
+./macos/Scripts/make-iconset.sh
+
+# 4. Bundle .app. Populate SPARKLE_PUBLIC_ED_KEY so the real public key
+#    lands in Info.plist — otherwise Sparkle silently refuses to
+#    initialize on launch.
+export SPARKLE_PUBLIC_ED_KEY='AAAAA...your public key...='
+export JELLIFY_VERSION=0.0.0-dev
+export JELLIFY_BUILD=$(date -u +%Y%m%d%H%M)
+./macos/Scripts/make-bundle.sh
+
+# 5. (Optional) Sign + notarize locally — same scripts the workflow
+#    calls. Skip if you only want to verify the build step.
+./macos/Scripts/sign.sh
+./macos/Scripts/make-dmg.sh
+./macos/Scripts/notarize.sh
+
+# 6. Regenerate the appcast against a fake release layout. For this you
+#    need the private Ed25519 key on disk; keep it out of shell history.
+read -rs -p "SPARKLE_ED25519_PRIVATE: " SPARKLE_ED25519_PRIVATE; export SPARKLE_ED25519_PRIVATE
+./macos/Scripts/generate-appcast.sh
+
+# 7. Spot-check docs/appcast.xml — confirm the <enclosure url="..."/> is
+#    pointed at the expected github.com/.../releases/download path and
+#    that <sparkle:edSignature> is present on every item.
+```
+
+If everything looks right, push a tag:
+
+```bash
+git switch main
+git tag -s v0.2.0 -m "Jellify 0.2.0"
+git push origin v0.2.0
+```
+
+The workflow takes ~20 minutes on `macos-14`. Watch the
+[Actions](https://github.com/skalthoff/jellify-desktop/actions) tab
+for progress.
+
+## Hosting the appcast
+
+GitHub Pages serves `gh-pages:/appcast.xml` at
+`https://skalthoff.github.io/jellify-desktop/appcast.xml`. That URL is
+baked into every release's Info.plist as `SUFeedURL`, so it must remain
+stable. If GitHub Pages ever moves (custom domain, etc.) the `SUFeedURL`
+value in `macos/Resources/Info.plist` has to change in lockstep with a
+release that redirects older installs.
+
+### First-ever gh-pages bootstrap
+
+The workflow pushes to `gh-pages` on every release, but the branch has
+to exist first. Bootstrap once:
+
+```bash
+git switch --orphan gh-pages
+git commit --allow-empty -m "init gh-pages"
+git push -u origin gh-pages
+git switch main
+```
+
+Then enable Pages in the repo settings: **Settings → Pages → Source:
+Deploy from a branch → Branch: gh-pages / (root)**.
+
+## Troubleshooting
+
+- **Sparkle in the built app logs `no such file SUFeedURL`** — the
+  Info.plist template in `macos/Resources/Info.plist` wasn't copied
+  into the .app by `make-bundle.sh`. Check the bundle step finished
+  before `sign.sh` started.
+- **`generate_appcast` warns "no private key"** — the
+  `SPARKLE_ED25519_PRIVATE` secret is empty or not exported. Confirm
+  with `echo -n "$SPARKLE_ED25519_PRIVATE" | wc -c` — expect ~88
+  characters (base64-encoded 64-byte private key).
+- **Notarization fails with "invalid signing identity"** — the
+  Developer ID certificate in the runner's keychain is expired or
+  unreachable. Re-export the `.p12` and update `APPLE_DEVELOPER_ID_CERT_P12`.
+- **Users report "app can't be opened because Apple cannot check it"** —
+  DMG wasn't notarized or the staple wasn't applied. Re-run
+  `notarize.sh` locally on the DMG and re-upload to the GitHub release.
+
+## Reference
+
+- Sparkle 2 docs: <https://sparkle-project.org/documentation/>
+- Apple notary service: <https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution>
+- Issues this doc addresses: #183, #184, #185, #186, #188, #189, #190.
+
