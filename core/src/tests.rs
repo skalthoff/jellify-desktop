@@ -2,8 +2,8 @@ use crate::client::JellyfinClient;
 use crate::models::{ImageType, Paging};
 use crate::storage::Database;
 use serde_json::json;
-use wiremock::matchers::{method, path};
-use wiremock::{Mock, MockServer, ResponseTemplate};
+use wiremock::matchers::{method, path, query_param};
+use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 fn mock_client(base: &str) -> JellyfinClient {
     JellyfinClient::new(base, "test-device".into(), "Test Device".into()).unwrap()
@@ -121,6 +121,102 @@ async fn albums_uses_paging() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let _ = client.albums(Paging::new(10, 50)).await.unwrap();
+}
+
+#[tokio::test]
+async fn latest_albums_builds_expected_query_and_parses_unwrapped_array() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // `/Items/Latest` returns a bare array, not `{ Items, TotalRecordCount }`.
+    Mock::given(method("GET"))
+        .and(path("/Items/Latest"))
+        .and(query_param("UserId", "u1"))
+        .and(query_param("ParentId", "lib-music"))
+        .and(query_param("IncludeItemTypes", "MusicAlbum"))
+        .and(query_param("Limit", "24"))
+        .and(query_param("GroupItems", "true"))
+        .respond_with(|req: &Request| {
+            // Sanity-check that no unexpected extra params were added and that
+            // the full expected set (including `Fields`) is present on the
+            // actual request. Building a set from `query_pairs` and comparing
+            // to the expected set catches both extra keys and missing ones.
+            let pairs: std::collections::HashMap<_, _> =
+                req.url.query_pairs().into_owned().collect();
+            assert_eq!(pairs.get("UserId").map(String::as_str), Some("u1"));
+            assert_eq!(pairs.get("ParentId").map(String::as_str), Some("lib-music"));
+            assert_eq!(
+                pairs.get("IncludeItemTypes").map(String::as_str),
+                Some("MusicAlbum")
+            );
+            assert_eq!(pairs.get("Limit").map(String::as_str), Some("24"));
+            assert_eq!(pairs.get("GroupItems").map(String::as_str), Some("true"));
+            assert_eq!(
+                pairs.get("Fields").map(String::as_str),
+                Some("Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio")
+            );
+            let expected_keys: std::collections::HashSet<&str> = [
+                "UserId",
+                "ParentId",
+                "IncludeItemTypes",
+                "Limit",
+                "GroupItems",
+                "Fields",
+            ]
+            .into_iter()
+            .collect();
+            let actual_keys: std::collections::HashSet<&str> =
+                pairs.keys().map(String::as_str).collect();
+            assert_eq!(
+                actual_keys, expected_keys,
+                "unexpected or missing query params on /Items/Latest request"
+            );
+            ResponseTemplate::new(200).set_body_json(json!([
+                {
+                    "Id": "a1", "Name": "The Deep End", "Type": "MusicAlbum",
+                    "AlbumArtist": "Saloli", "Artists": ["Saloli"],
+                    "ProductionYear": 2020, "ChildCount": 8,
+                    "RunTimeTicks": 18000000000u64,
+                    "ImageTags": { "Primary": "abcd" }
+                },
+                {
+                    "Id": "a2", "Name": "Spiral", "Type": "MusicAlbum",
+                    "AlbumArtist": "Colleen", "Artists": ["Colleen"],
+                    "ProductionYear": 2023, "ChildCount": 11,
+                    "ImageTags": {}
+                }
+            ]))
+        })
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let albums = client.latest_albums("lib-music", 24).await.unwrap();
+    assert_eq!(albums.len(), 2);
+    assert_eq!(albums[0].name, "The Deep End");
+    assert_eq!(albums[0].artist_name, "Saloli");
+    assert_eq!(albums[0].year, Some(2020));
+    assert_eq!(albums[0].track_count, 8);
+    assert_eq!(albums[0].image_tag.as_deref(), Some("abcd"));
+    assert_eq!(albums[1].name, "Spiral");
+    assert!(albums[1].image_tag.is_none());
+}
+
+#[tokio::test]
+async fn latest_albums_requires_authenticated_session() {
+    let client = JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
+    let err = client.latest_albums("lib-music", 24).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
 }
 
 #[test]
