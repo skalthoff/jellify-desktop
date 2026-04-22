@@ -277,6 +277,55 @@ impl JellyfinClient {
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
+    /// Fetch a single item by id with a caller-selected set of `Fields`.
+    ///
+    /// Uses `GET /Items?Ids={id}&Fields=...` as a workaround for the
+    /// deprecated `/Users/{userId}/Items/{itemId}` endpoint. Returns the
+    /// first element of the `Items` array as raw JSON so callers can pick
+    /// whichever fields they asked for without this layer pre-projecting.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    ///
+    /// Returns [`JellifyError::Server`] with status `404` when the server
+    /// responds successfully but the `Items` array is empty (item not
+    /// found or not visible to the current user).
+    pub async fn fetch_item(&self, item_id: &str, fields: &[&str]) -> Result<serde_json::Value> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Items")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("Ids", item_id);
+            if !fields.is_empty() {
+                q.append_pair("Fields", &fields.join(","));
+            }
+            q.append_pair("userId", user_id);
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let mut body: serde_json::Value = Self::check(resp).await?.json().await?;
+        let items = body
+            .get_mut("Items")
+            .and_then(|v| v.as_array_mut())
+            .ok_or_else(|| {
+                JellifyError::Decode("fetch_item: response missing Items array".into())
+            })?;
+        if items.is_empty() {
+            return Err(JellifyError::Server {
+                status: 404,
+                message: format!("item not found: {item_id}"),
+            });
+        }
+        Ok(items.swap_remove(0))
+    }
+
     pub async fn search(&self, query: &str) -> Result<SearchResults> {
         let user_id = self
             .user_id
