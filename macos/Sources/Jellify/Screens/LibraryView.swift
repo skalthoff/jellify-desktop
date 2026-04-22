@@ -1,9 +1,38 @@
 import SwiftUI
 @preconcurrency import JellifyCore
 
+/// Library tab options. The active tab filters what the library grid shows
+/// and drives the count subline. See `Chip` / `ChipRow` in
+/// `Components/Chips.swift` and spec issue #212.
+enum LibraryTab: Hashable, CaseIterable {
+	case tracks, albums, artists, playlists, downloaded
+
+	var label: String {
+		switch self {
+		case .tracks: return "Tracks"
+		case .albums: return "Albums"
+		case .artists: return "Artists"
+		case .playlists: return "Playlists"
+		case .downloaded: return "Downloaded"
+		}
+	}
+
+	/// Lowercase noun used in the count subline ("42 albums").
+	var countNoun: String {
+		switch self {
+		case .tracks: return "tracks"
+		case .albums: return "albums"
+		case .artists: return "artists"
+		case .playlists: return "playlists"
+		case .downloaded: return "downloaded"
+		}
+	}
+}
+
 struct LibraryView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("libraryViewMode") private var viewMode: LibraryViewMode = .grid
+    @State private var selectedTab: LibraryTab = .albums
 
     private let columns = [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 18)]
 
@@ -11,28 +40,14 @@ struct LibraryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 header
+                chipRow
                 if model.isLoadingLibrary && model.albums.isEmpty {
                     ProgressView()
                         .tint(Theme.ink2)
                         .padding(.top, 40)
                         .frame(maxWidth: .infinity)
-                } else if model.albums.isEmpty {
-                    EmptyLibraryState(serverUrl: serverWebURL)
                 } else {
-                    switch viewMode {
-                    case .grid:
-                        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                            ForEach(model.albums, id: \.id) { album in
-                                AlbumCard(album: album)
-                            }
-                        }
-                    case .list:
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(model.albums, id: \.id) { album in
-                                LibraryListRow(album: album)
-                            }
-                        }
-                    }
+                    content
                 }
                 Spacer(minLength: 24)
             }
@@ -63,13 +78,77 @@ struct LibraryView: View {
                 Text("Library")
                     .font(Theme.font(36, weight: .black, italic: true))
                     .foregroundStyle(Theme.ink)
-                Text("\(model.albums.count) albums · \(model.artists.count) artists")
-                    .font(Theme.font(12, weight: .medium))
+                // Count subline — 11pt uppercase `ink3`. Updates live as the
+                // user switches chips. See #212 / screen spec Issue 13.
+                Text(countSubline)
+                    .font(Theme.font(11, weight: .bold))
                     .foregroundStyle(Theme.ink3)
+                    .tracking(1.2)
+                    .accessibilityLabel("\(tabCount(for: selectedTab)) \(selectedTab.countNoun)")
             }
             Spacer()
             LibraryViewToggle(mode: $viewMode)
         }
+    }
+
+    private var chipRow: some View {
+        ChipRow(
+            options: LibraryTab.allCases.map { (label: $0.label, tag: $0) },
+            selection: $selectedTab
+        )
+    }
+
+    /// Grid / list body for the currently selected chip. Only the `albums`
+    /// tab has live content today; the others render the shared empty state
+    /// so the chip selection still produces a coherent screen. As tracks,
+    /// artists, playlists, and download state land, each branch gets its own
+    /// surface.
+    @ViewBuilder
+    private var content: some View {
+        switch selectedTab {
+        case .albums:
+            if model.albums.isEmpty {
+                EmptyLibraryState(serverUrl: serverWebURL)
+            } else {
+                switch viewMode {
+                case .grid:
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                        ForEach(model.albums, id: \.id) { album in
+                            AlbumCard(album: album)
+                        }
+                    }
+                case .list:
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(model.albums, id: \.id) { album in
+                            LibraryListRow(album: album)
+                        }
+                    }
+                }
+            }
+        case .tracks, .artists, .playlists, .downloaded:
+            // Placeholder until the per-tab surfaces land. The chip row, header,
+            // and count subline remain live so navigation feels responsive.
+            EmptyLibraryState(serverUrl: serverWebURL)
+        }
+    }
+
+    /// Count for a given tab. Artists has a real count; the rest are stubs
+    /// pending their respective FFI/storage work.
+    private func tabCount(for tab: LibraryTab) -> Int {
+        switch tab {
+        case .albums: return model.albums.count
+        case .artists: return model.artists.count
+        case .tracks, .playlists, .downloaded: return 0
+        }
+    }
+
+    /// 11pt uppercase count subline, e.g. "42 ALBUMS". Mirrors the spec's
+    /// "{n} tracks · Sorted by {sort}" — sort hasn't been wired yet (#216),
+    /// so for now the subline is just the count. The sort segment slots in
+    /// once the sort menu lands.
+    private var countSubline: String {
+        let count = tabCount(for: selectedTab)
+        return "\(count) \(selectedTab.countNoun)".uppercased()
     }
 
     private var backgroundWash: some View {
