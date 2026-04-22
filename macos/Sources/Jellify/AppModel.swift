@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 @preconcurrency import JellifyCore
+import JellifyAudio
 
 /// Top-level app state. Owns the Rust core and publishes a reactive surface
 /// that SwiftUI views observe. All core calls go through here so views never
