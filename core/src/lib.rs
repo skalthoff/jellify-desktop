@@ -190,6 +190,22 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.latest_albums(&library_id, limit)))
     }
 
+    /// Recently played tracks for the current user, sorted by server-side
+    /// `DatePlayed` descending. Pass `music_library_id` to scope to a single
+    /// `MusicLibrary` CollectionFolder.
+    pub fn recently_played(
+        &self,
+        music_library_id: Option<String>,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<Vec<Track>, JellifyError> {
+        self.with_client(|c| {
+            self.runtime.block_on(
+                c.recently_played(music_library_id.as_deref(), Paging::new(offset, limit)),
+            )
+        })
+    }
+
     pub fn search(&self, query: String) -> std::result::Result<SearchResults, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.search(&query)))
     }

@@ -100,6 +100,104 @@ async fn album_tracks_parses() {
 }
 
 #[tokio::test]
+async fn recently_played_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Echo", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Tides",
+                    "AlbumArtist": "Ocean", "Artists": ["Ocean"],
+                    "RunTimeTicks": 1800000000u64,
+                    "UserData": { "IsFavorite": false, "PlayCount": 3 },
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client
+        .recently_played(Some("lib-1"), Paging::new(0, 50))
+        .await
+        .unwrap();
+
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].name, "Echo");
+    assert_eq!(tracks[0].play_count, 3);
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("IncludeItemTypes=Audio"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("SortBy=DatePlayed"), "query: {q}");
+    assert!(q.contains("SortOrder=Descending"), "query: {q}");
+    assert!(q.contains("Limit=50"), "query: {q}");
+    assert!(q.contains("StartIndex=0"), "query: {q}");
+    assert!(q.contains("ParentId=lib-1"), "query: {q}");
+    assert!(
+        q.contains("Fields=") && q.contains("ParentId"),
+        "query: {q}"
+    );
+}
+
+#[tokio::test]
+async fn recently_played_omits_parent_id_when_none() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client
+        .recently_played(None, Paging::new(5, 25))
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(!q.contains("ParentId="), "unexpected ParentId: {q}");
+    assert!(q.contains("Limit=25"), "query: {q}");
+    assert!(q.contains("StartIndex=5"), "query: {q}");
+    assert!(q.contains("SortBy=DatePlayed"), "query: {q}");
+    assert!(q.contains("SortOrder=Descending"), "query: {q}");
+}
+
+#[tokio::test]
 async fn albums_uses_paging() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
