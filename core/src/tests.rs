@@ -203,6 +203,111 @@ async fn album_tracks_parses() {
     assert!((t.duration_seconds() - 222.0).abs() < 0.001);
 }
 
+/// Covers the Artist "Top Tracks" endpoint wired for #229. Asserts the
+/// query shape (ArtistIds, IncludeItemTypes=Audio, SortBy=PlayCount,
+/// SortOrder=Descending, Limit) and that the parsed tracks carry the
+/// `play_count` the UI rank sort depends on.
+#[tokio::test]
+async fn artist_top_tracks_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Hit Song", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Greatest Hits",
+                    "AlbumArtist": "Solo", "Artists": ["Solo"],
+                    "RunTimeTicks": 1200000000u64,
+                    "UserData": { "IsFavorite": false, "PlayCount": 42 },
+                    "ImageTags": { "Primary": "imgA" }
+                },
+                {
+                    "Id": "t2", "Name": "Deeper Cut", "Type": "Audio",
+                    "AlbumId": "a2", "Album": "B-Sides",
+                    "AlbumArtist": "Solo", "Artists": ["Solo"],
+                    "RunTimeTicks": 1500000000u64,
+                    "UserData": { "IsFavorite": false, "PlayCount": 5 },
+                    "ImageTags": { "Primary": "imgB" }
+                }
+            ],
+            "TotalRecordCount": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client.artist_top_tracks("artist-xyz", 5).await.unwrap();
+
+    assert_eq!(tracks.len(), 2);
+    assert_eq!(tracks[0].name, "Hit Song");
+    assert_eq!(tracks[0].play_count, 42);
+    assert_eq!(tracks[1].play_count, 5);
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("ArtistIds=artist-xyz"), "query: {q}");
+    assert!(q.contains("IncludeItemTypes=Audio"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("Limit=5"), "query: {q}");
+    // `PlayCount,SortName` is URL-encoded as `PlayCount%2CSortName`.
+    assert!(
+        q.contains("SortBy=PlayCount%2CSortName"),
+        "expected play-count sort, got: {q}"
+    );
+    assert!(
+        q.contains("SortOrder=Descending%2CAscending"),
+        "expected descending play-count sort, got: {q}"
+    );
+}
+
+/// Zero `limit` should clamp to `1` (matching the pattern used for other
+/// `Paging`/`Limit` endpoints) so the server never gets a no-op query.
+#[tokio::test]
+async fn artist_top_tracks_clamps_zero_limit_to_one() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client.artist_top_tracks("artist-xyz", 0).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("Limit=1"), "expected clamp to Limit=1, got: {q}");
+}
+
 #[tokio::test]
 async fn recently_played_builds_query_and_parses() {
     let server = MockServer::start().await;

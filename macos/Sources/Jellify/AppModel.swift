@@ -37,7 +37,18 @@ final class AppModel {
     var tracks: [Track] = []
     var playlists: [Playlist] = []
     var albumTracks: [String: [Track]] = [:]          // albumID → tracks
+    /// Cache of the top most-played tracks per artist id. Populated on demand
+    /// by `loadArtistTopTracks(artistId:)` when the Artist detail screen
+    /// opens. Held for the session; cleared on logout. See #229.
+    var artistTopTracks: [String: [Track]] = [:]      // artistID → top tracks
     var recentlyPlayed: [Track] = []
+    /// Tracks surfaced in the Discover "For You" carousel (#249). Today this
+    /// is a best-effort fallback to the first 20 `recentlyPlayed` tracks. A
+    /// real recommendations endpoint — seeded from listening history, minus
+    /// already-played items, leaning on similar artists — is tracked as a
+    /// follow-up on the core (no FFI exists yet; see `refreshForYou()` for
+    /// the TODO).
+    var forYou: [Track] = []
     var searchResults: SearchResults?
     var searchQuery: String = ""
 
@@ -256,6 +267,7 @@ final class AppModel {
         playlists = []
         playlistLibraryId = nil
         albumTracks = [:]
+        artistTopTracks = [:]
         recentlyPlayed = []
         searchResults = nil
         searchQuery = ""
@@ -283,6 +295,7 @@ final class AppModel {
         playlists = []
         playlistLibraryId = nil
         albumTracks = [:]
+        artistTopTracks = [:]
         recentlyPlayed = []
         searchResults = nil
         searchQuery = ""
@@ -651,6 +664,32 @@ final class AppModel {
         }
     }
 
+    /// Fetch the top 5 most-played tracks for an artist, driving the
+    /// "Top Tracks" section on the artist detail screen (#229). Backed by
+    /// `/Items?ArtistIds=<id>&SortBy=PlayCount,SortName&SortOrder=Descending,Ascending`
+    /// on the server. Results are cached per-artist for the session. Errors
+    /// are swallowed silently — an empty section is preferable to an error
+    /// banner for a secondary widget on the artist page.
+    @discardableResult
+    func loadArtistTopTracks(artistId: String, limit: UInt32 = 5) async -> [Track] {
+        if let cached = artistTopTracks[artistId] { return cached }
+        do {
+            let tracks = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.artistTopTracks(artistId: artistId, limit: limit)
+            }.value
+            artistTopTracks[artistId] = tracks
+            serverReachability.noteSuccess()
+            return tracks
+        } catch {
+            // Silent fallback — don't surface errors for a secondary widget.
+            if handleAuthError(error) { return [] }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            return []
+        }
+    }
+
     /// Switch to the Search screen and request keyboard focus in the search
     /// field. Called from the ⌘F menu command.
     func focusSearch() {
@@ -880,11 +919,14 @@ final class AppModel {
         print("[AppModel] shuffle(artist:) not yet wired — see #156 / #465")
     }
 
-    /// Play the artist's top tracks (play-count-weighted).
-    /// TODO: #229 — Top Tracks endpoint not yet wired.
+    /// Play the artist's top tracks (play-count-weighted). Fetches the
+    /// top 5 via the core, then starts playback from the first. See #229.
     func playTopTracks(artist: Artist) {
-        // TODO: #229 — Top Tracks endpoint not yet wired.
-        print("[AppModel] playTopTracks(artist:) not yet wired — see #229")
+        Task {
+            let tracks = await loadArtistTopTracks(artistId: artist.id)
+            guard !tracks.isEmpty else { return }
+            play(tracks: tracks, startIndex: 0)
+        }
     }
 
     /// Toggle the favorite flag for an artist on the Jellyfin server.

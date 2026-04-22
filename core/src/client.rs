@@ -545,6 +545,48 @@ impl JellyfinClient {
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
+    /// Fetch an artist's "top tracks" — audio items credited to the given
+    /// artist, sorted by the user's `PlayCount` descending with `SortName` as
+    /// a stable tiebreaker. Backed by
+    /// `GET /Items?artistIds={id}&IncludeItemTypes=Audio&SortBy=PlayCount,SortName&SortOrder=Descending,Ascending`.
+    ///
+    /// Powers the Artist detail "Top Tracks" section (#229). Tracks the user
+    /// has never played come back with `PlayCount = 0`; Jellyfin still
+    /// returns them but the 0-count rows naturally sort to the bottom.
+    /// Callers typically pass `limit = 5` for the compact row on the
+    /// artist page.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn artist_top_tracks(&self, artist_id: &str, limit: u32) -> Result<Vec<Track>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("ArtistIds", artist_id);
+            q.append_pair("Recursive", "true");
+            q.append_pair("IncludeItemTypes", "Audio");
+            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair("SortBy", "PlayCount,SortName");
+            q.append_pair("SortOrder", "Descending,Ascending");
+            q.append_pair(
+                "Fields",
+                "MediaSources,UserData,ParentId,ProductionYear,PrimaryImageAspectRatio",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Track::from).collect())
+    }
+
     /// Fetch a single item by id with a caller-selected set of `Fields`.
     ///
     /// Uses `GET /Items?Ids={id}&Fields=...` as a workaround for the
