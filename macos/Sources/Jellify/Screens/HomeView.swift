@@ -6,11 +6,13 @@ import SwiftUI
 /// (Recently Played, Artists You Love, Jump Back In, Your Playlists,
 /// Recently Added). See `research/06-screen-specs.md`.
 ///
-/// The greeting header (#204), quick-tiles row (#205), Recently Played
-/// carousel (#206), Pinned Stations row (#253), and Artist Radio row (#254)
-/// are the first content blocks to land. The remaining carousels
-/// (#55 / #208 / #209 / #207) will slot into this scaffold in follow-up
-/// issues without needing a refactor.
+/// Shipped content blocks: greeting header (#204), quick-tiles row (#205),
+/// Recently Played tiles (#206), Pinned Stations row (#253), Artist Radio
+/// row (#254), Jump Back In (#51), Recently Played track rows (#52),
+/// Quick Picks (#53), Recently Added (#54), and Favorites (#55). The
+/// section stack is deliberately "dumb" — each section reads its own slice
+/// off `AppModel` and hides itself when empty, so a new shelf lands with
+/// zero coordination from the rest of the view.
 struct HomeView: View {
     @Environment(AppModel.self) private var model
 
@@ -25,6 +27,11 @@ struct HomeView: View {
                 header
                 quickTilesRow
                 recentlyPlayedSection
+                jumpBackInSection
+                recentlyPlayedTracksSection
+                recentlyAddedSection
+                quickPicksSection
+                favoritesSection
                 pinnedStationsRow
                 artistRadioRow
                 Spacer(minLength: 24)
@@ -376,6 +383,319 @@ struct HomeView: View {
         return Array(model.artists.prefix(limit))
     }
 
+    // MARK: - New carousels (#51 / #52 / #53 / #54 / #55)
+
+    /// "Jump Back In" — last-played albums (#51). Up to 12 tiles, 180pt
+    /// artwork. Hidden until data arrives so a brand-new user isn't left
+    /// staring at an empty shelf.
+    @ViewBuilder
+    private var jumpBackInSection: some View {
+        if !model.jumpBackIn.isEmpty {
+            carouselSection(
+                icon: "arrow.uturn.backward",
+                iconColor: Theme.primary,
+                title: "Jump Back In",
+                subtitle: "Pick up where you left off",
+                onSeeAll: { model.screen = .library }
+            ) {
+                LazyHStack(alignment: .top, spacing: 16) {
+                    ForEach(model.jumpBackIn, id: \.id) { album in
+                        HomeAlbumTile(album: album)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    /// Track-level Recently Played (#52) — compact rows with a 48pt
+    /// thumbnail. Distinct from the existing tile-based `recentlyPlayed`
+    /// row above: this variant is denser and prioritises "tap to replay"
+    /// over "browse art". Hidden when there's no history.
+    ///
+    /// Jellyfin tracks `DatePlayed` via its playback-reporting pipeline,
+    /// which is always on for the stock server install. If a user has
+    /// disabled the playback-report plugin their history will stay empty —
+    /// we silently hide this shelf in that case (the Settings-side nudge
+    /// is tracked alongside the broader Preferences work).
+    @ViewBuilder
+    private var recentlyPlayedTracksSection: some View {
+        if !model.recentlyPlayed.isEmpty {
+            carouselSection(
+                icon: "clock.arrow.circlepath",
+                iconColor: Theme.accent,
+                title: "Recently Played",
+                subtitle: "Your latest listens, one click away",
+                onSeeAll: nil
+            ) {
+                LazyHStack(alignment: .top, spacing: 12) {
+                    ForEach(model.recentlyPlayed.prefix(20), id: \.id) { track in
+                        RecentlyPlayedTrackRow(track: track)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    /// "Recently Added" — new arrivals in the library (#54). Backed by
+    /// `/Users/{id}/Items/Latest`, so the list is sorted by `DateCreated`
+    /// server-side. Items added within the last 7 days carry a "NEW"
+    /// badge in the tile's top-leading corner.
+    @ViewBuilder
+    private var recentlyAddedSection: some View {
+        if !model.recentlyAdded.isEmpty {
+            carouselSection(
+                icon: "sparkle",
+                iconColor: Theme.primary,
+                title: "Recently Added",
+                subtitle: "Fresh arrivals in your library",
+                onSeeAll: { model.screen = .library }
+            ) {
+                LazyHStack(alignment: .top, spacing: 16) {
+                    ForEach(model.recentlyAdded, id: \.id) { album in
+                        HomeAlbumTile(album: album) {
+                            if let created = model.recentlyAddedDates[album.id],
+                               isWithinLastWeek(created) {
+                                NewBadge()
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    /// "Quick Picks" — heavy-rotation albums over the last 30 days (#53).
+    /// Sorted server-side by `PlayCount` desc; each tile exposes a play
+    /// count on hover so the user sees *why* it picked these. Hidden until
+    /// the user has accumulated enough plays for the shelf to feel
+    /// non-random.
+    @ViewBuilder
+    private var quickPicksSection: some View {
+        if !model.quickPicks.isEmpty {
+            carouselSection(
+                icon: "flame.fill",
+                iconColor: Theme.accent,
+                title: "Quick Picks",
+                subtitle: "Your heavy rotation — last 30 days",
+                onSeeAll: nil
+            ) {
+                LazyHStack(alignment: .top, spacing: 16) {
+                    ForEach(model.quickPicks, id: \.id) { album in
+                        HomeAlbumTile(album: album) {
+                            if let plays = model.quickPicksPlayCounts[album.id], plays > 0 {
+                                PlayCountBadge(plays: plays)
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    /// "Favorites" — shuffled random favorite albums, 12 visible (#55).
+    /// The header carries a "Shuffle All Favorites" CTA that pulls every
+    /// favorite track and starts playback shuffled. The row self-reshuffles
+    /// on each cold launch / refresh so it feels alive.
+    @ViewBuilder
+    private var favoritesSection: some View {
+        if model.favoriteAlbumsVisible.isEmpty {
+            favoritesEmptyState
+        } else {
+            VStack(alignment: .leading, spacing: 12) {
+                favoritesSectionHeader
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(alignment: .top, spacing: 16) {
+                        ForEach(model.favoriteAlbumsVisible, id: \.id) { album in
+                            HomeAlbumTile(album: album)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
+    /// Favorites header — title + subtitle on the left, a primary
+    /// "Shuffle All Favorites" pill + ghost "Reshuffle row" on the right.
+    /// Pulled out because it diverges from the simpler `carouselSection`
+    /// scaffold (two CTAs instead of one "See All").
+    private var favoritesSectionHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "heart.fill")
+                        .foregroundStyle(Theme.accentHot)
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Favorites")
+                        .font(Theme.font(18, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                    Text("A handful of the albums you love")
+                        .font(Theme.font(12, weight: .medium))
+                        .foregroundStyle(Theme.ink3)
+                }
+                Spacer(minLength: 12)
+                favoritesCTAs
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "heart.fill")
+                        .foregroundStyle(Theme.accentHot)
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Favorites")
+                        .font(Theme.font(18, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                }
+                favoritesCTAs
+            }
+        }
+    }
+
+    /// Right-hand CTA cluster for the Favorites header — "Shuffle All
+    /// Favorites" (primary accent pill) + "Reshuffle" (ghost). Extracted
+    /// so the narrow and wide layouts share one source of truth.
+    private var favoritesCTAs: some View {
+        HStack(spacing: 8) {
+            Button {
+                model.shuffleAllFavorites()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "shuffle")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("Shuffle All Favorites")
+                        .font(Theme.font(12, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Theme.accent))
+                .shadow(color: Theme.accent.opacity(0.3), radius: 8, y: 3)
+            }
+            .buttonStyle(.plain)
+            .help("Play every favorite track, shuffled")
+            .accessibilityLabel("Shuffle all favorites")
+
+            Button {
+                model.reshuffleFavoriteAlbumsVisible()
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("Reshuffle")
+                        .font(Theme.font(12, weight: .semibold))
+                }
+                .foregroundStyle(Theme.ink2)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Capsule().stroke(Theme.borderStrong, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .help("Pick a different handful of favorites")
+            .accessibilityLabel("Reshuffle the favorites row")
+        }
+    }
+
+    /// Empty-state card shown when the user hasn't favorited any albums
+    /// yet. Mirrors the shape of `PinnedStationsEmptyState` so the Home
+    /// layout has a consistent "tap this to fill the shelf" vocabulary.
+    private var favoritesEmptyState: some View {
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Theme.surface2)
+                    .frame(width: 56, height: 56)
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundStyle(Theme.accentHot)
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No favorites yet")
+                    .font(Theme.font(15, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+                Text("Tap the heart on any album or track to start building your favorites row.")
+                    .font(Theme.font(12, weight: .medium))
+                    .foregroundStyle(Theme.ink2)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 12)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: 88, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Theme.surface.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Theme.border, lineWidth: 1)
+        )
+    }
+
+    /// Shared scaffold for the new carousels: icon + title + subtitle on
+    /// the left, optional "See All" ghost button on the right, and a
+    /// horizontally-scrolling content slot underneath. Keeps the five new
+    /// shelves visually consistent without a heavy component.
+    ///
+    /// `onSeeAll == nil` drops the button — useful for shelves where the
+    /// "full version" doesn't have a destination yet.
+    @ViewBuilder
+    private func carouselSection<Content: View>(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String,
+        onSeeAll: (() -> Void)?,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(iconColor)
+                    .font(.system(size: 14, weight: .bold))
+                Text(title)
+                    .font(Theme.font(18, weight: .bold))
+                    .foregroundStyle(Theme.ink)
+                Text(subtitle)
+                    .font(Theme.font(12, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+                Spacer(minLength: 12)
+                if let onSeeAll {
+                    Button(action: onSeeAll) {
+                        HStack(spacing: 4) {
+                            Text("See All")
+                                .font(Theme.font(12, weight: .semibold))
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 10, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.ink2)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule().stroke(Theme.border, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .help("Open \(title) in full")
+                    .accessibilityLabel("See all \(title)")
+                }
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                content()
+            }
+        }
+    }
+
+    /// Returns `true` when the given date is within the last 7 days. Used
+    /// by `recentlyAddedSection` to decide whether to stamp the NEW badge
+    /// on a given tile.
+    private func isWithinLastWeek(_ date: Date) -> Bool {
+        let oneWeek: TimeInterval = 7 * 24 * 60 * 60
+        return Date().timeIntervalSince(date) < oneWeek
+    }
+
     private var backgroundWash: some View {
         LinearGradient(
             colors: [Theme.primary.opacity(0.15), .clear],
@@ -427,3 +747,45 @@ private struct HomeQuickTilePlaceholder: View {
 // `RecentlyPlayedTile` lives in `Components/RecentlyPlayedTile.swift` so it
 // can be reused from the Discover "For You" carousel (#249) without
 // duplication.
+
+/// "NEW" chip overlaid on `HomeAlbumTile` for items in the Recently Added
+/// row that were created within the last 7 days (#54). Small, hot-accent,
+/// top-leading — deliberately un-missable without crowding the artwork.
+private struct NewBadge: View {
+    var body: some View {
+        Text("NEW")
+            .font(Theme.font(9, weight: .black))
+            .foregroundStyle(.white)
+            .tracking(1.2)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Theme.accentHot))
+            .shadow(color: Theme.accentHot.opacity(0.5), radius: 4, y: 1)
+            .accessibilityLabel("Newly added")
+    }
+}
+
+/// Subtle "42 plays" chip rendered in the top-leading corner of a
+/// `HomeAlbumTile` to explain why the Quick Picks row picked an album
+/// (#53). Dimmer than `NewBadge` because it's informational, not a call
+/// to action.
+private struct PlayCountBadge: View {
+    let plays: UInt32
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 9, weight: .bold))
+            Text(playsLabel)
+                .font(Theme.font(10, weight: .bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(.black.opacity(0.55)))
+        .accessibilityLabel(playsLabel)
+    }
+
+    private var playsLabel: String {
+        plays == 1 ? "1 play" : "\(plays) plays"
+    }
+}
