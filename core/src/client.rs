@@ -286,6 +286,58 @@ impl JellyfinClient {
         })
     }
 
+    /// All audio tracks in the current user's library, sorted alphabetically
+    /// by `SortName` ascending. Backed by `GET /Users/{id}/Items` with
+    /// `IncludeItemTypes=Audio` and `Recursive=true`.
+    ///
+    /// `music_library_id` is the `MusicLibrary` CollectionFolder id; when
+    /// provided it scopes the query via `ParentId`. When `None`, Jellyfin
+    /// searches across all libraries the user can access — matching the
+    /// behaviour of [`JellyfinClient::recently_played`].
+    ///
+    /// `total_count` on the returned [`PaginatedTracks`] is the server's
+    /// `TotalRecordCount` so callers can drive a "N of M" subline and a
+    /// page-until-done load-more trigger without issuing a separate count
+    /// query.
+    pub async fn list_tracks(
+        &self,
+        music_library_id: Option<&str>,
+        paging: Paging,
+    ) -> Result<PaginatedTracks> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            if let Some(parent) = music_library_id {
+                q.append_pair("ParentId", parent);
+            }
+            q.append_pair("Recursive", "true");
+            q.append_pair("IncludeItemTypes", "Audio");
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
+            q.append_pair("SortBy", "SortName");
+            q.append_pair("SortOrder", "Ascending");
+            q.append_pair(
+                "Fields",
+                "ParentId,AlbumId,AlbumArtist,Artists,ProductionYear,RunTimeTicks",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(PaginatedTracks {
+            items: raw.items.into_iter().map(Track::from).collect(),
+            total_count: raw.total_record_count,
+        })
+    }
+
     /// Recently played audio tracks for the current user, sorted by
     /// `DatePlayed` descending. Jellyfin implicitly omits tracks with a null
     /// `UserData.LastPlayedDate` from this sort, so the result is the user's

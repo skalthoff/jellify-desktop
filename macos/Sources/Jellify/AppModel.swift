@@ -34,6 +34,7 @@ final class AppModel {
     // MARK: - Library
     var albums: [Album] = []
     var artists: [Artist] = []
+    var tracks: [Track] = []
     var albumTracks: [String: [Track]] = [:]          // albumID → tracks
     var recentlyPlayed: [Track] = []
     var searchResults: SearchResults?
@@ -54,6 +55,8 @@ final class AppModel {
     var albumsTotal: UInt32 = 0
     /// Server-reported total artist count for the current library.
     var artistsTotal: UInt32 = 0
+    /// Server-reported total track count for the current library.
+    var tracksTotal: UInt32 = 0
     /// Server-reported total recently-played count (listening history size).
     var recentlyPlayedTotal: UInt32 = 0
     /// Server-reported total for the current search query across all item kinds.
@@ -64,6 +67,8 @@ final class AppModel {
     var isLoadingMoreAlbums: Bool = false
     /// A follow-up artists page is in flight. See `isLoadingMoreAlbums`.
     var isLoadingMoreArtists: Bool = false
+    /// A follow-up tracks page is in flight. See `isLoadingMoreAlbums`.
+    var isLoadingMoreTracks: Bool = false
     /// A follow-up search page is in flight for the current query.
     var isLoadingMoreSearch: Bool = false
 
@@ -163,6 +168,7 @@ final class AppModel {
         session = nil
         albums = []
         artists = []
+        tracks = []
         albumTracks = [:]
         recentlyPlayed = []
         searchResults = nil
@@ -181,6 +187,7 @@ final class AppModel {
         try? core.logout()
         albums = []
         artists = []
+        tracks = []
         albumTracks = [:]
         recentlyPlayed = []
         searchResults = nil
@@ -195,10 +202,12 @@ final class AppModel {
     private func resetPaginationState() {
         albumsTotal = 0
         artistsTotal = 0
+        tracksTotal = 0
         recentlyPlayedTotal = 0
         searchResultsTotal = 0
         isLoadingMoreAlbums = false
         isLoadingMoreArtists = false
+        isLoadingMoreTracks = false
         isLoadingMoreSearch = false
     }
 
@@ -236,24 +245,30 @@ final class AppModel {
         isLoadingLibrary = true
         defer { isLoadingLibrary = false }
         do {
-            // Fetch albums and artists in parallel. Previously the two calls
-            // were sequential, doubling time-to-first-paint on every fresh
-            // session. `async let` lets both round-trips overlap; the
-            // `await` below resolves when both complete. The smaller
+            // Fetch albums, artists, and tracks in parallel. Previously the
+            // calls were sequential, doubling time-to-first-paint on every
+            // fresh session. `async let` lets all three round-trips overlap;
+            // the `await` below resolves when all complete. The smaller
             // `libraryInitialPageSize` (100 vs. the old 200) is a further
             // first-paint win — the grid fills the viewport with 100 and
-            // `loadMoreAlbums` takes over when the user scrolls.
+            // `loadMoreAlbums` / `loadMoreTracks` take over when the user
+            // scrolls.
             async let albumsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
                 try core.listAlbums(offset: 0, limit: libraryInitialPageSize)
             }.value
             async let artistsPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
                 try core.listArtists(offset: 0, limit: libraryInitialPageSize)
             }.value
-            let (albums, artists) = try await (albumsPage, artistsPage)
+            async let tracksPage = Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+                try core.listTracks(musicLibraryId: nil, offset: 0, limit: libraryInitialPageSize)
+            }.value
+            let (albums, artists, tracks) = try await (albumsPage, artistsPage, tracksPage)
             self.albums = albums.items
             self.albumsTotal = albums.totalCount
             self.artists = artists.items
             self.artistsTotal = artists.totalCount
+            self.tracks = tracks.items
+            self.tracksTotal = tracks.totalCount
             serverReachability.noteSuccess()
         } catch {
             if handleAuthError(error) { return }
@@ -305,6 +320,51 @@ final class AppModel {
             }.value
             self.artists.append(contentsOf: page.items)
             self.artistsTotal = page.totalCount
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Refetch the first page of library tracks for the All Tracks tab.
+    /// Called from `refreshLibrary` (inline as an `async let`) on session
+    /// establishment, and available for an explicit retry path later.
+    /// Matches `refreshRecentlyPlayed` in shape — stores items + total.
+    func refreshTracks() async {
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
+                try core.listTracks(musicLibraryId: nil, offset: 0, limit: libraryInitialPageSize)
+            }.value
+            self.tracks = page.items
+            self.tracksTotal = page.totalCount
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Fetch the next page of tracks and append to `tracks`. Mirror of
+    /// `loadMoreAlbums` — see its docs for the trigger contract.
+    func loadMoreTracks() async {
+        guard !isLoadingMoreTracks else { return }
+        guard tracksTotal == 0 || tracks.count < Int(tracksTotal) else { return }
+        isLoadingMoreTracks = true
+        defer { isLoadingMoreTracks = false }
+        let offset = UInt32(tracks.count)
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core, libraryPageSize] in
+                try core.listTracks(musicLibraryId: nil, offset: offset, limit: libraryPageSize)
+            }.value
+            self.tracks.append(contentsOf: page.items)
+            self.tracksTotal = page.totalCount
             serverReachability.noteSuccess()
         } catch {
             if handleAuthError(error) { return }

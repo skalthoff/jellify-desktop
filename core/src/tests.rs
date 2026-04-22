@@ -206,6 +206,127 @@ async fn recently_played_omits_parent_id_when_none() {
 }
 
 #[tokio::test]
+async fn list_tracks_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Aria", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Sunrise",
+                    "AlbumArtist": "Colleen", "Artists": ["Colleen"],
+                    "ProductionYear": 2019,
+                    "RunTimeTicks": 1800000000u64,
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 9876
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .list_tracks(Some("lib-1"), Paging::new(100, 50))
+        .await
+        .unwrap();
+
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.total_count, 9876);
+    assert_eq!(page.items[0].name, "Aria");
+    assert_eq!(page.items[0].artist_name, "Colleen");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("IncludeItemTypes=Audio"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("StartIndex=100"), "query: {q}");
+    assert!(q.contains("Limit=50"), "query: {q}");
+    assert!(q.contains("SortBy=SortName"), "query: {q}");
+    assert!(q.contains("SortOrder=Ascending"), "query: {q}");
+    assert!(q.contains("ParentId=lib-1"), "query: {q}");
+    let fields = get
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "Fields")
+        .map(|(_, v)| v.into_owned())
+        .expect("expected Fields query param");
+    assert!(
+        fields.split(',').any(|f| f == "ParentId"),
+        "Fields should include ParentId, got: {fields}"
+    );
+}
+
+#[tokio::test]
+async fn list_tracks_omits_parent_id_when_none() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client.list_tracks(None, Paging::new(0, 100)).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(!q.contains("ParentId="), "unexpected ParentId: {q}");
+    assert!(q.contains("IncludeItemTypes=Audio"), "query: {q}");
+    assert!(q.contains("Limit=100"), "query: {q}");
+    assert!(q.contains("StartIndex=0"), "query: {q}");
+    assert!(q.contains("SortBy=SortName"), "query: {q}");
+    assert!(q.contains("SortOrder=Ascending"), "query: {q}");
+}
+
+#[tokio::test]
+async fn list_tracks_requires_authenticated_session() {
+    // No MockServer routes registered: the guard must short-circuit before
+    // any HTTP call. Pointing at a live MockServer means a regression would
+    // surface as an unmatched-route error instead of silently hitting a real
+    // host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .list_tracks(Some("lib-1"), Paging::new(0, 50))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
 async fn albums_uses_paging() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
