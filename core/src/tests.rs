@@ -1771,6 +1771,172 @@ async fn report_playback_stopped_requires_authenticated_session() {
     );
 }
 
+#[tokio::test]
+async fn create_playlist_posts_pascal_case_body_and_returns_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Id": "new-playlist-id"
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let id = client
+        .create_playlist("Road Trip", &["t1", "t2", "t3"])
+        .await
+        .unwrap();
+    assert_eq!(id, "new-playlist-id");
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists")
+        .expect("expected POST to /Playlists");
+
+    // Content-Type should be JSON (set by reqwest when using `.json()`).
+    let content_type = post
+        .headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    assert!(
+        content_type.contains("application/json"),
+        "unexpected content-type: {content_type}"
+    );
+
+    // Auth header must be present with token.
+    let auth = post
+        .headers
+        .get(reqwest::header::AUTHORIZATION)
+        .expect("expected Authorization header")
+        .to_str()
+        .unwrap();
+    assert!(auth.contains("Token=\"t\""), "auth header: {auth}");
+
+    // Body must use Jellyfin's PascalCase keys, with MediaType = "Audio".
+    let body: serde_json::Value =
+        serde_json::from_slice(&post.body).expect("body should be valid JSON");
+    assert_eq!(
+        body.get("Name").and_then(|v| v.as_str()),
+        Some("Road Trip"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("UserId").and_then(|v| v.as_str()),
+        Some("u1"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("MediaType").and_then(|v| v.as_str()),
+        Some("Audio"),
+        "body: {body}"
+    );
+    let ids = body
+        .get("Ids")
+        .and_then(|v| v.as_array())
+        .expect("Ids should be an array");
+    let id_strs: Vec<&str> = ids.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(id_strs, vec!["t1", "t2", "t3"], "body: {body}");
+
+    // Keys must be PascalCase only — no snake_case leakage.
+    let obj = body.as_object().expect("body should be an object");
+    assert!(
+        obj.keys().all(|k| !k.contains('_')),
+        "expected PascalCase keys only, got: {:?}",
+        obj.keys().collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn create_playlist_with_empty_ids_sends_empty_array() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Id": "empty-playlist-id"
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let id = client.create_playlist("Empty List", &[]).await.unwrap();
+    assert_eq!(id, "empty-playlist-id");
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists")
+        .expect("expected POST to /Playlists");
+    let body: serde_json::Value =
+        serde_json::from_slice(&post.body).expect("body should be valid JSON");
+    let ids = body
+        .get("Ids")
+        .and_then(|v| v.as_array())
+        .expect("Ids should be an array");
+    assert!(ids.is_empty(), "expected empty Ids array, got: {body}");
+}
+
+#[tokio::test]
+async fn create_playlist_propagates_server_errors() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client.create_playlist("x", &[]).await.unwrap_err();
+    match err {
+        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 500),
+        other => panic!("expected Server 500, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn create_playlist_requires_authenticated_session() {
+    // No MockServer routes registered: the auth guard must short-circuit
+    // before any HTTP call. Pointing at a live MockServer means a regression
+    // would surface as an unmatched-route error rather than silently hitting
+    // a real host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.create_playlist("x", &[]).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =

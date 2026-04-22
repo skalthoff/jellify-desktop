@@ -698,6 +698,40 @@ impl JellyfinClient {
         Self::check(resp).await?.json().await.map_err(Into::into)
     }
 
+    /// Create a new playlist for the current user via `POST /Playlists`.
+    ///
+    /// The request body uses Jellyfin's PascalCase keys:
+    /// `{Name, Ids, UserId, MediaType: "Audio"}`. `Ids` may be empty — in
+    /// that case Jellyfin creates an empty playlist the caller can later
+    /// populate. Jellyfin returns a `PlaylistCreationResult { Id }`; this
+    /// method returns the new playlist id so callers can refetch the full
+    /// record (e.g. via [`JellyfinClient::fetch_item`]) if they need it.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn create_playlist(&self, name: &str, item_ids: &[&str]) -> Result<String> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let url = self.endpoint("Playlists")?;
+        let body = CreatePlaylistBody {
+            name: name.to_string(),
+            ids: item_ids.iter().map(|s| s.to_string()).collect(),
+            user_id: user_id.clone(),
+            media_type: "Audio".to_string(),
+        };
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .json(&body)
+            .send()
+            .await?;
+        let result: CreatePlaylistResult = Self::check(resp).await?.json().await?;
+        Ok(result.id)
+    }
+
     /// Report current playback progress to Jellyfin. Jellify calls this
     /// roughly every 10 seconds during playback, and whenever pause/resume/
     /// seek transitions occur, so the server can drive "Now Playing" state
@@ -1010,6 +1044,24 @@ struct PlaybackStoppedBody {
     item_id: String,
     #[serde(rename = "PositionTicks")]
     position_ticks: i64,
+}
+
+#[derive(Serialize)]
+struct CreatePlaylistBody {
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Ids")]
+    ids: Vec<String>,
+    #[serde(rename = "UserId")]
+    user_id: String,
+    #[serde(rename = "MediaType")]
+    media_type: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreatePlaylistResult {
+    #[serde(rename = "Id")]
+    id: String,
 }
 
 #[derive(Debug, Deserialize)]
