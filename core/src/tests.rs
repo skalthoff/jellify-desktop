@@ -2042,6 +2042,67 @@ async fn create_playlist_requires_authenticated_session() {
     );
 }
 
+#[tokio::test]
+async fn add_to_playlist_posts_ids_csv_and_user_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // Jellyfin returns 204 No Content on success.
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl-123/Items"))
+        .and(query_param("UserId", "u1"))
+        .and(query_param("Ids", "t1,t2,t3"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .add_to_playlist("pl-123", &["t1", "t2", "t3"])
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists/pl-123/Items")
+        .expect("expected POST to /Playlists/pl-123/Items");
+
+    // Query carries Ids as a comma-separated list and UserId is set.
+    let q = post.url.query().expect("expected a query string");
+    assert!(q.contains("Ids=t1%2Ct2%2Ct3"), "query: {q}");
+    assert!(q.contains("UserId=u1"), "query: {q}");
+
+    // Body must be empty — the endpoint accepts query-only input.
+    assert!(
+        post.body.is_empty(),
+        "expected empty body, got {:?}",
+        post.body
+    );
+}
+
+#[tokio::test]
+async fn add_to_playlist_requires_authenticated_session() {
+    // No MockServer route registered for /Playlists/*/Items: the auth guard
+    // must short-circuit before any HTTP call. Pointing at a live MockServer
+    // means a regression would surface as an unmatched-route error rather
+    // than silently hitting a real host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.add_to_playlist("pl-123", &["t1"]).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =

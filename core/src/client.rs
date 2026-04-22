@@ -519,6 +519,40 @@ impl JellyfinClient {
         })
     }
 
+    /// Append tracks (or any items) to the end of a playlist.
+    ///
+    /// Backed by `POST /Playlists/{playlistId}/Items?Ids={csv}&UserId={userId}`.
+    /// The endpoint accepts a comma-separated `Ids` query parameter and
+    /// returns 204 on success with no body — mirroring Jellify's
+    /// `addManyToPlaylist` so track/album/artist "Add to playlist" actions
+    /// (and sidebar drag-drop) can batch writes in one round-trip.
+    ///
+    /// The request body is empty; all parameters are in the query string.
+    /// Callers should invalidate their `playlist_tracks` cache on success.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn add_to_playlist(&self, playlist_id: &str, item_ids: &[&str]) -> Result<()> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Playlists/{playlist_id}/Items"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("Ids", &item_ids.join(","));
+            q.append_pair("UserId", user_id);
+        }
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
         let user_id = self
             .user_id
