@@ -29,6 +29,25 @@ Regenerate Swift bindings when the Rust API changes:
 cd macos && ./Scripts/build-core.sh
 ```
 
+## Flatpak packaging
+
+Offline Flatpak builds need a `cargo-sources.json` describing every crate the
+build will fetch. Regenerate it after any change to `Cargo.lock`:
+
+```sh
+./linux/flatpak/gen-sources.sh
+```
+
+The script wraps `flatpak-cargo-generator.py` from
+[`flatpak-builder-tools`](https://github.com/flatpak/flatpak-builder-tools);
+it will download a copy into `linux/flatpak/.cache/` on first run if the
+generator isn't already on `PATH` or pointed at by `$FLATPAK_CARGO_GENERATOR`.
+Requires `python3` with `aiohttp` and `toml` installed.
+
+The generated `linux/flatpak/cargo-sources.json` is checked in so CI and
+packagers don't need network access to rebuild. Commit the regenerated file
+alongside the `Cargo.lock` change that invalidated it.
+
 ## Commit style
 
 - Short, imperative subject line ("add X", "fix Y"). No prefixes.
