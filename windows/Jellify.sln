@@ -1,0 +1,44 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.8.0.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jellify.App", "Jellify.App\Jellify.App.csproj", "{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jellify.Core", "Jellify.Core\Jellify.Core.csproj", "{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|ARM64 = Debug|ARM64
+		Release|x64 = Release|x64
+		Release|ARM64 = Release|ARM64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Debug|x64.ActiveCfg = Debug|x64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Debug|x64.Build.0 = Debug|x64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Debug|x64.Deploy.0 = Debug|x64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Debug|ARM64.Build.0 = Debug|ARM64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Debug|ARM64.Deploy.0 = Debug|ARM64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Release|x64.ActiveCfg = Release|x64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Release|x64.Build.0 = Release|x64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Release|x64.Deploy.0 = Release|x64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Release|ARM64.ActiveCfg = Release|ARM64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Release|ARM64.Build.0 = Release|ARM64
+		{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}.Release|ARM64.Deploy.0 = Release|ARM64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Debug|x64.ActiveCfg = Debug|x64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Debug|x64.Build.0 = Debug|x64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Debug|ARM64.Build.0 = Debug|ARM64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Release|x64.ActiveCfg = Release|x64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Release|x64.Build.0 = Release|x64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Release|ARM64.ActiveCfg = Release|ARM64
+		{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}.Release|ARM64.Build.0 = Release|ARM64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1A1B73C8-0000-4A2A-9D1E-0001A1B7C000}
+	EndGlobalSection
+EndGlobal

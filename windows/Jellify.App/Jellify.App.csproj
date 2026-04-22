@@ -1,0 +1,85 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>Jellify.App</RootNamespace>
+    <AssemblyName>Jellify</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+
+    <!--
+      WinUI 3 packaged app. WindowsPackageType=MSIX produces a packaged build
+      that installs into the AppData container; UseWinUI brings in the WinUI 3
+      framework, EnableMsixTooling lights up `Package.appxmanifest` editing
+      in Visual Studio.
+    -->
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>MSIX</WindowsPackageType>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+
+    <!--
+      Single-project MSIX: avoid the legacy .wapproj split. Tooling >= 17.8
+      handles packaging from the same csproj.
+    -->
+    <EnablePreviewMsixTooling>true</EnablePreviewMsixTooling>
+    <WindowsPackageProvenanceVersion>1.0.0.0</WindowsPackageProvenanceVersion>
+
+    <!--
+      The Rust core ships as a native .dll loaded via P/Invoke from
+      Jellify.Core. Disable trimming so DllImport entries survive ILLink, and
+      keep ReadyToRun off until we have a publish profile to test against.
+    -->
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+
+    <!--
+      WindowsAppSDK 1.8.2509+ auto-includes `**\*.xaml` as Page items. We
+      also enumerate them explicitly below for determinism, so turn off the
+      implicit include to avoid NETSDK1022 duplicate-Page errors.
+    -->
+    <EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(WindowsAppSDKVersion)" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="$(CommunityToolkitMvvmVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="$(MicrosoftExtensionsVersion)" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="$(MicrosoftExtensionsVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Jellify.Core\Jellify.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    All XAML files are compiled by the WinUI build pipeline. Listing them
+    explicitly keeps the project deterministic when the file set churns.
+  -->
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </ApplicationDefinition>
+    <Page Include="MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="Pages\ShellPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Manifest Include="$(ApplicationManifest)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Package.appxmanifest" />
+    <AppxManifest Include="Package.appxmanifest">
+      <SubType>Designer</SubType>
+    </AppxManifest>
+  </ItemGroup>
+
+</Project>

@@ -22,7 +22,7 @@ examples/   Small Rust binaries exercising the core
 Business logic lives in `core/` as a Rust library. Each platform links it:
 
 - **macOS**: embedded as an `.xcframework`, consumed through [UniFFI](https://mozilla.github.io/uniffi-rs/)-generated Swift bindings. Audio playback uses `AVPlayer` directly, with the Rust core providing authenticated stream URLs. `MPNowPlayingInfoCenter` / `MPRemoteCommandCenter` integrations (planned) make the app a first-class participant in macOS media controls.
-- **Windows** (planned): WinUI 3 via Windows App SDK in C#, consuming the core through UniFFI .NET bindings. `MediaPlayer` for audio, SMTC for transport integration.
+- **Windows** (bootstrap landed; pages in flight): WinUI 3 via Windows App SDK in C#, consuming the core through UniFFI .NET bindings (`uniffi-bindgen-cs`). `MediaPlayer` for audio, SMTC for transport integration. See `windows/README.md`.
 - **Linux** (planned): GTK4 + libadwaita via `gtk-rs`, linking the core directly in-process. GStreamer for audio, MPRIS2 for transport.
 
 ## macOS — quick start

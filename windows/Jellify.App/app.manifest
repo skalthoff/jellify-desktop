@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<assembly manifestVersion="1.0" xmlns="urn:schemas-microsoft-com:asm.v1">
+  <assemblyIdentity version="1.0.0.0" name="Jellify.App" />
+
+  <application xmlns="urn:schemas-microsoft-com:asm.v3">
+    <windowsSettings>
+      <!--
+        Per-monitor V2 DPI awareness. WinUI 3 is fully DPI-aware, but the
+        runtime requires the host process manifest to opt in or it falls
+        back to system-DPI scaling and renders blurry on multi-monitor
+        setups with mixed scale factors.
+      -->
+      <dpiAwareness xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">PerMonitorV2</dpiAwareness>
+      <longPathAware xmlns="http://schemas.microsoft.com/SMI/2016/WindowsSettings">true</longPathAware>
+      <activeCodePage xmlns="http://schemas.microsoft.com/SMI/2019/WindowsSettings">UTF-8</activeCodePage>
+    </windowsSettings>
+  </application>
+
+  <!--
+    Compatibility block — declare the Windows versions we test against so
+    GetVersionEx-style probing works correctly.
+  -->
+  <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
+    <application>
+      <!-- Windows 10 -->
+      <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}" />
+      <!-- Windows 11 -->
+      <supportedOS Id="{a7d6f9e5-2c56-4d24-983e-1812c6e8c4d1}" />
+    </application>
+  </compatibility>
+
+</assembly>

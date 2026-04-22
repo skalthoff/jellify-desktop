@@ -1,0 +1,28 @@
+<Project>
+  <PropertyGroup>
+    <!--
+      Shared Windows-side build floor. Bump WinAppSDK / .NET SDK floors in
+      one place so the App and Core projects never drift apart.
+    -->
+    <LangVersion>12.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <WarningsNotAsErrors>NU1900</WarningsNotAsErrors>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <Platforms>x64;ARM64</Platforms>
+    <!--
+      RuntimeIdentifiers (plural). Single-RID projects regress against the
+      WinAppSDK 1.5+ RID-graph behavior; the plural form + UseRidGraph keeps
+      restore deterministic on both x64 and arm64 hosts.
+    -->
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <UseRidGraph>true</UseRidGraph>
+    <!--
+      Versions consumed by both csproj's via PackageReference. Bump here.
+    -->
+    <WindowsAppSDKVersion>1.8.250907003</WindowsAppSDKVersion>
+    <CommunityToolkitMvvmVersion>8.4.0</CommunityToolkitMvvmVersion>
+    <MicrosoftExtensionsVersion>8.0.0</MicrosoftExtensionsVersion>
+  </PropertyGroup>
+</Project>

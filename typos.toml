@@ -2,12 +2,19 @@
 #
 # Ignore false positives we'd otherwise trip on:
 #   - "PN" inside "PNGs" gets flagged as "ON"
+#   - "seeked" is the correct past-participle in media APIs (HTMLMediaElement
+#     fires a `seeked` event; our AudioEngine mirrors that naming).
+#   - "missable" is used deliberately in copy (opposite of "unmissable").
 #   - design/research docs contain transcribed chat snippets with typos
 #     we do not own and don't want to edit after-the-fact.
 [default]
 extend-ignore-re = [
     "PNGs",
 ]
+
+[default.extend-words]
+seeked = "seeked"
+missable = "missable"
 
 [files]
 extend-exclude = [

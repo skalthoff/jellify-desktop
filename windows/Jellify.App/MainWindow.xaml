@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Jellify.App.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:pages="using:Jellify.App.Pages"
+    Title="Jellify">
+    <pages:ShellPage />
+</Window>

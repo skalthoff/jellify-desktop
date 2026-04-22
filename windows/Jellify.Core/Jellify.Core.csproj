@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>Jellify.Core</RootNamespace>
+    <AssemblyName>Jellify.Core</AssemblyName>
+
+    <!--
+      The UniFFI-generated C# bindings rely on `unsafe` blocks for the
+      interop layer (raw pointers, Span<T> over RustBuffer). Without this
+      flag the generated file fails to compile.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    The native Rust DLL is produced by `windows/tools/build-core.ps1` into
+    `native/{rid}/`. We surface it to the consumer (Jellify.App) via per-RID
+    `<None>` items that copy to the output directory; the App's RuntimeIdentifier
+    selects which one is staged at build time.
+  -->
+  <ItemGroup>
+    <None Include="native\win-x64\jellify_core.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64' AND Exists('native\win-x64\jellify_core.dll')">
+      <Link>jellify_core.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="native\win-arm64\jellify_core.dll" Condition="'$(RuntimeIdentifier)' == 'win-arm64' AND Exists('native\win-arm64\jellify_core.dll')">
+      <Link>jellify_core.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Generated UniFFI C# bindings live under Generated/. The folder is
+      gitignored except for a .gitkeep until the gen-bindings script runs.
+    -->
+    <Compile Remove="Generated\**" />
+    <None Include="Generated\**" />
+    <Compile Include="Generated\*.cs" Condition="Exists('Generated')" />
+  </ItemGroup>
+
+  <!--
+    Build-time hook: if the native DLL for the current RID is missing, fail
+    early with a clear message rather than producing a half-built app that
+    crashes on first P/Invoke. Real builds run `tools/build-core.ps1` first;
+    this guard is so that misconfigured CI fails loudly.
+  -->
+  <Target Name="VerifyNativeCorePresent" BeforeTargets="Build" Condition="'$(RuntimeIdentifier)' != ''">
+    <Error Condition="!Exists('native\$(RuntimeIdentifier)\jellify_core.dll')"
+           Text="Missing native\$(RuntimeIdentifier)\jellify_core.dll. Run windows\tools\build-core.ps1 before building." />
+  </Target>
+
+</Project>
