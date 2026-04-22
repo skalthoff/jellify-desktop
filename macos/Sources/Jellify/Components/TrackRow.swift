@@ -83,6 +83,11 @@ struct TrackRow: View {
             RoundedRectangle(cornerRadius: 6)
                 .fill(rowBackground)
         )
+        // Native macOS focus ring. `.focusEffect()` (macOS 14+) lets the
+        // system draw the ring rather than us approximating it with a
+        // stroked overlay; combined with the inner .fill for `isActive` it
+        // keeps the row legible both via pointer and keyboard nav.
+        .focusEffectDisabled(false)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
                 .stroke(isFocused ? Theme.accent.opacity(0.6) : .clear, lineWidth: 1)
