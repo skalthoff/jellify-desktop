@@ -370,6 +370,52 @@ impl JellyfinClient {
         Ok(items.swap_remove(0))
     }
 
+    /// Mark an item as a favorite for the current user.
+    ///
+    /// Backed by `POST /Users/{userId}/FavoriteItems/{itemId}`. The server
+    /// returns `UserItemData` on success, which this method discards — callers
+    /// that need the refreshed metadata should re-fetch the item.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn set_favorite(&self, item_id: &str) -> Result<()> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let url = self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
+    /// Remove the favorite flag from an item for the current user.
+    ///
+    /// Backed by `DELETE /Users/{userId}/FavoriteItems/{itemId}`.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn unset_favorite(&self, item_id: &str) -> Result<()> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let url = self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
+        let resp = self
+            .http
+            .delete(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
     pub async fn search(&self, query: &str) -> Result<SearchResults> {
         let user_id = self
             .user_id

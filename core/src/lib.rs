@@ -210,6 +210,19 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.search(&query)))
     }
 
+    /// Mark an item (track, album, artist, playlist) as a favorite for the
+    /// current user. Errors with [`JellifyError::NotAuthenticated`] if no
+    /// session is active.
+    pub fn set_favorite(&self, item_id: String) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.set_favorite(&item_id)))
+    }
+
+    /// Remove the favorite flag from an item for the current user. Errors with
+    /// [`JellifyError::NotAuthenticated`] if no session is active.
+    pub fn unset_favorite(&self, item_id: String) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.unset_favorite(&item_id)))
+    }
+
     /// Fetch a single item by id with a caller-selected `fields` projection
     /// (e.g. `["Overview", "Genres", "Tags", "People"]`). Returns the raw
     /// JSON object serialized as a string — callers decode whichever

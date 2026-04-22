@@ -423,6 +423,103 @@ async fn fetch_item_without_session_returns_not_authenticated() {
     );
 }
 
+#[tokio::test]
+async fn set_favorite_posts_to_expected_path() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // Server returns UserItemData on success; the client discards it.
+    Mock::given(method("POST"))
+        .and(path("/Users/u1/FavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": true,
+            "PlayCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.set_favorite("item-xyz").await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Users/u1/FavoriteItems/item-xyz")
+        .expect("expected POST to favorite endpoint");
+    // No body is sent for this endpoint.
+    assert!(
+        post.body.is_empty(),
+        "expected empty body, got {:?}",
+        post.body
+    );
+}
+
+#[tokio::test]
+async fn unset_favorite_deletes_expected_path() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Users/u1/FavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": false,
+            "PlayCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.unset_favorite("item-xyz").await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "DELETE"
+                && r.url.path() == "/Users/u1/FavoriteItems/item-xyz"),
+        "expected DELETE to /Users/u1/FavoriteItems/item-xyz"
+    );
+}
+
+#[tokio::test]
+async fn set_favorite_without_session_returns_not_authenticated() {
+    // No MockServer routes registered: the guard must short-circuit before any
+    // HTTP call. Pointing at a live MockServer means a regression would surface
+    // as an unmatched-route error instead of silently hitting a real host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.set_favorite("anything").await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn unset_favorite_without_session_returns_not_authenticated() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.unset_favorite("anything").await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =
