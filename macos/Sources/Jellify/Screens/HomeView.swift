@@ -6,18 +6,21 @@ import SwiftUI
 /// (Recently Played, Artists You Love, Jump Back In, Your Playlists,
 /// Recently Added). See `research/06-screen-specs.md`.
 ///
-/// #205 delivered the quick-tiles row; #206 adds the Recently Played
-/// carousel below it. The full time-aware greeting header (#204) and the
-/// remaining carousels (#55 / #208 / #209 / #207) land in follow-up issues.
+/// The quick-tiles row (#205), Recently Played carousel (#206), and Artist
+/// Radio row (#254) are the first three content blocks to land. The
+/// greeting header (#204) and the remaining carousels (#55 / #208 / #209 /
+/// #207) will slot into this scaffold in follow-up issues without needing
+/// a refactor.
 struct HomeView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 28) {
                 header
                 quickTilesRow
                 recentlyPlayedSection
+                artistRadioRow
                 Spacer(minLength: 24)
             }
             .padding(.horizontal, 32)
@@ -32,7 +35,7 @@ struct HomeView: View {
     /// has a label and a dominant surface to sit under.
     private var header: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("IN ROTATION")
+            Text("WELCOME BACK")
                 .font(Theme.font(12, weight: .bold))
                 .foregroundStyle(Theme.ink2)
                 .tracking(2)
@@ -40,6 +43,11 @@ struct HomeView: View {
             Text("Home")
                 .font(Theme.font(36, weight: .black, italic: true))
                 .foregroundStyle(Theme.ink)
+            if let name = model.session?.user.name, !name.isEmpty {
+                Text("Hi, \(name)")
+                    .font(Theme.font(12, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+            }
         }
     }
 
@@ -76,6 +84,37 @@ struct HomeView: View {
         }
     }
 
+    /// Horizontal row of circular "<Artist> Radio" tiles. Source of artists
+    /// is picked by `radioArtists`, which today falls back to the first few
+    /// library artists — the favorites/top-listened signals (#133, #229)
+    /// aren't wired yet, and this view swaps to them seamlessly once they are.
+    @ViewBuilder
+    private var artistRadioRow: some View {
+        if !radioArtists.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Image(systemName: "dot.radiowaves.left.and.right")
+                        .foregroundStyle(Theme.accent)
+                        .font(.system(size: 14, weight: .bold))
+                    Text("Artist Radio")
+                        .font(Theme.font(18, weight: .bold))
+                        .foregroundStyle(Theme.ink)
+                    Text("Tap to start a radio station")
+                        .font(Theme.font(12, weight: .medium))
+                        .foregroundStyle(Theme.ink3)
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: 18) {
+                        ForEach(radioArtists, id: \.id) { artist in
+                            ArtistRadioTile(artist: artist)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+
     /// The albums surfaced as quick tiles — capped at 3. Pulled from the
     /// currently-loaded library as a placeholder until the ranked data sources
     /// in the TODO above are wired.
@@ -108,6 +147,20 @@ struct HomeView: View {
                 }
             }
         }
+    }
+
+    /// Pick a short list of artists to surface as radio seeds. Prefer
+    /// favorites → top-listened → library order. Favorites and top-listened
+    /// aren't wired in the core yet (tracked in #133 and #229), so for now
+    /// this falls through to the library's first few artists. Capped at 20
+    /// so the horizontal row doesn't grow unbounded once the better signals
+    /// are available.
+    private var radioArtists: [Artist] {
+        // TODO: #133 — surface favorites here once `list_favorite_artists`
+        //   lands on the core.
+        // TODO: #229 — surface top-listened artists once that endpoint is wired.
+        let limit = 20
+        return Array(model.artists.prefix(limit))
     }
 
     private var backgroundWash: some View {
