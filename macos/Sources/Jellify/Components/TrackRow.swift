@@ -1,14 +1,37 @@
 import SwiftUI
 @preconcurrency import JellifyCore
 
+/// Generic numbered track row used by `AlbumDetailView`, `PlaylistView`,
+/// and `SearchView`'s Tracks section. The caller supplies the ordinal number
+/// and an `onPlay` closure so the row stays ignorant of whether it's part
+/// of a disc-grouped album or a flat playlist.
+///
+/// Keyboard navigation (#105): rows are `.focusable()`, expose their id via
+/// `model.focusedTrackId`, and handle Up / Down / Return / Space exactly like
+/// `TrackListRow`. Callers that want arrow navigation between siblings must
+/// pass a `siblings` array so the row can compute the previous / next id;
+/// callers that don't (e.g. a one-off row) can leave it empty and only
+/// Return / Space will work. See also the TODO on type-ahead in
+/// `TrackListRow`.
 struct TrackRow: View {
     @Environment(AppModel.self) private var model
 
     let track: Track
     let number: Int
     var onPlay: (() -> Void)? = nil
+    /// Ordered list of sibling tracks this row belongs to, used to compute
+    /// the previous / next focus target on arrow keys. Empty means "no
+    /// siblings for nav" — the row will still be focusable and will still
+    /// handle Return / Space, but Up / Down become no-ops.
+    var siblings: [Track] = []
+    /// Position of this row inside `siblings`. When `siblings` is empty
+    /// this is ignored. Kept as an explicit argument so callers that
+    /// already have `idx` from a `ForEach(enumerated)` don't have to pay
+    /// for a linear scan through `siblings`.
+    var siblingIndex: Int = 0
 
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     private var isActive: Bool {
         model.status.currentTrack?.id == track.id
@@ -58,13 +81,66 @@ struct TrackRow: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 6)
-                .fill(isActive ? Theme.surface2 : (isHovering ? Theme.rowHover : .clear))
+                .fill(rowBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isFocused ? Theme.accent.opacity(0.6) : .clear, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture(count: 2) { onPlay?() }
         .onTapGesture(count: 1) { onPlay?() }
         .contextMenu { TrackContextMenu(selection: [track]) }
+        // MARK: Keyboard navigation (#105)
+        .focusable()
+        .focused($isFocused)
+        .onChange(of: isFocused) { _, nowFocused in
+            if nowFocused {
+                model.focusedTrackId = track.id
+            }
+        }
+        .onChange(of: model.focusedTrackId) { _, newId in
+            if newId == track.id && !isFocused {
+                isFocused = true
+            }
+        }
+        .onKeyPress(.upArrow) {
+            moveFocus(by: -1)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            moveFocus(by: 1)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            onPlay?()
+            return .handled
+        }
+        .onKeyPress(.space) {
+            model.togglePlayPause()
+            return .handled
+        }
+        // TODO(#105): Type-ahead (letter keys → first row whose title
+        // starts with the buffer) is still outstanding. See the matching
+        // TODO in `TrackListRow`.
+    }
+
+    private var rowBackground: Color {
+        if isActive { return Theme.surface2 }
+        if isFocused { return Theme.rowHover }
+        if isHovering { return Theme.rowHover }
+        return .clear
+    }
+
+    /// Move focus by `delta` within `siblings`. No-op when siblings wasn't
+    /// provided — the row just stops responding to arrow keys, which is
+    /// the same behaviour as any non-list focusable control.
+    private func moveFocus(by delta: Int) {
+        guard !siblings.isEmpty else { return }
+        let target = siblingIndex + delta
+        guard target >= 0, target < siblings.count else { return }
+        model.focusedTrackId = siblings[target].id
     }
 }
 
