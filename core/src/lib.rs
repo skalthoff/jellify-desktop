@@ -177,6 +177,20 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.album_tracks(&album_id)))
     }
 
+    /// Fetch an artist's most-played tracks (by server-tracked `PlayCount`
+    /// descending, `SortName` ascending as tiebreaker). Powers the artist
+    /// detail "Top Tracks" section — see #229.
+    pub fn artist_top_tracks(
+        &self,
+        artist_id: String,
+        limit: u32,
+    ) -> std::result::Result<Vec<Track>, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.artist_top_tracks(&artist_id, limit))
+        })
+    }
+
     /// Recently added albums for the Home "Recently Added" row.
     ///
     /// Server-side filtering respects the user's parental controls; the

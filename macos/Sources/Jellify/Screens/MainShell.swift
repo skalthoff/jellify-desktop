@@ -69,6 +69,8 @@ struct MainShell: View {
             SearchView()
         case .album(let id):
             AlbumDetailView(albumID: id)
+        case .artist(let id):
+            ArtistView(artistID: id)
         default:
             LibraryView()
         }
