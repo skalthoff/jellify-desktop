@@ -35,6 +35,7 @@ final class AppModel {
     var albums: [Album] = []
     var artists: [Artist] = []
     var albumTracks: [String: [Track]] = [:]          // albumID → tracks
+    var recentlyPlayed: [Track] = []
     var searchResults: SearchResults?
     var searchQuery: String = ""
 
@@ -116,6 +117,7 @@ final class AppModel {
         albums = []
         artists = []
         albumTracks = [:]
+        recentlyPlayed = []
         stopPolling()
     }
 
@@ -130,6 +132,7 @@ final class AppModel {
         albums = []
         artists = []
         albumTracks = [:]
+        recentlyPlayed = []
         stopPolling()
     }
 
@@ -182,6 +185,24 @@ final class AppModel {
                 serverReachability.noteFailure()
             }
             self.errorMessage = "Library load failed: \(error.localizedDescription)"
+        }
+        await refreshRecentlyPlayed()
+    }
+
+    /// Fetch the user's recently played tracks for the Home screen carousel
+    /// (#206). Passes `nil` for the music library id so the core returns
+    /// tracks across all music libraries the user can see. Failures are
+    /// swallowed silently — an empty carousel is preferable to an error
+    /// banner for a best-effort Home widget.
+    func refreshRecentlyPlayed() async {
+        do {
+            let tracks = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.recentlyPlayed(musicLibraryId: nil, offset: 0, limit: 20)
+            }.value
+            self.recentlyPlayed = tracks
+        } catch {
+            // Silent fallback — don't surface errors for a secondary widget.
+            _ = handleAuthError(error)
         }
     }
 
