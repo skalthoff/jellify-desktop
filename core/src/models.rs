@@ -99,3 +99,33 @@ impl Paging {
         Self { offset, limit }
     }
 }
+
+/// Jellyfin image variants served from `GET /Items/{id}/Images/{type}`.
+/// Mirrors the `ImageType` routes defined by the Jellyfin `ImageController`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum ImageType {
+    Primary,
+    Backdrop,
+    Thumb,
+    Disc,
+    Logo,
+    Banner,
+    Art,
+    Box,
+}
+
+impl ImageType {
+    /// Path segment as Jellyfin expects it in the URL.
+    pub fn as_path(&self) -> &'static str {
+        match self {
+            ImageType::Primary => "Primary",
+            ImageType::Backdrop => "Backdrop",
+            ImageType::Thumb => "Thumb",
+            ImageType::Disc => "Disc",
+            ImageType::Logo => "Logo",
+            ImageType::Banner => "Banner",
+            ImageType::Art => "Art",
+            ImageType::Box => "Box",
+        }
+    }
+}

@@ -193,6 +193,32 @@ impl JellifyCore {
         })
     }
 
+    /// Build an image URL for any [`ImageType`] (Primary, Backdrop, Thumb, Disc,
+    /// Logo, Banner, Art, Box). `index` is required for keyed types like
+    /// `Backdrop` (one URL per `BackdropImageTags` entry); pass `None` for the
+    /// first/only image.
+    pub fn image_url_of_type(
+        &self,
+        item_id: String,
+        image_type: ImageType,
+        index: Option<u32>,
+        tag: Option<String>,
+        max_width: Option<u32>,
+        max_height: Option<u32>,
+    ) -> std::result::Result<String, JellifyError> {
+        self.with_client(|c| {
+            Ok(c.image_url_of_type(
+                &item_id,
+                image_type,
+                index,
+                tag.as_deref(),
+                max_width,
+                max_height,
+            )?
+            .to_string())
+        })
+    }
+
     // ---------- Playback ----------
 
     /// Returns the fully-authenticated stream URL for a track. The platform
