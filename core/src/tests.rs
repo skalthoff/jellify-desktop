@@ -1069,6 +1069,123 @@ async fn unset_favorite_without_session_returns_not_authenticated() {
     );
 }
 
+#[tokio::test]
+async fn report_playback_progress_posts_pascal_case_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // Jellyfin typically returns 204 No Content for progress reports.
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Playing/Progress"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .report_playback_progress("track-xyz", 1_234_567_890, true)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Sessions/Playing/Progress")
+        .expect("expected POST to /Sessions/Playing/Progress");
+
+    // Content-Type should be JSON (set by reqwest when using `.json()`).
+    let content_type = post
+        .headers
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or_default();
+    assert!(
+        content_type.contains("application/json"),
+        "unexpected content-type: {content_type}"
+    );
+
+    // Body must use Jellyfin's PascalCase keys.
+    let body: serde_json::Value =
+        serde_json::from_slice(&post.body).expect("body should be valid JSON");
+    assert_eq!(
+        body.get("ItemId").and_then(|v| v.as_str()),
+        Some("track-xyz"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("PositionTicks").and_then(|v| v.as_i64()),
+        Some(1_234_567_890),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("IsPaused").and_then(|v| v.as_bool()),
+        Some(true),
+        "body: {body}"
+    );
+
+    // Ensure keys are PascalCase only — no snake_case leakage.
+    let obj = body.as_object().expect("body should be an object");
+    assert!(
+        obj.keys().all(|k| !k.contains('_')),
+        "expected PascalCase keys only, got: {:?}",
+        obj.keys().collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn report_playback_progress_propagates_server_errors() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Playing/Progress"))
+        .respond_with(ResponseTemplate::new(500).set_body_string("boom"))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client
+        .report_playback_progress("track-xyz", 0, false)
+        .await
+        .unwrap_err();
+    match err {
+        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 500),
+        other => panic!("expected Server 500, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn report_playback_progress_without_session_returns_not_authenticated() {
+    // No MockServer routes registered: the guard must short-circuit before
+    // any network call. Pointing at a live MockServer means a regression
+    // would surface as an unmatched-route error rather than silently hitting
+    // a real host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .report_playback_progress("track-xyz", 0, false)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =

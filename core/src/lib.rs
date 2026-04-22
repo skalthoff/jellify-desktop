@@ -385,6 +385,22 @@ impl JellifyCore {
         self.player.mark_position(seconds);
     }
 
+    /// Report playback progress to the server. Called by the platform
+    /// playback engine roughly every 10 seconds and on pause/resume/seek
+    /// transitions so Jellyfin can drive "Now Playing" state and resume
+    /// points. `position_ticks` is in Jellyfin's 100-ns tick units.
+    pub fn report_playback_progress(
+        &self,
+        item_id: String,
+        position_ticks: i64,
+        is_paused: bool,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.report_playback_progress(&item_id, position_ticks, is_paused))
+        })
+    }
+
     pub fn skip_next(&self) -> Option<Track> {
         self.player.skip_next()
     }
