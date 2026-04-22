@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.jellify.Desktop</id>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+
+  <name>Jellify</name>
+  <summary>Native music player for Jellyfin</summary>
+
+  <description>
+    <p>
+      Jellify is a native desktop music player for Jellyfin, built for listeners
+      who want their self-hosted library to feel like a first-class music app.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Browse artists, albums, playlists, and genres from your Jellyfin server</li>
+      <li>Gapless playback with a polished now-playing view</li>
+      <li>Queue management with reorder, shuffle, and repeat</li>
+      <li>Offline downloads for listening without a connection</li>
+      <li>Multi-server support with fast switching between libraries</li>
+      <li>Keyboard-friendly navigation and media key support</li>
+      <li>Light and dark themes that follow your desktop preference</li>
+    </ul>
+  </description>
+
+  <!-- The referenced org.jellify.Desktop.desktop file is added in PR #468, merging in parallel. -->
+  <launchable type="desktop-id">org.jellify.Desktop.desktop</launchable>
+
+  <developer id="io.github.skalthoff">
+    <name>Soren Althoff</name>
+  </developer>
+
+  <!--
+    Screenshot images are pending a follow-up change; the URLs below are
+    placeholders that will resolve once the PNGs are committed under
+    linux/data/screenshots/ on main.
+  -->
+  <screenshots>
+    <screenshot type="default">
+      <image type="source">https://raw.githubusercontent.com/skalthoff/jellify-desktop/main/linux/data/screenshots/library.png</image>
+      <caption>Browsing your music library</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/skalthoff/jellify-desktop/main/linux/data/screenshots/album-detail.png</image>
+      <caption>Album detail view with track listing</caption>
+    </screenshot>
+    <screenshot>
+      <image type="source">https://raw.githubusercontent.com/skalthoff/jellify-desktop/main/linux/data/screenshots/now-playing.png</image>
+      <caption>Now playing with artwork and queue</caption>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/skalthoff/jellify-desktop</url>
+  <url type="bugtracker">https://github.com/skalthoff/jellify-desktop/issues</url>
+  <url type="vcs-browser">https://github.com/skalthoff/jellify-desktop</url>
+  <url type="help">https://github.com/skalthoff/jellify-desktop</url>
+  <url type="translate">https://github.com/skalthoff/jellify-desktop</url>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+    <category>Player</category>
+  </categories>
+
+  <branding>
+    <color type="primary" scheme_preference="dark">#0C0622</color>
+  </branding>
+
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-cartoon">none</content_attribute>
+    <content_attribute id="violence-fantasy">none</content_attribute>
+    <content_attribute id="violence-realistic">none</content_attribute>
+    <content_attribute id="violence-bloodshed">none</content_attribute>
+    <content_attribute id="violence-sexual">none</content_attribute>
+    <content_attribute id="violence-desecration">none</content_attribute>
+    <content_attribute id="violence-slavery">none</content_attribute>
+    <content_attribute id="violence-worship">none</content_attribute>
+    <content_attribute id="drugs-alcohol">none</content_attribute>
+    <content_attribute id="drugs-narcotics">none</content_attribute>
+    <content_attribute id="drugs-tobacco">none</content_attribute>
+    <content_attribute id="sex-nudity">none</content_attribute>
+    <content_attribute id="sex-themes">none</content_attribute>
+    <content_attribute id="sex-homosexuality">none</content_attribute>
+    <content_attribute id="sex-prostitution">none</content_attribute>
+    <content_attribute id="sex-adultery">none</content_attribute>
+    <content_attribute id="sex-appearance">none</content_attribute>
+    <content_attribute id="language-profanity">none</content_attribute>
+    <content_attribute id="language-humor">none</content_attribute>
+    <content_attribute id="language-discrimination">none</content_attribute>
+    <content_attribute id="social-chat">none</content_attribute>
+    <content_attribute id="social-info">none</content_attribute>
+    <content_attribute id="social-audio">none</content_attribute>
+    <content_attribute id="social-location">none</content_attribute>
+    <content_attribute id="social-contacts">none</content_attribute>
+    <content_attribute id="money-purchasing">none</content_attribute>
+    <content_attribute id="money-gambling">none</content_attribute>
+  </content_rating>
+
+  <releases>
+    <release version="0.1.0" date="2026-04-21">
+      <description>
+        <p>Initial pre-release of the Jellify desktop client.</p>
+      </description>
+    </release>
+  </releases>
+</component>
