@@ -219,6 +219,82 @@ async fn latest_albums_requires_authenticated_session() {
     );
 }
 
+#[tokio::test]
+async fn fetch_item_builds_expected_query_and_extracts_first() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(wiremock::matchers::query_param("ids", "item-xyz"))
+        .and(wiremock::matchers::query_param(
+            "fields",
+            "Overview,Genres,Tags,ProductionYear",
+        ))
+        .and(wiremock::matchers::query_param("userId", "u1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "item-xyz",
+                    "Name": "Mystery",
+                    "Type": "MusicAlbum",
+                    "Overview": "A very fine record.",
+                    "Genres": ["Ambient", "Electronic"],
+                    "Tags": ["Downtempo"],
+                    "ProductionYear": 2024
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let value = client
+        .fetch_item(
+            "item-xyz",
+            &["Overview", "Genres", "Tags", "ProductionYear"],
+        )
+        .await
+        .unwrap();
+    assert_eq!(value.get("Id").and_then(|v| v.as_str()), Some("item-xyz"));
+    assert_eq!(
+        value.get("Overview").and_then(|v| v.as_str()),
+        Some("A very fine record.")
+    );
+    assert_eq!(
+        value.get("ProductionYear").and_then(|v| v.as_i64()),
+        Some(2024)
+    );
+}
+
+#[tokio::test]
+async fn fetch_item_empty_items_returns_not_found() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [],
+            "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server.uri());
+    let err = client.fetch_item("missing-id", &[]).await.unwrap_err();
+    match err {
+        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 404),
+        other => panic!("expected Server 404, got {other:?}"),
+    }
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =

@@ -194,6 +194,22 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.search(&query)))
     }
 
+    /// Fetch a single item by id with a caller-selected `fields` projection
+    /// (e.g. `["Overview", "Genres", "Tags", "People"]`). Returns the raw
+    /// JSON object serialized as a string — callers decode whichever
+    /// fields they asked for.
+    pub fn fetch_item(
+        &self,
+        item_id: String,
+        fields: Vec<String>,
+    ) -> std::result::Result<String, JellifyError> {
+        self.with_client(|c| {
+            let field_refs: Vec<&str> = fields.iter().map(String::as_str).collect();
+            let value = self.runtime.block_on(c.fetch_item(&item_id, &field_refs))?;
+            serde_json::to_string(&value).map_err(JellifyError::from)
+        })
+    }
+
     pub fn image_url(
         &self,
         item_id: String,
