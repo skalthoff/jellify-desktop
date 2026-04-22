@@ -23,6 +23,9 @@ enum Theme {
     static let accentHot = Color(hex: 0xFF066F)
     static let teal = Color(hex: 0x57E9C9)
 
+    // Status
+    static let danger = Color(hex: 0xFF4757)
+
     // Borders
     static let border = Color(rgba: (126, 114, 175, 0.18))
     static let borderStrong = Color(rgba: (126, 114, 175, 0.35))
