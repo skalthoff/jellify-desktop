@@ -35,8 +35,26 @@ final class AppModel {
     var albums: [Album] = []
     var artists: [Artist] = []
     var tracks: [Track] = []
+    /// Playlists known to the app — populated as the user navigates into
+    /// playlist detail surfaces or hits a screen that needs them (e.g. the
+    /// Library's Playlists tab, once #220 / #313 land). This is the source
+    /// of truth for `PlaylistView` to look up a playlist by id when the
+    /// shell routes `.playlist(id)`; upstream surfaces insert the playlist
+    /// here on navigation so a subsequent `.playlist(id)` doesn't have to
+    /// re-fetch. See #234.
     var playlists: [Playlist] = []
     var albumTracks: [String: [Track]] = [:]          // albumID → tracks
+    /// Per-playlist track caches, mirroring `albumTracks`. Populated by
+    /// `loadPlaylistTracks(playlist:)`; held for the session; cleared on
+    /// logout. See #125 and #234.
+    var playlistTracks: [String: [Track]] = [:]       // playlistID → tracks
+    /// Client-side overrides for playlist description. The server-side
+    /// Jellyfin item carries `Overview`, but our core `Playlist` record
+    /// doesn't expose it yet (see #130 / `update_playlist`). Until the FFI
+    /// lands, the hero's click-to-edit description reads from and writes
+    /// to this in-memory map so the interaction feels real; on the next
+    /// session / core-refresh the override evaporates. See #234.
+    var playlistDescriptions: [String: String] = [:]
     /// Cache of the top most-played tracks per artist id. Populated on demand
     /// by `loadArtistTopTracks(artistId:)` when the Artist detail screen
     /// opens. Held for the session; cleared on logout. See #229.
@@ -276,6 +294,8 @@ final class AppModel {
         playlists = []
         playlistLibraryId = nil
         albumTracks = [:]
+        playlistTracks = [:]
+        playlistDescriptions = [:]
         artistTopTracks = [:]
         recentlyPlayed = []
         forYou = []
@@ -307,6 +327,8 @@ final class AppModel {
         playlists = []
         playlistLibraryId = nil
         albumTracks = [:]
+        playlistTracks = [:]
+        playlistDescriptions = [:]
         artistTopTracks = [:]
         recentlyPlayed = []
         forYou = []
@@ -724,6 +746,56 @@ final class AppModel {
         }
     }
 
+    /// Fetch the ordered tracks for a playlist, preserving the server-side
+    /// playlist order. Mirrors `loadTracks(forAlbum:)` — results are cached
+    /// for the session, scoped to `playlistTracks[playlist.id]`. Backed by
+    /// `JellifyCore.playlistTracks` (core's `playlist_tracks`, see #125).
+    ///
+    /// We ask for up to 500 entries, which covers the vast majority of
+    /// playlists; paging the tail is a follow-up alongside virtualization of
+    /// the track list itself (see #234's spec — the hero ships first, the
+    /// long-playlist scroll optimization is a later polish pass).
+    @discardableResult
+    func loadPlaylistTracks(playlist: Playlist) async -> [Track] {
+        if let cached = playlistTracks[playlist.id] { return cached }
+        do {
+            let playlistID = playlist.id
+            let page = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.playlistTracks(playlistId: playlistID, offset: 0, limit: 500)
+            }.value
+            let tracks = page.items
+            playlistTracks[playlist.id] = tracks
+            serverReachability.noteSuccess()
+            return tracks
+        } catch {
+            if handleAuthError(error) { return [] }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Playlist tracks failed: \(error.localizedDescription)"
+            return []
+        }
+    }
+
+    /// Look up a cached `Playlist` by id. Returns `nil` if no upstream surface
+    /// has inserted one — the caller (`PlaylistView`) renders a minimal
+    /// fallback in that case until playlist listing lands (#220).
+    func playlist(id: String) -> Playlist? {
+        playlists.first { $0.id == id }
+    }
+
+    /// Navigate to the playlist detail screen. Caches the playlist so
+    /// `PlaylistView` can resolve it by id. Called from the Sidebar, Home
+    /// shelves, and context menus as they start linking into playlist detail
+    /// (#220 / #313 follow-ups).
+    func goToPlaylist(_ playlist: Playlist) {
+        if !playlists.contains(where: { $0.id == playlist.id }) {
+            playlists.append(playlist)
+        }
+        screen = .playlist(playlist.id)
+    }
+
+
     /// Switch to the Search screen and request keyboard focus in the search
     /// field. Called from the ⌘F menu command.
     func focusSearch() {
@@ -1056,42 +1128,50 @@ final class AppModel {
     //
     // Parallels the album actions above. Issue #313.
     //
-    // Most of these are TODO stubs pending follow-up FFI work (the core does
-    // not yet expose playlist-tracks lookup, queue-append, favorites, playlist
-    // mutation, or a download engine). The UI component (`PlaylistContextMenu`)
-    // is wired up now so that when each backing endpoint lands the action just
-    // needs its stub swapped for a real call.
+    // Playback actions are live now that `playlist_tracks` has landed (#125;
+    // see `loadPlaylistTracks`). Mutation actions (favorite, download,
+    // rename, delete) remain TODO stubs pending follow-up FFI work:
+    // favorites (#133), download engine (#70), `update_playlist` (#130),
+    // `delete_playlist` (#131). The UI is wired up now so that when each
+    // backing endpoint lands the action just needs its stub swapped for a
+    // real call.
 
     /// Fetch a playlist's tracks and start playback from the top.
-    /// TODO: #125 — the core does not yet expose `playlist_tracks`. Until it
-    /// does, this is a logging stub so the UI action has a landing pad.
     func play(playlist: Playlist) {
-        // TODO: #125 — playlist_tracks FFI not yet wired.
-        print("[AppModel] play(playlist:) not yet wired — see #125")
+        Task {
+            let tracks = await loadPlaylistTracks(playlist: playlist)
+            guard !tracks.isEmpty else { return }
+            play(tracks: tracks, startIndex: 0)
+        }
     }
 
-    /// Shuffle a playlist — once `playlist_tracks` lands, this should load the
-    /// track list, randomise it, and play from the top (matching `shuffle(album:)`).
-    /// TODO: #125 — see `play(playlist:)`.
+    /// Shuffle a playlist — loads tracks, randomises order, then plays from
+    /// the top. Mirrors `shuffle(album:)`.
     func shuffle(playlist: Playlist) {
-        // TODO: #125 — playlist_tracks FFI not yet wired.
-        print("[AppModel] shuffle(playlist:) not yet wired — see #125")
+        Task {
+            let tracks = await loadPlaylistTracks(playlist: playlist)
+            guard !tracks.isEmpty else { return }
+            play(tracks: tracks.shuffled(), startIndex: 0)
+        }
     }
 
     /// Insert a playlist's tracks immediately after the currently-playing track.
-    /// TODO: #125, #282 — needs both `playlist_tracks` and an `insertNext`
-    /// queue primitive. For now, a logging stub.
+    /// TODO: #282 — proper Up Next vs Auto Queue separation. For now, the core
+    /// queue is replaced on every `setQueue`, so until we grow an `insertNext`
+    /// primitive this falls back to replace-and-play behaviour.
     func playNext(playlist: Playlist) {
-        // TODO: #125 / #282 — playlist_tracks + Up Next insertion not yet wired.
-        print("[AppModel] playNext(playlist:) not yet wired — see #125 / #282")
+        // TODO: #282 — queue "Up Next" insertion; for now, replace-and-play.
+        print("[AppModel] playNext(playlist:) not yet wired — see #282")
+        play(playlist: playlist)
     }
 
     /// Append a playlist's tracks to the end of the queue.
-    /// TODO: #125, #282 — needs both `playlist_tracks` and an `appendToQueue`
-    /// queue primitive. For now, a logging stub.
+    /// TODO: #282 — the core lacks an `appendToQueue` primitive, so this is a
+    /// stub that plays the playlist outright for now.
     func addToQueue(playlist: Playlist) {
-        // TODO: #125 / #282 — playlist_tracks + queue append not yet wired.
-        print("[AppModel] addToQueue(playlist:) not yet wired — see #125 / #282")
+        // TODO: #282 — queue append. Currently behaves like `play`.
+        print("[AppModel] addToQueue(playlist:) not yet wired — see #282")
+        play(playlist: playlist)
     }
 
     /// Toggle the favorite flag for a playlist on the Jellyfin server.
@@ -1123,6 +1203,52 @@ final class AppModel {
     func requestDelete(playlist: Playlist) {
         // TODO: #75 / #131 — delete confirm + delete_playlist FFI not yet wired.
         print("[AppModel] requestDelete(playlist:) not yet wired — see #75 / #131")
+    }
+
+    /// Rename a playlist in place from the playlist hero's click-to-edit
+    /// title (#234). Updates the cached `Playlist` in `playlists` so the hero
+    /// reflects the new name immediately.
+    ///
+    /// TODO: #130 — the `update_playlist` FFI / HTTP `POST /Items/{Id}` wrapper
+    /// is still pending. Until it lands this is an in-memory-only rename: on
+    /// the next library refresh the cached `Playlist` gets overwritten with
+    /// whatever the server still has. That's acceptable for now — the
+    /// interaction exercises the view plumbing, and the follow-up swap is a
+    /// one-line change here.
+    func renamePlaylist(_ playlist: Playlist, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != playlist.name else { return }
+        // TODO: #130 — call `core.updatePlaylist(playlistId:, name:)` once the
+        // FFI lands. For now, optimistically update the in-memory cache.
+        print("[AppModel] renamePlaylist(\(playlist.id), \(trimmed)) not yet persisted — see #130")
+        guard let idx = playlists.firstIndex(where: { $0.id == playlist.id }) else { return }
+        playlists[idx] = Playlist(
+            id: playlist.id,
+            name: trimmed,
+            trackCount: playlist.trackCount,
+            runtimeTicks: playlist.runtimeTicks,
+            imageTag: playlist.imageTag
+        )
+    }
+
+    /// Update the description (Jellyfin `Overview`) for a playlist from the
+    /// hero's click-to-edit description editor (#234). The core `Playlist`
+    /// record doesn't expose `Overview` yet, so the new text lives in the
+    /// in-memory `playlistDescriptions` map keyed by playlist id.
+    ///
+    /// TODO: #130 — switch this to `core.updatePlaylist(playlistId:, overview:)`
+    /// once the FFI lands, and drop `playlistDescriptions` entirely in favour
+    /// of a `description: Option<String>` field on `Playlist` in
+    /// `core/src/models.rs`.
+    func updatePlaylistDescription(_ playlist: Playlist, newDescription: String) {
+        let trimmed = newDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        // TODO: #130 — persist via `core.updatePlaylist` once available.
+        print("[AppModel] updatePlaylistDescription(\(playlist.id)) not yet persisted — see #130")
+        if trimmed.isEmpty {
+            playlistDescriptions.removeValue(forKey: playlist.id)
+        } else {
+            playlistDescriptions[playlist.id] = trimmed
+        }
     }
 
     // MARK: - Playlist sharing
