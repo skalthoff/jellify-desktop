@@ -640,7 +640,7 @@ final class AppModel {
             startPolling()
             await refreshLibrary()
         } catch {
-            self.errorMessage = "Login failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .login)
         }
     }
 
@@ -827,6 +827,10 @@ final class AppModel {
     /// are:
     /// - `NotAuthenticated` → `"not logged in"`
     /// - `Server { status: 401, .. }` → `"server returned an error: 401 ..."`
+    ///
+    /// Call-sites that do NOT match auth go on to call
+    /// `JellifyErrorPresenter.message(for:context:)` (see #351) to turn the
+    /// raw Display string into localized banner copy.
     private func handleAuthError(_ error: Error) -> Bool {
         let description = error.localizedDescription
         let isNotAuthenticated = description.contains("not logged in")
@@ -878,7 +882,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
         _ = await playlistsResult
         await refreshRecentlyPlayed()
@@ -915,7 +919,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -939,7 +943,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -960,7 +964,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -984,7 +988,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -1077,7 +1081,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Playlists load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistsLoad)
         }
     }
 
@@ -1137,7 +1141,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Playlist load failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistLoad)
         }
         return all
     }
@@ -1590,7 +1594,12 @@ final class AppModel {
             trackCount: trackCount,
             runtimeTicks: runtimeTicks,
             genres: genres,
-            imageTag: imageTag
+            imageTag: imageTag,
+            // DTO parser doesn't request `Fields=UserData`, so the
+            // server-authoritative projection is absent here. Favourite /
+            // play-count consumers read the legacy convenience mirrors
+            // (`isFavorite` / `playCount`) where those are set.
+            userData: nil
         )
     }
 
@@ -1676,7 +1685,12 @@ final class AppModel {
             playCount: playCount,
             container: container,
             bitrate: bitrate,
-            imageTag: imageTag
+            imageTag: imageTag,
+            // DTO parser doesn't request `Fields=UserData`, so the
+            // server-authoritative projection is absent. Legacy mirrors
+            // `isFavorite` / `playCount` are populated above from whatever
+            // the BaseItemDto carried.
+            userData: nil
         )
     }
 
@@ -1694,7 +1708,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Album tracks failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .albumTracks)
             return []
         }
     }
@@ -1751,7 +1765,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Playlist tracks failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistTracks)
             return []
         }
     }
@@ -1789,7 +1803,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Playlist tracks failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistTracks)
         }
     }
 
@@ -1989,7 +2003,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2039,7 +2053,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2206,7 +2220,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2248,7 +2262,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2353,7 +2367,7 @@ final class AppModel {
             errorMessage = nil
         } catch {
             if handleAuthError(error) { return }
-            errorMessage = "Couldn't start playback: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playback)
         }
     }
 
@@ -2456,7 +2470,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Favorite failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .favorite)
         }
     }
 
@@ -2504,7 +2518,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Add to playlist failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistAdd)
             return false
         }
     }
@@ -3184,7 +3198,7 @@ final class AppModel {
             try audio.play(track: track)
         } catch {
             if handleAuthError(error) { return }
-            errorMessage = "Playback failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playback)
         }
     }
 

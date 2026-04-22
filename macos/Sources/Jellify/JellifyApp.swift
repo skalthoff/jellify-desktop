@@ -114,11 +114,11 @@ struct JellifyCommands: Commands {
         // Close Window (⌘W). We append a "New Playlist…" entry after the
         // built-in new-item block so both show up together under File > New.
         CommandGroup(after: .newItem) {
-            Button("New Playlist…") {
+            Button("menu.file.new_playlist") {
                 // TODO(#131 / #234): wire to `core.createPlaylist(name:itemIds:)`
                 // once the FFI lands. For now this is a menu placeholder so the
                 // shortcut is reserved and discoverable.
-                model.errorMessage = "Creating playlists isn't wired yet — see #131."
+                model.errorMessage = String(localized: "login.placeholder.not_wired", bundle: .main)
             }
             .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(model.session == nil)
@@ -133,7 +133,7 @@ struct JellifyCommands: Commands {
         CommandGroup(after: .sidebar) {
             Divider()
 
-            Button("Show Sidebar") {
+            Button("menu.view.show_sidebar") {
                 // TODO(#5): bind to a published `isSidebarVisible` flag on
                 // AppModel and have `MainShell` conditionally mount `Sidebar()`.
                 // The menu item is reserved now so the shortcut exists.
@@ -141,7 +141,7 @@ struct JellifyCommands: Commands {
             .keyboardShortcut("s", modifiers: [.command, .option])
             .disabled(true)
 
-            Button("Show Queue Inspector") {
+            Button("menu.view.show_queue") {
                 // TODO(#272): the queue drawer lands with BATCH-07's rich
                 // inspector. Menu item reserved so ⌘⌥Q resolves to something
                 // discoverable once the panel exists.
@@ -157,19 +157,19 @@ struct JellifyCommands: Commands {
             // Home, Library, Search. `model.screen` is the source of truth
             // and re-assigning it triggers the same `MainShell` animation
             // as clicking the sidebar.
-            Button("Home") {
+            Button("menu.nav.home") {
                 model.screen = .home
             }
             .keyboardShortcut("1", modifiers: .command)
             .disabled(model.session == nil)
 
-            Button("Library") {
+            Button("menu.nav.library") {
                 model.screen = .library
             }
             .keyboardShortcut("2", modifiers: .command)
             .disabled(model.session == nil)
 
-            Button("Search") {
+            Button("menu.nav.search") {
                 model.screen = .search
             }
             .keyboardShortcut("3", modifiers: .command)
@@ -181,7 +181,7 @@ struct JellifyCommands: Commands {
             // `requestSearchFocus` one-shot and the new `isSearchFieldFocused`
             // mirror so any field binding a `@FocusState` to either will
             // receive focus. See #7 / #104.
-            Button("Find…") {
+            Button("menu.nav.find") {
                 model.focusSearch()
             }
             .keyboardShortcut("f", modifiers: .command)
@@ -190,7 +190,7 @@ struct JellifyCommands: Commands {
             // ⌘L jumps to the full Now Playing view and toggles back to the
             // previous screen when pressed again (matches Music.app feel).
             // See #89 / #6 and the Playback menu's mirror shortcut.
-            Button("Go to Now Playing") {
+            Button("menu.nav.now_playing") {
                 toggleNowPlaying()
             }
             .keyboardShortcut("l", modifiers: .command)
@@ -200,7 +200,7 @@ struct JellifyCommands: Commands {
             // search + static action verbs. Toggling the flag here and
             // letting `RootView` mount the overlay keeps the palette
             // independent of whichever screen is currently focused.
-            Button("Command Palette\u{2026}") {
+            Button("menu.nav.command_palette") {
                 model.isCommandPaletteOpen.toggle()
             }
             .keyboardShortcut("k", modifiers: .command)
@@ -213,8 +213,8 @@ struct JellifyCommands: Commands {
         // whole app is usable from the home row. Media keys (F7/F8/F9) and
         // Bluetooth AVRCP events hit the same `AppModel` methods via
         // `MediaSession` — see file header for why they aren't re-registered.
-        CommandMenu("Playback") {
-            Button(playPauseLabel) {
+        CommandMenu("menu.playback") {
+            Button(playPauseLabelKey) {
                 model.togglePlayPause()
             }
             .keyboardShortcut(.space, modifiers: [])
@@ -222,13 +222,13 @@ struct JellifyCommands: Commands {
 
             Divider()
 
-            Button("Next Track") {
+            Button("menu.playback.next") {
                 model.skipNext()
             }
             .keyboardShortcut(.rightArrow, modifiers: .command)
             .disabled(model.status.currentTrack == nil)
 
-            Button("Previous Track") {
+            Button("menu.playback.previous") {
                 model.skipPrevious()
             }
             .keyboardShortcut(.leftArrow, modifiers: .command)
@@ -236,13 +236,13 @@ struct JellifyCommands: Commands {
 
             Divider()
 
-            Button("Volume Up") {
+            Button("menu.playback.volume_up") {
                 let next = min(1.0, model.status.volume + 0.05)
                 model.setVolume(next)
             }
             .keyboardShortcut(.upArrow, modifiers: .command)
 
-            Button("Volume Down") {
+            Button("menu.playback.volume_down") {
                 let next = max(0.0, model.status.volume - 0.05)
                 model.setVolume(next)
             }
@@ -250,13 +250,13 @@ struct JellifyCommands: Commands {
 
             Divider()
 
-            Button("Seek Forward 10s") {
+            Button("menu.playback.seek_forward") {
                 model.seek(by: 10)
             }
             .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
             .disabled(model.status.currentTrack == nil)
 
-            Button("Seek Back 10s") {
+            Button("menu.playback.seek_back") {
                 model.seek(by: -10)
             }
             .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
@@ -264,13 +264,13 @@ struct JellifyCommands: Commands {
 
             Divider()
 
-            Button("Stop") {
+            Button("menu.playback.stop") {
                 model.stop()
             }
             .keyboardShortcut(".", modifiers: .command)
             .disabled(model.status.currentTrack == nil)
 
-            Button("Go to Now Playing") {
+            Button("menu.nav.now_playing") {
                 toggleNowPlaying()
             }
             .keyboardShortcut("l", modifiers: .command)
@@ -284,13 +284,13 @@ struct JellifyCommands: Commands {
         // an explicit Tile Window action so the command is discoverable
         // even when the system hasn't surfaced the OS-level tiling item.
         CommandGroup(after: .windowArrangement) {
-            Button("Tile Window to Left of Screen") {
+            Button("menu.window.tile_left") {
                 tileCurrentWindow(edge: .left)
             }
             .keyboardShortcut(.leftArrow, modifiers: [.control, .option, .command])
             .disabled(NSApp.keyWindow == nil)
 
-            Button("Tile Window to Right of Screen") {
+            Button("menu.window.tile_right") {
                 tileCurrentWindow(edge: .right)
             }
             .keyboardShortcut(.rightArrow, modifiers: [.control, .option, .command])
@@ -303,7 +303,7 @@ struct JellifyCommands: Commands {
         // We redirect it to the repo's issue tracker so the menu item
         // actually leads somewhere useful.
         CommandGroup(replacing: .help) {
-            Button("Jellify Help") {
+            Button("menu.help.jellify") {
                 if let url = URL(string: "https://github.com/skalthoff/jellify-desktop") {
                     NSWorkspace.shared.open(url)
                 }
@@ -320,8 +320,11 @@ struct JellifyCommands: Commands {
         // behavior (e.g. AppKit's responder-chain text editing actions).
     }
 
-    private var playPauseLabel: String {
-        model.status.state == .playing ? "Pause" : "Play"
+    /// Catalog key for the Play / Pause toggle in the Playback menu. Returned
+    /// as `LocalizedStringKey` so SwiftUI looks up the translation from
+    /// `Localizable.xcstrings` rather than rendering the literal key.
+    private var playPauseLabelKey: LocalizedStringKey {
+        model.status.state == .playing ? "menu.playback.pause" : "menu.playback.play"
     }
 
     /// Toggle behaviour for the "Go to Now Playing" menu item: first press
@@ -427,7 +430,7 @@ private struct RestoreLoadingView: View {
         ZStack {
             Theme.bg.ignoresSafeArea()
             VStack(spacing: 16) {
-                Text("Jellify")
+                Text("app.name")
                     .font(Theme.font(40, weight: .black, italic: true))
                     .foregroundStyle(Theme.ink)
                 ProgressView()

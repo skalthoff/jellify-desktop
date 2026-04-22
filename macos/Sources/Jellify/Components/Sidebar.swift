@@ -11,12 +11,14 @@ struct Sidebar: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(LinearGradient(colors: [Theme.teal, Theme.primary], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 30, height: 30)
-                    .overlay(Text("🪼").font(.system(size: 16)))
+                    // Emoji rendered verbatim — a jellyfish is a jellyfish in
+                    // every locale; no catalog entry needed.
+                    .overlay(Text(verbatim: "🪼").font(.system(size: 16)))
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Jellify")
+                    Text("app.name")
                         .font(Theme.font(15, weight: .black, italic: true))
                         .foregroundStyle(Theme.ink)
-                    Text("DESKTOP")
+                    Text("app.subtitle.desktop")
                         .font(Theme.font(9, weight: .bold))
                         .foregroundStyle(Theme.ink3)
                         .tracking(1.5)
@@ -29,19 +31,19 @@ struct Sidebar: View {
 
             // Primary nav
             VStack(alignment: .leading, spacing: 2) {
-                navItem("house", label: "Home", screen: .home)
-                navItem("music.note.list", label: "Library", screen: .library)
-                navItem("magnifyingglass", label: "Search", screen: .search)
+                navItem("house", label: "sidebar.nav.home", screen: .home)
+                navItem("music.note.list", label: "sidebar.nav.library", screen: .library)
+                navItem("magnifyingglass", label: "sidebar.nav.search", screen: .search)
             }
             .padding(.horizontal, 10)
 
             // Stats footer
-            sectionHeader("Your Library")
+            sectionHeader("sidebar.section.your_library")
             VStack(alignment: .leading, spacing: 2) {
-                libRow("heart", label: "Favorites", count: nil)
-                libRow("square.stack", label: "Albums", count: UInt32(model.albums.count))
-                libRow("person.crop.circle", label: "Artists", count: UInt32(model.artists.count))
-                libRow("music.note.list", label: "Playlists", count: UInt32(model.playlists.count))
+                libRow("heart", label: "sidebar.stats.favorites", count: nil)
+                libRow("square.stack", label: "sidebar.stats.albums", count: UInt32(model.albums.count))
+                libRow("person.crop.circle", label: "sidebar.stats.artists", count: UInt32(model.artists.count))
+                libRow("music.note.list", label: "sidebar.stats.playlists", count: UInt32(model.playlists.count))
             }
             .padding(.horizontal, 10)
 
@@ -85,7 +87,7 @@ struct Sidebar: View {
     }
 
     @ViewBuilder
-    private func navItem(_ icon: String, label: String, screen: AppModel.Screen) -> some View {
+    private func navItem(_ icon: String, label: LocalizedStringKey, screen: AppModel.Screen) -> some View {
         let active = model.screen == screen
         Button { model.screen = screen } label: {
             HStack(spacing: 10) {
@@ -124,7 +126,7 @@ struct Sidebar: View {
     }
 
     @ViewBuilder
-    private func libRow(_ icon: String, label: String, count: UInt32?) -> some View {
+    private func libRow(_ icon: String, label: LocalizedStringKey, count: UInt32?) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .foregroundStyle(Theme.ink2)
@@ -149,8 +151,13 @@ struct Sidebar: View {
     }
 
     @ViewBuilder
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        // The header reads as uppercase in the rendered frame via the heavy
+        // tracking + smallcap feel; we no longer force `.uppercased()` here
+        // because doing so would mangle non-Latin scripts (Arabic, CJK)
+        // that have no case distinction. The catalog entries already ship
+        // the English label in uppercase.
+        Text(title)
             .font(Theme.font(10, weight: .bold))
             .foregroundStyle(Theme.ink3)
             .tracking(1.5)

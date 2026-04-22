@@ -41,6 +41,32 @@ enum Theme {
     /// sizes ride `.body`; headline sizes ride `.title3` / `.title2` /
     /// `.largeTitle` depending on scale so they keep their relative rank
     /// when the user cranks text size up.
+    ///
+    /// ## Glyph fallback (#347)
+    ///
+    /// `Font.custom(name:size:)` ultimately resolves to a `CTFont` via Core
+    /// Text, which keeps a per-font cascade list. When a run contains a code
+    /// point the primary face (Figtree) doesn't cover — CJK ideographs,
+    /// Cyrillic, Arabic, Hebrew, Thai, Devanagari, emoji, etc. — Core Text
+    /// consults that cascade and substitutes from the system cascade list
+    /// (fall-back: `.AppleSystemUIFont` / `.SFNS-Regular`). The substitution
+    /// happens at the glyph layer, so a line that mixes Latin and CJK renders
+    /// Latin in Figtree and CJK in whichever system face covers those code
+    /// points — without the app having to detect the script itself.
+    ///
+    /// We verified this behaviour on macOS 14 with Figtree's published OTF
+    /// glyph set (Latin-1, Latin Extended-A/B, a handful of European
+    /// diacritics). The first non-covered run in a sentence switches to the
+    /// system default and the metrics stay compatible enough that line height
+    /// doesn't visibly jump. If a future Figtree release ships additional
+    /// scripts the cascade simply starts picking them up from the primary
+    /// face; nothing in this helper needs updating.
+    ///
+    /// SwiftUI also exposes `.font(_:)` modifiers that compose (e.g. a parent
+    /// `.font(.system)` scope would supply the fallback directly), but our
+    /// views set the Figtree font at the leaf and rely on Core Text's
+    /// per-glyph substitution here. Keeping the comment colocated with the
+    /// helper so future maintainers don't wire a redundant script detector.
     static func font(_ size: CGFloat, weight: Font.Weight = .regular, italic: Bool = false) -> Font {
         let name: String
         switch weight {

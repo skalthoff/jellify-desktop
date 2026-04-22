@@ -19,11 +19,11 @@ struct AuthExpiredSheet: View {
                 .padding(.top, 8)
 
             VStack(spacing: 8) {
-                Text("Your session expired")
+                Text("auth.session.expired.title")
                     .font(Theme.font(18, weight: .bold))
                     .foregroundStyle(Theme.ink)
 
-                Text("Please sign in again to continue listening.")
+                Text("auth.session.expired.body")
                     .font(Theme.font(13, weight: .medium))
                     .foregroundStyle(Theme.ink3)
                     .multilineTextAlignment(.center)
@@ -31,7 +31,7 @@ struct AuthExpiredSheet: View {
             }
 
             Button(action: onSignIn) {
-                Text("Sign in")
+                Text("auth.sign_in")
                     .font(Theme.font(14, weight: .bold))
                     .frame(width: 260, height: 40)
                     .foregroundStyle(Theme.bg)
@@ -40,7 +40,7 @@ struct AuthExpiredSheet: View {
             }
             .buttonStyle(.plain)
             .keyboardShortcut(.defaultAction)
-            .accessibilityLabel("Sign in again")
+            .accessibilityLabel("auth.sign_in.again.a11y")
         }
         .padding(32)
         .frame(width: 360)

@@ -145,10 +145,10 @@ struct LoginView: View {
         VStack(spacing: 4) {
             JellyfishMark(size: 72)
                 .padding(.bottom, 4)
-            Text("Jellify")
+            Text("app.name")
                 .font(Theme.font(40, weight: .black, italic: true))
                 .foregroundStyle(Theme.ink)
-            Text("DESKTOP")
+            Text("app.subtitle.desktop")
                 .font(Theme.font(10, weight: .bold))
                 .foregroundStyle(Theme.ink3)
                 .tracking(3)
@@ -158,7 +158,7 @@ struct LoginView: View {
     @ViewBuilder
     private var discoveredServersRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("FOUND ON THIS NETWORK")
+            Text("login.discovered_servers")
                 .font(Theme.font(10, weight: .bold))
                 .foregroundStyle(Theme.ink3)
                 .tracking(1.5)
@@ -193,11 +193,12 @@ struct LoginView: View {
     @ViewBuilder
     private var urlField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("SERVER URL")
+            Text("login.field.url")
                 .font(Theme.font(10, weight: .bold))
                 .foregroundStyle(Theme.ink3)
                 .tracking(1.5)
-            TextField("https://jellyfin.example.com", text: $url)
+            // URL placeholder is a sample host, not a translatable phrase.
+            TextField(String("https://jellyfin.example.com"), text: $url)
                 .textFieldStyle(.plain)
                 .font(Theme.font(14, weight: .medium))
                 .foregroundStyle(Theme.ink)
@@ -212,7 +213,7 @@ struct LoginView: View {
                 .focused($focusedField, equals: .url)
                 .submitLabel(.next)
                 .onSubmit { focusedField = .username }
-                .accessibilityLabel("Server URL")
+                .accessibilityLabel("login.a11y.server_url")
         }
     }
 
@@ -228,7 +229,7 @@ struct LoginView: View {
             case .checking:
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.mini)
-                    Text("Checking…")
+                    Text("login.probe.checking")
                         .font(Theme.font(12, weight: .medium))
                         .foregroundStyle(Theme.teal)
                 }
@@ -254,11 +255,11 @@ struct LoginView: View {
     @ViewBuilder
     private var usernameField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("USERNAME")
+            Text("login.field.username")
                 .font(Theme.font(10, weight: .bold))
                 .foregroundStyle(Theme.ink3)
                 .tracking(1.5)
-            TextField("you", text: $username)
+            TextField(LocalizedStringKey("login.username.placeholder"), text: $username)
                 .textFieldStyle(.plain)
                 .font(Theme.font(14, weight: .medium))
                 .foregroundStyle(Theme.ink)
@@ -273,18 +274,19 @@ struct LoginView: View {
                 .focused($focusedField, equals: .username)
                 .submitLabel(.next)
                 .onSubmit { focusedField = .password }
-                .accessibilityLabel("Username")
+                .accessibilityLabel("login.a11y.username")
         }
     }
 
     @ViewBuilder
     private var passwordField: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("PASSWORD")
+            Text("login.field.password")
                 .font(Theme.font(10, weight: .bold))
                 .foregroundStyle(Theme.ink3)
                 .tracking(1.5)
-            SecureField("••••••••", text: $password)
+            // Bullet glyphs are the masked-input affordance; not a phrase.
+            SecureField(String("••••••••"), text: $password)
                 .textFieldStyle(.plain)
                 .font(Theme.font(14, weight: .medium))
                 .foregroundStyle(Theme.ink)
@@ -301,7 +303,7 @@ struct LoginView: View {
                 .onSubmit(submit)
                 .modifier(ShakeEffect(animatableData: CGFloat(shakeAttempts)))
                 .animation(.interpolatingSpring(stiffness: 800, damping: 10), value: shakeAttempts)
-                .accessibilityLabel("Password")
+                .accessibilityLabel("login.a11y.password")
         }
     }
 
@@ -314,7 +316,10 @@ struct LoginView: View {
                         .scaleEffect(0.7)
                         .tint(Theme.ink)
                 }
-                Text(model.isLoggingIn ? "Signing in…" : "Sign in")
+                // Toggle between the two catalog keys rather than the raw
+                // literals so translators never see "Signing in…" in a
+                // ternary — each shows up as its own extractable row.
+                Text(model.isLoggingIn ? LocalizedStringKey("auth.signing_in") : LocalizedStringKey("auth.sign_in"))
                     .font(Theme.font(14, weight: .bold))
             }
             .frame(maxWidth: .infinity)
@@ -328,7 +333,7 @@ struct LoginView: View {
         .disabled(model.isLoggingIn || !canSubmit)
         .opacity(canSubmit ? 1 : 0.5)
         .keyboardShortcut(.defaultAction)
-        .accessibilityLabel("Sign in")
+        .accessibilityLabel("auth.sign_in")
     }
 
     // MARK: - Actions
@@ -336,17 +341,21 @@ struct LoginView: View {
     private func submit() {
         guard canSubmit, !model.isLoggingIn else { return }
         let previousError = model.errorMessage
+        // Snapshot the localized copy that `JellifyErrorPresenter` emits for
+        // auth failures (401 / NotAuthenticated / AuthExpired). When the
+        // model surfaces this exact string we're dealing with a credential
+        // problem at submit-time, so replace it with the friendlier shake +
+        // wrong-credentials copy. See `JellifyErrorPresenter.key(for:)`.
+        let authExpiredCopy = String(localized: "error.auth.expired", bundle: .main)
         Task {
             await model.login(url: url, username: username, password: password)
-            // `AppModel.login` stuffs `"Login failed: <localized>"` into
-            // `errorMessage` on failure. Treat a 401 specially so we can
-            // shake the password field.
             if let err = model.errorMessage, err != previousError {
-                if err.contains("401") {
+                if err == authExpiredCopy {
                     shakeAttempts += 1
-                    // Overwrite the raw server error with a friendlier copy
-                    // so the row under the fields reads cleanly.
-                    model.errorMessage = "Wrong username or password"
+                    // Overwrite the generic "Please sign in again." with the
+                    // form-specific "Wrong username or password" so the row
+                    // under the fields reads cleanly.
+                    model.errorMessage = String(localized: "error.wrong_credentials", bundle: .main)
                 }
             }
         }
@@ -376,7 +385,10 @@ struct LoginView: View {
     }
 
     private var passwordBorderColor: Color {
-        if let err = model.errorMessage, err == "Wrong username or password" {
+        // Compare against the localized `error.wrong_credentials` copy so the
+        // border-tint heuristic continues to work regardless of language.
+        let wrongCreds = String(localized: "error.wrong_credentials", bundle: .main)
+        if let err = model.errorMessage, err == wrongCreds {
             return Theme.accentHot
         }
         return Theme.border
@@ -444,7 +456,7 @@ struct LoginNetworkBanner: View {
             Image(systemName: "wifi.slash")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.danger)
-            Text("No network. Check your connection.")
+            Text("login.network_banner")
                 .font(Theme.font(12, weight: .semibold))
                 .foregroundStyle(Theme.ink)
             Spacer()
