@@ -61,6 +61,7 @@ struct LibraryView: View {
 
 struct AlbumCard: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let album: Album
     @State private var isHovering = false
 
@@ -90,8 +91,8 @@ struct AlbumCard: View {
                     .buttonStyle(.plain)
                     .padding(8)
                     .opacity(isHovering ? 1 : 0)
-                    .offset(y: isHovering ? 0 : 8)
-                    .animation(.easeOut(duration: 0.15), value: isHovering)
+                    .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
+                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
