@@ -152,9 +152,15 @@ async fn recently_played_builds_query_and_parses() {
     assert!(q.contains("Limit=50"), "query: {q}");
     assert!(q.contains("StartIndex=0"), "query: {q}");
     assert!(q.contains("ParentId=lib-1"), "query: {q}");
+    let fields = get
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "Fields")
+        .map(|(_, v)| v.into_owned())
+        .expect("expected Fields query param");
     assert!(
-        q.contains("Fields=") && q.contains("ParentId"),
-        "query: {q}"
+        fields.split(',').any(|f| f == "ParentId"),
+        "Fields should include ParentId, got: {fields}"
     );
 }
 
