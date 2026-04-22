@@ -134,7 +134,7 @@ pub struct PaginatedPlaylists {
 /// server's `ItemCounts` projection — both populate on the same request, so
 /// callers can render "42 songs · 6 albums" style sublines without a second
 /// round-trip. `image_tag` mirrors Jellyfin's `ImageTags.Primary` and feeds
-/// [`JellyfinClient::image_url`] when present.
+/// [`crate::client::JellyfinClient::image_url`] when present.
 #[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 pub struct Genre {
     pub id: String,
@@ -166,7 +166,7 @@ pub struct ItemRef {
 }
 
 /// An external link on an artist/album record — one entry in Jellyfin's
-/// `ExternalUrls` array. Surfaced by [`JellyfinClient::artist_detail`] so the
+/// `ExternalUrls` array. Surfaced by [`crate::client::JellyfinClient::artist_detail`] so the
 /// artist page can render MusicBrainz / Last.fm / Discogs shortcut icons.
 #[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 pub struct ExternalUrl {
@@ -174,7 +174,7 @@ pub struct ExternalUrl {
     pub url: String,
 }
 
-/// Extended artist record returned by [`JellyfinClient::artist_detail`].
+/// Extended artist record returned by [`crate::client::JellyfinClient::artist_detail`].
 /// Mirrors the base [`Artist`] fields, then layers on biography, backdrops,
 /// and external links for the artist detail header. `overview` is returned
 /// verbatim from Jellyfin — callers may need to strip HTML if their UI
@@ -189,7 +189,7 @@ pub struct ArtistDetail {
     /// whether to render inline or plain-text.
     pub overview: Option<String>,
     /// `BackdropImageTags` from the server — one entry per backdrop image.
-    /// Pass the index to [`JellyfinClient::image_url_of_type`] with
+    /// Pass the index to [`crate::client::JellyfinClient::image_url_of_type`] with
     /// [`ImageType::Backdrop`] to build per-backdrop URLs.
     pub backdrop_image_tags: Vec<String>,
     /// Parallel to `BackdropImageTags`: the underlying item ids that carry

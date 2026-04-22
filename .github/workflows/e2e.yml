@@ -32,8 +32,14 @@ jobs:
       # guaranteed to be present in the base aspnet image), so we skip
       # --health-cmd and let Scripts/e2e-setup-jellyfin.sh block on the
       # server's public info endpoint from the host side instead.
+      #
+      # Pinned to 10.9.x: the 10.10 controllers rely on a default user
+      # row being seeded by UserManager.InitializeAsync before the HTTP
+      # layer accepts /Startup/User, and the container ordering isn't
+      # deterministic enough to hit reliably in CI (see jellyfin#13009).
+      # 10.9's setup wizard creates the admin from scratch.
       jellyfin:
-        image: jellyfin/jellyfin:10.10.3
+        image: jellyfin/jellyfin:10.9.11
         ports:
           - 8096:8096
     steps:
@@ -101,7 +107,7 @@ jobs:
           docker run -d --name jellyfin \
             -p 8096:8096 \
             -e JELLYFIN_PublishedServerUrl=http://localhost:8096 \
-            jellyfin/jellyfin:10.10.3
+            jellyfin/jellyfin:10.9.11
       - name: Complete Jellyfin first-run wizard
         run: ./Scripts/e2e-setup-jellyfin.sh http://localhost:8096 "$JELLIFY_E2E_USER" "$JELLIFY_E2E_PASS"
       - name: Build xcframework

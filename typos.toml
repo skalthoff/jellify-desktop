@@ -9,6 +9,15 @@ extend-ignore-re = [
     "PNGs",
 ]
 
+[default.extend-words]
+# "seeked" is the idiomatic past tense for AVPlayer / MediaSession "seek
+# to position" callbacks — typos flags it as "sought", which is wrong
+# for the verb's usage in audio APIs.
+seeked = "seeked"
+# "missable" as in "un-missable" (standard English for "can't miss").
+# typos keeps suggesting "miscible".
+missable = "missable"
+
 [files]
 extend-exclude = [
     "design/chats/**",

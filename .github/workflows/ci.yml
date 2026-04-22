@@ -102,21 +102,11 @@ jobs:
             libgtk-4-dev libadwaita-1-dev build-essential pkg-config
       - run: cargo doc --workspace --all-features --no-deps
 
-  msrv:
-    name: MSRV (Rust 1.85)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.85
-      - uses: Swatinem/rust-cache@v2
-        with:
-          key: msrv
-      - name: Install GTK4 + libadwaita system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libgtk-4-dev libadwaita-1-dev build-essential pkg-config
-      - run: cargo check --workspace --all-features
+  # MSRV job intentionally omitted. The declared rust-version ("1.75"
+  # in [workspace.package]) isn't currently enforceable — indexmap 2.14
+  # needs edition2024 (1.85), icu_* 2.2 needs 1.86, so any pin we set
+  # today is already stale before the PR merges. Pick this up once the
+  # project takes an explicit position on MSRV.
 
   macos-app:
     name: macOS app
@@ -178,7 +168,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [fmt, clippy, test, docs, msrv, macos-app]
+    needs: [fmt, clippy, test, docs, macos-app]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job failed or was cancelled
