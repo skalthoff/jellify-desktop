@@ -144,7 +144,37 @@ struct LibraryView: View {
                     }
                 }
             }
-        case .tracks, .artists, .playlists, .downloaded:
+        case .artists:
+            if model.artists.isEmpty {
+                EmptyLibraryState(serverUrl: serverWebURL)
+            } else {
+                VStack(alignment: .leading, spacing: 18) {
+                    switch viewMode {
+                    case .grid:
+                        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                            ForEach(Array(model.artists.enumerated()), id: \.element.id) { idx, artist in
+                                ArtistCard(artist: artist)
+                                    .onAppear {
+                                        triggerLoadMoreArtistsIfNeeded(atIndex: idx)
+                                    }
+                            }
+                        }
+                    case .list:
+                        LazyVStack(alignment: .leading, spacing: 2) {
+                            ForEach(Array(model.artists.enumerated()), id: \.element.id) { idx, artist in
+                                LibraryListRow(artist: artist)
+                                    .onAppear {
+                                        triggerLoadMoreArtistsIfNeeded(atIndex: idx)
+                                    }
+                            }
+                        }
+                    }
+                    if model.isLoadingMoreArtists {
+                        paginationSpinner
+                    }
+                }
+            }
+        case .tracks, .playlists, .downloaded:
             // Placeholder until the per-tab surfaces land. The chip row, header,
             // and count subline remain live so navigation feels responsive.
             EmptyLibraryState(serverUrl: serverWebURL)
@@ -176,6 +206,19 @@ struct LibraryView: View {
         let threshold = max(loaded - paginationTriggerDistance, 0)
         guard idx >= threshold else { return }
         Task { await model.loadMoreAlbums() }
+    }
+
+    /// Mirror of `triggerLoadMoreAlbumsIfNeeded` for the artists tab. The
+    /// model guards against concurrent `loadMoreArtists` calls so firing
+    /// this from many adjacent `.onAppear`s is safe.
+    private func triggerLoadMoreArtistsIfNeeded(atIndex idx: Int) {
+        let loaded = model.artists.count
+        let total = Int(model.artistsTotal)
+        guard total > loaded else { return }
+        guard !model.isLoadingMoreArtists else { return }
+        let threshold = max(loaded - paginationTriggerDistance, 0)
+        guard idx >= threshold else { return }
+        Task { await model.loadMoreArtists() }
     }
 
     /// Count for a given tab. Albums and artists have real counts; the rest
