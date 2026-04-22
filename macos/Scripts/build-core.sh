@@ -32,8 +32,16 @@ fi
 echo "==> Building uniffi-bindgen"
 (cd "$ROOT" && cargo build $CARGO_FLAGS --bin uniffi-bindgen -p jellify_core)
 
-DYLIB="$ROOT/target/$PROFILE/libjellify_core.dylib"
+# The library was built for $TARGET above; that's where the dylib lives.
+# (When building only the uniffi-bindgen bin, cargo doesn't materialize the
+# cdylib for the host target, so we can't rely on target/$PROFILE/ for it.)
+DYLIB="$ROOT/target/$TARGET/$PROFILE/libjellify_core.dylib"
 BINDGEN="$ROOT/target/$PROFILE/uniffi-bindgen"
+
+if [[ ! -f "$DYLIB" ]]; then
+  echo "error: dylib not found at $DYLIB" >&2
+  exit 1
+fi
 
 GEN="$MACOS/build/generated"
 echo "==> Generating Swift bindings -> $GEN"
