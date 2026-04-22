@@ -547,6 +547,42 @@ impl JellyfinClient {
         Self::check(resp).await?.json().await.map_err(Into::into)
     }
 
+    /// Report current playback progress to Jellyfin. Jellify calls this
+    /// roughly every 10 seconds during playback, and whenever pause/resume/
+    /// seek transitions occur, so the server can drive "Now Playing" state
+    /// and durable resume points.
+    ///
+    /// Uses `POST /Sessions/Playing/Progress` with a
+    /// `PlaybackProgressInfo`-shaped JSON body. `position_ticks` is in
+    /// Jellyfin's 100-ns tick units (i.e. `seconds * 10_000_000`).
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] when no token is set.
+    pub async fn report_playback_progress(
+        &self,
+        item_id: &str,
+        position_ticks: i64,
+        is_paused: bool,
+    ) -> Result<()> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+
+        let url = self.endpoint("Sessions/Playing/Progress")?;
+        let body = PlaybackProgressBody {
+            item_id: item_id.to_string(),
+            position_ticks,
+            is_paused,
+        };
+        let resp = self
+            .http
+            .post(url)
+            .headers(self.build_headers()?)
+            .json(&body)
+            .send()
+            .await?;
+        Self::check(resp).await?;
+        Ok(())
+    }
+
     pub async fn search(&self, query: &str) -> Result<SearchResults> {
         let user_id = self
             .user_id
@@ -752,6 +788,16 @@ struct AuthByNameBody {
     username: String,
     #[serde(rename = "Pw")]
     pw: String,
+}
+
+#[derive(Serialize)]
+struct PlaybackProgressBody {
+    #[serde(rename = "ItemId")]
+    item_id: String,
+    #[serde(rename = "PositionTicks")]
+    position_ticks: i64,
+    #[serde(rename = "IsPaused")]
+    is_paused: bool,
 }
 
 #[derive(Debug, Deserialize)]
