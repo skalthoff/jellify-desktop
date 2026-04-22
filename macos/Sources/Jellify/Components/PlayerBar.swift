@@ -3,6 +3,7 @@ import SwiftUI
 
 struct PlayerBar: View {
     @Environment(AppModel.self) private var model
+    @State private var showNowPlaying = false
 
     var body: some View {
         HStack(spacing: 16) {
@@ -21,30 +22,44 @@ struct PlayerBar: View {
         .overlay(alignment: .top) {
             Rectangle().fill(Theme.border).frame(height: 1)
         }
+        .sheet(isPresented: $showNowPlaying) {
+            NowPlayingSheet()
+                .environment(model)
+        }
     }
 
     @ViewBuilder
     private var leftMeta: some View {
         if let track = model.status.currentTrack {
-            HStack(spacing: 12) {
-                Artwork(
-                    url: model.imageURL(for: track.albumId ?? track.id, tag: track.imageTag, maxWidth: 120),
-                    seed: track.name,
-                    size: 54,
-                    radius: 6
-                )
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(track.name)
-                        .font(Theme.font(13, weight: .bold))
-                        .foregroundStyle(Theme.ink)
-                        .lineLimit(1)
-                    Text("\(track.artistName) · \(track.albumName ?? "")")
-                        .font(Theme.font(11, weight: .medium))
-                        .foregroundStyle(Theme.ink2)
-                        .lineLimit(1)
+            // Tapping the track meta opens the Now Playing sheet (#279)
+            // which currently surfaces track artwork, title/artist/album,
+            // and the Credits block. The button is styled flush so it
+            // reads as a regular bar region, not a chrome control.
+            Button(action: { showNowPlaying = true }) {
+                HStack(spacing: 12) {
+                    Artwork(
+                        url: model.imageURL(for: track.albumId ?? track.id, tag: track.imageTag, maxWidth: 120),
+                        seed: track.name,
+                        size: 54,
+                        radius: 6
+                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(track.name)
+                            .font(Theme.font(13, weight: .bold))
+                            .foregroundStyle(Theme.ink)
+                            .lineLimit(1)
+                        Text("\(track.artistName) · \(track.albumName ?? "")")
+                            .font(Theme.font(11, weight: .medium))
+                            .foregroundStyle(Theme.ink2)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Now Playing: \(track.name) by \(track.artistName)")
+            .accessibilityHint("Shows track details")
         } else {
             Text("Nothing playing")
                 .font(Theme.font(12, weight: .medium))
