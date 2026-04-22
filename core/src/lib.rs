@@ -387,6 +387,21 @@ impl JellifyCore {
         })
     }
 
+    /// Append items (tracks/albums/artists) to a playlist in a single
+    /// round-trip. Mirrors Jellify's `addManyToPlaylist`; callers should
+    /// invalidate their `playlist_tracks` cache after this returns.
+    pub fn add_to_playlist(
+        &self,
+        playlist_id: String,
+        item_ids: Vec<String>,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| {
+            let id_refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
+            self.runtime
+                .block_on(c.add_to_playlist(&playlist_id, &id_refs))
+        })
+    }
+
     /// Full-search query. Returns hydrated records split into typed
     /// sections (artists / albums / tracks), plus `total_record_count` so
     /// the UI can offer "Show all N results" affordances when more are
