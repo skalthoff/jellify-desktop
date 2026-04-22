@@ -170,6 +170,13 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Sticky "first-launch is done" flag. On a fresh install this is
+    /// `false` and the app lands on `OnboardingView`. After the user either
+    /// completes the flow or taps "Skip, explore offline" it becomes
+    /// `true` permanently so subsequent signed-out launches go straight
+    /// to `LoginView`. See #291 / #292 / #293.
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding: Bool = false
+
     var body: some View {
         Group {
             if model.isRestoringSession {
@@ -178,6 +185,16 @@ struct RootView: View {
                 // We don't want to briefly flash `LoginView` on every launch
                 // just because the restore hasn't completed yet.
                 RestoreLoadingView()
+            } else if !hasCompletedOnboarding {
+                // First launch. `OnboardingView` owns the flow across all
+                // three steps; it flips `hasCompletedOnboarding` itself once
+                // the user either lands in the sync step and hits Continue
+                // to Home, or skips offline from the connect step. Keeping
+                // `OnboardingView` mounted *even after* a successful login
+                // matters: the first-sync step needs to stay on screen
+                // while the library is fetching, which happens against a
+                // live `model.session`.
+                OnboardingView()
             } else if model.session == nil {
                 LoginView()
             } else {
@@ -189,6 +206,7 @@ struct RootView: View {
         // instant under Reduce Motion.
         .animation(reduceMotion ? nil : .default, value: model.session != nil)
         .animation(reduceMotion ? nil : .default, value: model.isRestoringSession)
+        .animation(reduceMotion ? nil : .default, value: hasCompletedOnboarding)
         .task {
             // Kick off session restore exactly once, on the first appearance
             // of the root view. `attemptRestoreSession` guards against
