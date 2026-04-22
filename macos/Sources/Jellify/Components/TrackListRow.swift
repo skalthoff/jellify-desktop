@@ -123,7 +123,13 @@ struct TrackListRow: View {
             }
         }
         .contextMenu { TrackContextMenu(selection: [track]) }
+        // A single row should read as one VoiceOver element — the wrapping
+        // Button already carries a label, but we override it here to pull
+        // in the active state so playing rows announce "Now playing" and
+        // non-playing rows announce "Plays this track".
         .accessibilityLabel("\(track.name) by \(track.artistName)")
+        .accessibilityHint(isPlaying ? "Now playing" : "Plays this track")
+        .accessibilityAddTraits(isPlaying ? .isSelected : [])
         // MARK: Keyboard navigation (#105)
         .focusable()
         .focused($isFocused)

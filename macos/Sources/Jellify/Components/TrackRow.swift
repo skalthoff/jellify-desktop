@@ -97,6 +97,13 @@ struct TrackRow: View {
         .onTapGesture(count: 2) { onPlay?() }
         .onTapGesture(count: 1) { onPlay?() }
         .contextMenu { TrackContextMenu(selection: [track]) }
+        // VoiceOver reads the row as a single "<title> by <artist>" line
+        // with the button trait + hint so the double-tap play action is
+        // discoverable without sighted hover affordances. See #331.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(track.name) by \(track.artistName)")
+        .accessibilityHint(isPlaying ? "Now playing" : "Plays this track")
+        .accessibilityAddTraits(isPlaying ? [.isButton, .isSelected] : .isButton)
         // MARK: Keyboard navigation (#105)
         .focusable()
         .focused($isFocused)

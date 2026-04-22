@@ -526,6 +526,10 @@ struct AlbumCard: View {
                     .opacity(isHovering ? 1 : 0)
                     .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
+                    // Hover overlay isn't discoverable without a mouse, so
+                    // name the play button explicitly for VoiceOver. See
+                    // #331.
+                    .accessibilityLabel("Play \(album.name)")
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -565,5 +569,17 @@ struct AlbumCard: View {
             }
         }
         .contextMenu { AlbumContextMenu(album: album) }
+        // Outer "navigate to album" tap target. Reads as
+        // "<album> by <artist>. Opens album detail." The inner play
+        // button exposes itself separately for "play this album".
+        .accessibilityLabel(albumAccessibilityLabel)
+        .accessibilityHint("Opens album detail")
+    }
+
+    private var albumAccessibilityLabel: String {
+        if let year = album.year, year > 0 {
+            return "\(album.name) by \(album.artistName), \(year)"
+        }
+        return "\(album.name) by \(album.artistName)"
     }
 }

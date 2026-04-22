@@ -66,6 +66,8 @@ struct Sidebar: View {
                         .foregroundStyle(Theme.ink3)
                 }
                 .buttonStyle(.plain)
+                .help("Sign out")
+                .accessibilityLabel("Sign out")
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -90,6 +92,7 @@ struct Sidebar: View {
                 Image(systemName: icon)
                     .foregroundStyle(active ? Theme.accent : Theme.ink2)
                     .frame(width: 18)
+                    .accessibilityHidden(true)
                 Text(label)
                     .font(Theme.font(13, weight: active ? .bold : .semibold))
                     .foregroundStyle(active ? Theme.ink : Theme.ink2)
@@ -113,6 +116,11 @@ struct Sidebar: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // VoiceOver announces a simple "Home" / "Library" / "Search" and,
+        // for the currently selected tab, adds the "selected" trait so the
+        // user hears which one they're on without parsing visual chrome.
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
     }
 
     @ViewBuilder
@@ -121,6 +129,7 @@ struct Sidebar: View {
             Image(systemName: icon)
                 .foregroundStyle(Theme.ink2)
                 .frame(width: 18)
+                .accessibilityHidden(true)
             Text(label)
                 .font(Theme.font(13, weight: .semibold))
                 .foregroundStyle(Theme.ink2)
@@ -133,6 +142,10 @@ struct Sidebar: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
+        // Combine icon + label + count into one VoiceOver utterance so the
+        // row reads as "Albums, 42" rather than three separate fragments.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(count.map { "\(label), \($0)" } ?? label)
     }
 
     @ViewBuilder

@@ -44,6 +44,7 @@ struct PlaylistCard: View {
                     .opacity(isHovering ? 1 : 0)
                     .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
                     .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
+                    .accessibilityLabel("Play \(playlist.name)")
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -66,6 +67,8 @@ struct PlaylistCard: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .contextMenu { PlaylistContextMenu(playlist: playlist) }
+        .accessibilityLabel("\(playlist.name), \(subtitle)")
+        .accessibilityHint("Opens playlist detail")
     }
 
     /// "42 tracks" / "1 track" — singular vs plural. Jellyfin reports

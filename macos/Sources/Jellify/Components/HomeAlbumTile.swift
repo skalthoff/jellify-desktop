@@ -49,7 +49,12 @@ struct HomeAlbumTile<Badge: View>: View {
             model.play(album: album)
         }
         .contextMenu { AlbumContextMenu(album: album) }
-        .accessibilityElement(children: .combine)
+        // `.contain` (not `.combine`) so VoiceOver sees the tile group as
+        // a container — the outer body is its own focus target with the
+        // album's label + hint, but the inline Play button remains a
+        // separately-focusable control with its own "Play <album>" label.
+        // See #331.
+        .accessibilityElement(children: .contain)
         .accessibilityLabel("\(album.name) by \(album.artistName)")
         .accessibilityHint(hint)
     }
