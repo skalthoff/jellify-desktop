@@ -130,6 +130,92 @@ pub struct PaginatedPlaylists {
     pub total_count: u32,
 }
 
+/// A music genre, as returned by `GET /MusicGenres`. Counts come from the
+/// server's `ItemCounts` projection — both populate on the same request, so
+/// callers can render "42 songs · 6 albums" style sublines without a second
+/// round-trip. `image_tag` mirrors Jellyfin's `ImageTags.Primary` and feeds
+/// [`JellyfinClient::image_url`] when present.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct Genre {
+    pub id: String,
+    pub name: String,
+    pub song_count: u32,
+    pub album_count: u32,
+    pub image_tag: Option<String>,
+}
+
+/// Page of genres returned by `genres`. See [`PaginatedAlbums`].
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct PaginatedGenres {
+    pub items: Vec<Genre>,
+    pub total_count: u32,
+}
+
+/// A typed reference to a Jellyfin item — minimal shape used by
+/// `similar_items`. `kind` carries the server's `Type` field so the UI can
+/// dispatch to the right detail screen (`MusicAlbum` → album view,
+/// `MusicArtist` → artist view, `Audio` → track row) without a second fetch.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct ItemRef {
+    pub id: String,
+    pub name: String,
+    /// Server-supplied `Type` field (e.g. `Audio`, `MusicAlbum`,
+    /// `MusicArtist`).
+    pub kind: Option<String>,
+    pub image_tag: Option<String>,
+}
+
+/// An external link on an artist/album record — one entry in Jellyfin's
+/// `ExternalUrls` array. Surfaced by [`JellyfinClient::artist_detail`] so the
+/// artist page can render MusicBrainz / Last.fm / Discogs shortcut icons.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct ExternalUrl {
+    pub name: String,
+    pub url: String,
+}
+
+/// Extended artist record returned by [`JellyfinClient::artist_detail`].
+/// Mirrors the base [`Artist`] fields, then layers on biography, backdrops,
+/// and external links for the artist detail header. `overview` is returned
+/// verbatim from Jellyfin — callers may need to strip HTML if their UI
+/// expects plain text.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct ArtistDetail {
+    pub id: String,
+    pub name: String,
+    pub genres: Vec<String>,
+    pub image_tag: Option<String>,
+    /// Long-form biography. May contain HTML / Markdown — the UI decides
+    /// whether to render inline or plain-text.
+    pub overview: Option<String>,
+    /// `BackdropImageTags` from the server — one entry per backdrop image.
+    /// Pass the index to [`JellyfinClient::image_url_of_type`] with
+    /// [`ImageType::Backdrop`] to build per-backdrop URLs.
+    pub backdrop_image_tags: Vec<String>,
+    /// Parallel to `BackdropImageTags`: the underlying item ids that carry
+    /// the backdrop tags. When empty, callers should use `id` directly.
+    pub external_urls: Vec<ExternalUrl>,
+}
+
+/// One line in a `Lyrics` payload. `time_seconds` is derived from
+/// Jellyfin's `Start` field (100-ns ticks) so callers can compare it
+/// directly against the platform audio engine's playback position.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct LyricLine {
+    pub time_seconds: f64,
+    pub text: String,
+}
+
+/// Lyrics payload for a track, as returned by `GET /Audio/{id}/Lyrics`.
+/// When `is_synced` is `true`, `lines[i].time_seconds` increases
+/// monotonically and can drive a karaoke-style highlight; when `false`
+/// there is typically a single line with `time_seconds == 0.0`.
+#[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
+pub struct Lyrics {
+    pub is_synced: bool,
+    pub lines: Vec<LyricLine>,
+}
+
 /// A lightweight, typed-heterogeneous search result returned by
 /// `GET /Search/Hints`. Jellyfin trims its `BaseItemDto` down to just the
 /// columns the typeahead UI needs, so `SearchHint` is the preferred shape

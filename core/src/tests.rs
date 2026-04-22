@@ -535,6 +535,629 @@ async fn list_tracks_requires_authenticated_session() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// Discovery: instant_mix / suggestions / similar_* / frequently_played
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn instant_mix_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items/seed-1/InstantMix"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Radio One", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Starter",
+                    "AlbumArtist": "DJ Seed", "Artists": ["DJ Seed"],
+                    "RunTimeTicks": 2000000000u64,
+                    "UserData": { "IsFavorite": false, "PlayCount": 0 },
+                    "ImageTags": { "Primary": "imgA" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client.instant_mix("seed-1", 25).await.unwrap();
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].name, "Radio One");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("UserId=u1"), "query: {q}");
+    assert!(q.contains("Limit=25"), "query: {q}");
+}
+
+#[tokio::test]
+async fn instant_mix_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.instant_mix("seed-1", 25).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn suggestions_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items/Suggestions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "You Might Like", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Discover",
+                    "AlbumArtist": "New Artist", "Artists": ["New Artist"],
+                    "RunTimeTicks": 1800000000u64,
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client.suggestions(12).await.unwrap();
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].name, "You Might Like");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("UserId=u1"), "query: {q}");
+    assert!(q.contains("MediaType=Audio"), "query: {q}");
+    assert!(q.contains("Limit=12"), "query: {q}");
+}
+
+#[tokio::test]
+async fn suggestions_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.suggestions(12).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn similar_artists_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Artists/artist-1/Similar"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "a2", "Name": "Similar Artist", "Type": "MusicArtist",
+                    "Genres": ["Indie"],
+                    "ImageTags": { "Primary": "imgSim" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let artists = client.similar_artists("artist-1", 10).await.unwrap();
+    assert_eq!(artists.len(), 1);
+    assert_eq!(artists[0].name, "Similar Artist");
+    assert_eq!(artists[0].genres, vec!["Indie".to_string()]);
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("UserId=u1"), "query: {q}");
+    assert!(q.contains("Limit=10"), "query: {q}");
+}
+
+#[tokio::test]
+async fn similar_albums_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Albums/album-1/Similar"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "a2", "Name": "Similar Album", "Type": "MusicAlbum",
+                    "AlbumArtist": "Sibling",
+                    "ProductionYear": 2022, "ChildCount": 9,
+                    "ImageTags": { "Primary": "imgAlb" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let albums = client.similar_albums("album-1", 8).await.unwrap();
+    assert_eq!(albums.len(), 1);
+    assert_eq!(albums[0].name, "Similar Album");
+    assert_eq!(albums[0].track_count, 9);
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("Limit=8"), "query: {q}");
+    assert!(q.contains("UserId=u1"), "query: {q}");
+}
+
+#[tokio::test]
+async fn similar_items_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items/seed-1/Similar"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "a2", "Name": "Similar Album", "Type": "MusicAlbum",
+                    "ImageTags": { "Primary": "img1" }
+                },
+                {
+                    "Id": "t2", "Name": "Similar Track", "Type": "Audio",
+                    "ImageTags": { "Primary": "img2" }
+                }
+            ],
+            "TotalRecordCount": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let items = client.similar_items("seed-1", 20).await.unwrap();
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].kind.as_deref(), Some("MusicAlbum"));
+    assert_eq!(items[1].kind.as_deref(), Some("Audio"));
+}
+
+#[tokio::test]
+async fn frequently_played_tracks_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "On Repeat", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Stuck",
+                    "AlbumArtist": "Loops", "Artists": ["Loops"],
+                    "RunTimeTicks": 1800000000u64,
+                    "UserData": { "IsFavorite": false, "PlayCount": 99 },
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client.frequently_played_tracks(50).await.unwrap();
+    assert_eq!(tracks.len(), 1);
+    assert_eq!(tracks[0].play_count, 99);
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("IncludeItemTypes=Audio"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("Limit=50"), "query: {q}");
+    // `PlayCount,SortName` is URL-encoded as `PlayCount%2CSortName`.
+    assert!(
+        q.contains("SortBy=PlayCount%2CSortName"),
+        "expected play-count sort, got: {q}"
+    );
+    assert!(
+        q.contains("SortOrder=Descending%2CAscending"),
+        "expected descending play-count sort, got: {q}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Genres
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn genres_builds_query_and_parses_counts() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/MusicGenres"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "g-1", "Name": "Ambient",
+                    "SongCount": 42, "AlbumCount": 6,
+                    "ImageTags": { "Primary": "imgA" }
+                },
+                {
+                    "Id": "g-2", "Name": "Jazz",
+                    "SongCount": 110, "AlbumCount": 14,
+                    "ImageTags": { "Primary": "imgJ" }
+                }
+            ],
+            "TotalRecordCount": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client.genres(Paging::new(0, 100)).await.unwrap();
+    assert_eq!(page.total_count, 2);
+    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.items[0].name, "Ambient");
+    assert_eq!(page.items[0].song_count, 42);
+    assert_eq!(page.items[0].album_count, 6);
+    assert_eq!(page.items[1].name, "Jazz");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("userId=u1"), "query: {q}");
+    assert!(q.contains("Limit=100"), "query: {q}");
+    assert!(q.contains("StartIndex=0"), "query: {q}");
+    let fields = get
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "Fields")
+        .map(|(_, v)| v.into_owned())
+        .expect("expected Fields query param");
+    assert!(
+        fields.split(',').any(|f| f == "ItemCounts"),
+        "Fields should include ItemCounts, got: {fields}"
+    );
+}
+
+#[tokio::test]
+async fn items_by_genre_builds_query_and_parses() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "a1", "Name": "Jazzy", "Type": "MusicAlbum",
+                    "AlbumArtist": "Sax Man",
+                    "ProductionYear": 2020, "ChildCount": 10,
+                    "ImageTags": { "Primary": "imgJ" }
+                }
+            ],
+            "TotalRecordCount": 55
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .items_by_genre("g-1", Paging::new(0, 30))
+        .await
+        .unwrap();
+    assert_eq!(page.total_count, 55);
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].name, "Jazzy");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("GenreIds=g-1"), "query: {q}");
+    assert!(q.contains("IncludeItemTypes=MusicAlbum"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("Limit=30"), "query: {q}");
+}
+
+// ---------------------------------------------------------------------------
+// Artist detail
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn artist_detail_parses_overview_and_backdrops() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("Ids", "artist-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "artist-xyz",
+                    "Name": "Ambient Pioneer",
+                    "Genres": ["Ambient", "Electronic"],
+                    "Overview": "A long biography.",
+                    "BackdropImageTags": ["bd1", "bd2"],
+                    "ExternalUrls": [
+                        { "Name": "MusicBrainz", "Url": "https://mb.example/a" },
+                        { "Name": "Last.fm", "Url": "https://last.fm/a" }
+                    ],
+                    "ImageTags": { "Primary": "imgArtist" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let detail = client.artist_detail("artist-xyz").await.unwrap();
+    assert_eq!(detail.id, "artist-xyz");
+    assert_eq!(detail.name, "Ambient Pioneer");
+    assert_eq!(detail.overview.as_deref(), Some("A long biography."));
+    assert_eq!(
+        detail.backdrop_image_tags,
+        vec!["bd1".to_string(), "bd2".to_string()]
+    );
+    assert_eq!(detail.external_urls.len(), 2);
+    assert_eq!(detail.external_urls[0].name, "MusicBrainz");
+    assert_eq!(detail.external_urls[0].url, "https://mb.example/a");
+    assert_eq!(detail.image_tag.as_deref(), Some("imgArtist"));
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET" && r.url.path() == "/Items")
+        .expect("expected a GET /Items");
+    let fields = get
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "Fields")
+        .map(|(_, v)| v.into_owned())
+        .expect("expected Fields query param");
+    assert!(
+        fields.split(',').any(|f| f == "Overview"),
+        "Fields should include Overview, got: {fields}"
+    );
+    assert!(
+        fields.split(',').any(|f| f == "ExternalUrls"),
+        "Fields should include ExternalUrls, got: {fields}"
+    );
+    assert!(
+        fields.split(',').any(|f| f == "BackdropImageTags"),
+        "Fields should include BackdropImageTags, got: {fields}"
+    );
+}
+
+#[tokio::test]
+async fn artist_detail_returns_server_404_on_empty_items() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client.artist_detail("missing").await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::Server { status: 404, .. }),
+        "expected 404 Server error, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Lyrics
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn lyrics_parses_synced_payload() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // 10_000_000 ticks == 1.0 seconds; 50_000_000 == 5.0 seconds.
+    Mock::given(method("GET"))
+        .and(path("/Audio/track-1/Lyrics"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Metadata": { "IsSynced": true },
+            "Lyrics": [
+                { "Start": 10000000i64, "Text": "First line" },
+                { "Start": 50000000i64, "Text": "Second line" }
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let lyrics = client
+        .lyrics("track-1")
+        .await
+        .unwrap()
+        .expect("expected Some(Lyrics) on 200");
+    assert!(lyrics.is_synced);
+    assert_eq!(lyrics.lines.len(), 2);
+    assert!((lyrics.lines[0].time_seconds - 1.0).abs() < 0.0001);
+    assert_eq!(lyrics.lines[0].text, "First line");
+    assert!((lyrics.lines[1].time_seconds - 5.0).abs() < 0.0001);
+}
+
+#[tokio::test]
+async fn lyrics_parses_plain_text() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Audio/track-2/Lyrics"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Metadata": { "IsSynced": false },
+            "Lyrics": [
+                { "Start": 0i64, "Text": "Just the words\nno timing" }
+            ]
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let lyrics = client.lyrics("track-2").await.unwrap().unwrap();
+    assert!(!lyrics.is_synced);
+    assert_eq!(lyrics.lines.len(), 1);
+    assert!((lyrics.lines[0].time_seconds - 0.0).abs() < 0.0001);
+    assert!(lyrics.lines[0].text.contains("Just the words"));
+}
+
+#[tokio::test]
+async fn lyrics_returns_none_on_404() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Audio/track-404/Lyrics"))
+        .respond_with(ResponseTemplate::new(404).set_body_string("Not found"))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let result = client.lyrics("track-404").await.unwrap();
+    assert!(result.is_none(), "expected None on 404, got {result:?}");
+}
+
+#[tokio::test]
+async fn lyrics_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.lyrics("any").await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
 #[tokio::test]
 async fn albums_uses_paging() {
     let server = MockServer::start().await;

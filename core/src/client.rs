@@ -621,6 +621,331 @@ impl JellyfinClient {
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
+    /// Seed a station around any item — track, album, artist, playlist, or
+    /// genre — via Jellyfin's polymorphic `GET /Items/{id}/InstantMix`.
+    /// Returns a freshly generated queue of audio tracks the caller drops
+    /// into the player.
+    ///
+    /// Jellyfin exposes per-type siblings (`/Artists/{id}/InstantMix`,
+    /// `/Albums/{id}/InstantMix`, ...) but the generic `/Items` variant
+    /// accepts any id — so a single method covers every "Start Radio"
+    /// context-menu entry in the app.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn instant_mix(&self, item_id: &str, limit: u32) -> Result<Vec<Track>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Items/{item_id}/InstantMix"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("UserId", user_id);
+            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair(
+                "Fields",
+                "MediaSources,UserData,ParentId,ProductionYear,PrimaryImageAspectRatio",
+            );
+            q.append_pair("EnableUserData", "true");
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Track::from).collect())
+    }
+
+    /// Server-curated suggestions for the Home "You might like" row.
+    /// Backed by `GET /Items/Suggestions?mediaType=Audio&type=MusicAlbum,MusicArtist`.
+    ///
+    /// Jellyfin ranks the result on the server side using tag / play-history
+    /// overlap, so this is more useful than the pure recency-ordered
+    /// [`JellyfinClient::latest_albums`] for long-tail discovery. The UI
+    /// typically only needs a short shelf (12 is a reasonable default).
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn suggestions(&self, limit: u32) -> Result<Vec<Track>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Items/Suggestions")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("UserId", user_id);
+            q.append_pair("MediaType", "Audio");
+            q.append_pair("Type", "Audio");
+            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair("EnableUserData", "true");
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Track::from).collect())
+    }
+
+    /// Artists similar to `artist_id` — Jellyfin's `GET /Artists/{id}/Similar`.
+    /// Used by the artist detail "Fans also like" shelf. Server uses tag /
+    /// genre overlap for similarity, so results are reasonable even on
+    /// modest libraries.
+    pub async fn similar_artists(&self, artist_id: &str, limit: u32) -> Result<Vec<Artist>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Artists/{artist_id}/Similar"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("UserId", user_id);
+            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair("Fields", "Genres,PrimaryImageAspectRatio");
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Artist::from).collect())
+    }
+
+    /// Albums similar to `album_id` — Jellyfin's `GET /Albums/{id}/Similar`.
+    /// Used by the album detail "Similar albums" shelf.
+    pub async fn similar_albums(&self, album_id: &str, limit: u32) -> Result<Vec<Album>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Albums/{album_id}/Similar"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("UserId", user_id);
+            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair(
+                "Fields",
+                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Album::from).collect())
+    }
+
+    /// Generic similar-items fallback via `GET /Items/{id}/Similar` — used
+    /// when the caller doesn't know (or doesn't care about) the item kind.
+    /// Returns [`ItemRef`]s carrying the server's `Type` so the UI can
+    /// dispatch to the right detail screen without a second fetch.
+    pub async fn similar_items(&self, item_id: &str, limit: u32) -> Result<Vec<ItemRef>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Items/{item_id}/Similar"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("UserId", user_id);
+            q.append_pair("Limit", &limit.max(1).to_string());
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(ItemRef::from).collect())
+    }
+
+    /// Most frequently played audio tracks for the current user. Backed by
+    /// `GET /Users/{id}/Items?SortBy=PlayCount&SortOrder=Descending`. Powers
+    /// the Home "Play It Again" / "On Repeat" row — Jellyfin increments
+    /// `PlayCount` server-side on each completed play, so the order tracks
+    /// actual listening history.
+    ///
+    /// Returns tracks with `PlayCount >= 1` at the top; brand-new libraries
+    /// with no play history will fall back to the server's `SortName`
+    /// tiebreaker (every row at `PlayCount = 0`).
+    pub async fn frequently_played_tracks(&self, limit: u32) -> Result<Vec<Track>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("Recursive", "true");
+            q.append_pair("IncludeItemTypes", "Audio");
+            q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair("SortBy", "PlayCount,SortName");
+            q.append_pair("SortOrder", "Descending,Ascending");
+            q.append_pair(
+                "Fields",
+                "MediaSources,UserData,ParentId,ProductionYear,PrimaryImageAspectRatio",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Track::from).collect())
+    }
+
+    /// All music genres in the user's library, paginated. Backed by
+    /// `GET /MusicGenres` with `Fields=ItemCounts` so each returned
+    /// [`Genre`] carries `song_count` / `album_count` in a single round-trip.
+    /// The plain `/Genres` controller is obsolete for music.
+    pub async fn genres(&self, paging: Paging) -> Result<PaginatedGenres> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("MusicGenres")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("userId", user_id);
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
+            q.append_pair("SortBy", "SortName");
+            q.append_pair("SortOrder", "Ascending");
+            q.append_pair("Fields", "ItemCounts,PrimaryImageAspectRatio");
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawGenre> = Self::check(resp).await?.json().await?;
+        Ok(PaginatedGenres {
+            items: raw.items.into_iter().map(Genre::from).collect(),
+            total_count: raw.total_record_count,
+        })
+    }
+
+    /// Items (albums by default) belonging to a given genre, paginated.
+    /// Backed by `GET /Users/{id}/Items?GenreIds={id}&IncludeItemTypes=MusicAlbum`.
+    ///
+    /// Returns a [`PaginatedAlbums`] — most genre landing pages lead with
+    /// albums. Callers that want per-kind filtering can follow up with
+    /// [`JellyfinClient::albums`] / `artists` / `list_tracks` using
+    /// `GenreIds` (a future refactor; see Issue 38).
+    pub async fn items_by_genre(&self, genre_id: &str, paging: Paging) -> Result<PaginatedAlbums> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("GenreIds", genre_id);
+            q.append_pair("Recursive", "true");
+            q.append_pair("IncludeItemTypes", "MusicAlbum");
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
+            q.append_pair("SortBy", "SortName");
+            q.append_pair("SortOrder", "Ascending");
+            q.append_pair(
+                "Fields",
+                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(PaginatedAlbums {
+            items: raw.items.into_iter().map(Album::from).collect(),
+            total_count: raw.total_record_count,
+        })
+    }
+
+    /// Full artist record with biography, backdrops, and external links —
+    /// extends [`JellyfinClient::fetch_item`] with an artist-focused field
+    /// projection. Powers the artist detail header (bio + MusicBrainz /
+    /// Last.fm / Discogs shortcut icons).
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn artist_detail(&self, artist_id: &str) -> Result<ArtistDetail> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Items")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("Ids", artist_id);
+            q.append_pair("userId", user_id);
+            q.append_pair(
+                "Fields",
+                "Overview,Genres,Tags,ProviderIds,ExternalUrls,BackdropImageTags,PrimaryImageAspectRatio",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawArtistDetail> = Self::check(resp).await?.json().await?;
+        let first = raw
+            .items
+            .into_iter()
+            .next()
+            .ok_or_else(|| JellifyError::Server {
+                status: 404,
+                message: format!("artist not found: {artist_id}"),
+            })?;
+        Ok(ArtistDetail::from(first))
+    }
+
+    /// Fetch lyrics for a track via `GET /Audio/{itemId}/Lyrics`. Returns
+    /// `Ok(None)` when the server reports `404` — lyrics are opt-in
+    /// metadata and missing-lyrics is the common case. Other errors
+    /// propagate as [`JellifyError`].
+    ///
+    /// Handles both timed (`IsSynced = true`, LRC-style) and plain-text
+    /// (`IsSynced = false`, a single line at `Start = 0`) payloads. The
+    /// returned [`LyricLine::time_seconds`] is already converted out of
+    /// Jellyfin's 100-ns tick units so UIs can compare directly against
+    /// the audio engine's playback position.
+    pub async fn lyrics(&self, track_id: &str) -> Result<Option<Lyrics>> {
+        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        let url = self.endpoint(&format!("Audio/{track_id}/Lyrics"))?;
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let raw: RawLyrics = Self::check(resp).await?.json().await?;
+        Ok(Some(Lyrics::from(raw)))
+    }
+
     /// Fetch a single item by id with a caller-selected set of `Fields`.
     ///
     /// Uses `GET /Items?Ids={id}&Fields=...` as a workaround for the
@@ -1378,6 +1703,147 @@ impl From<RawItem> for Track {
             container: r.container,
             bitrate: r.bitrate,
             image_tag: r.image_tags.get("Primary").cloned(),
+        }
+    }
+}
+
+impl From<RawItem> for ItemRef {
+    fn from(r: RawItem) -> Self {
+        ItemRef {
+            id: r.id,
+            name: r.name,
+            kind: r.kind,
+            image_tag: r.image_tags.get("Primary").cloned(),
+        }
+    }
+}
+
+/// `GET /MusicGenres` returns `BaseItemDto`s with `ItemCounts` projected, so
+/// the counts land at top-level `SongCount` / `AlbumCount` — a different
+/// shape from [`RawItem`]'s music-item fields. Kept as a standalone wire
+/// type so the parser can't silently pick up the wrong counters.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct RawGenre {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    song_count: u32,
+    #[serde(default)]
+    album_count: u32,
+    #[serde(default)]
+    image_tags: std::collections::HashMap<String, String>,
+}
+
+impl From<RawGenre> for Genre {
+    fn from(r: RawGenre) -> Self {
+        Genre {
+            id: r.id,
+            name: r.name,
+            song_count: r.song_count,
+            album_count: r.album_count,
+            image_tag: r.image_tags.get("Primary").cloned(),
+        }
+    }
+}
+
+/// Wire shape for a single element of `GET /Items?Ids={id}` projected with
+/// artist-detail fields. Separate from [`RawItem`] because the interesting
+/// fields — `Overview`, `BackdropImageTags`, `ExternalUrls` — aren't on
+/// the music-item path.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct RawArtistDetail {
+    #[serde(default)]
+    id: String,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    genres: Vec<String>,
+    #[serde(default)]
+    image_tags: std::collections::HashMap<String, String>,
+    overview: Option<String>,
+    #[serde(default)]
+    backdrop_image_tags: Vec<String>,
+    #[serde(default)]
+    external_urls: Vec<RawExternalUrl>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct RawExternalUrl {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    url: String,
+}
+
+impl From<RawExternalUrl> for ExternalUrl {
+    fn from(r: RawExternalUrl) -> Self {
+        ExternalUrl {
+            name: r.name,
+            url: r.url,
+        }
+    }
+}
+
+impl From<RawArtistDetail> for ArtistDetail {
+    fn from(r: RawArtistDetail) -> Self {
+        ArtistDetail {
+            id: r.id,
+            name: r.name,
+            genres: r.genres,
+            image_tag: r.image_tags.get("Primary").cloned(),
+            overview: r.overview,
+            backdrop_image_tags: r.backdrop_image_tags,
+            external_urls: r.external_urls.into_iter().map(ExternalUrl::from).collect(),
+        }
+    }
+}
+
+/// `GET /Audio/{id}/Lyrics` returns `LyricDto { Metadata, Lyrics }`.
+/// Jellyfin keys timestamps on `Start` in 100-ns ticks; we convert to
+/// seconds on deserialization so callers can compare directly against the
+/// platform audio engine's playback position.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct RawLyrics {
+    #[serde(default)]
+    metadata: RawLyricsMetadata,
+    #[serde(default, rename = "Lyrics")]
+    lines: Vec<RawLyricLine>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct RawLyricsMetadata {
+    #[serde(default)]
+    is_synced: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "PascalCase")]
+struct RawLyricLine {
+    #[serde(default)]
+    start: i64,
+    #[serde(default)]
+    text: String,
+}
+
+impl From<RawLyrics> for Lyrics {
+    fn from(r: RawLyrics) -> Self {
+        Lyrics {
+            is_synced: r.metadata.is_synced,
+            lines: r
+                .lines
+                .into_iter()
+                .map(|l| LyricLine {
+                    time_seconds: l.start as f64 / 10_000_000.0,
+                    text: l.text,
+                })
+                .collect(),
         }
     }
 }
