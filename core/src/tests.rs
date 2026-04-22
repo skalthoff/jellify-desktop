@@ -341,7 +341,7 @@ async fn user_playlists_filters_to_data_path_and_builds_query() {
         .and(query_param("IncludeItemTypes", "Playlist"))
         .and(query_param("Limit", "20"))
         .and(query_param("StartIndex", "5"))
-        .and(query_param("Fields", "ChildCount,Genres,Path"))
+        .and(query_param("Fields", "ChildCount,Path"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "Items": [
                 {

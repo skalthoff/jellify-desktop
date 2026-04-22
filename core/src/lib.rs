@@ -206,8 +206,8 @@ impl JellifyCore {
         })
     }
 
-    /// Playlists owned by the current user. Filtered server-response-side
-    /// by `Path` containing `/data/` (profile directory).
+    /// Playlists owned by the current user. Filtered client-side based on
+    /// whether `Path` contains `/data/` (profile directory).
     pub fn user_playlists(
         &self,
         playlist_library_id: String,

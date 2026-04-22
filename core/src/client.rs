@@ -356,7 +356,7 @@ impl JellyfinClient {
             q.append_pair("IncludeItemTypes", "Playlist");
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("Fields", "ChildCount,Genres,Path");
+            q.append_pair("Fields", "ChildCount,Path");
         }
         let resp = self
             .http
