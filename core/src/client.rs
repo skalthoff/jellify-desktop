@@ -599,7 +599,7 @@ impl JellyfinClient {
     /// flat list can be split into typed sections client-side.
     ///
     /// Scoped to music by default
-    /// (`IncludeItemTypes=Audio,MusicAlbum,MusicArtist,Playlist`). Requires
+    /// (`includeItemTypes=Audio,MusicAlbum,MusicArtist,Playlist`). Requires
     /// an authenticated session; returns [`JellifyError::NotAuthenticated`]
     /// if no `user_id` is set.
     pub async fn search_hints(&self, query: &str, limit: u32) -> Result<SearchHintResults> {
@@ -904,7 +904,7 @@ impl From<RawSearchHint> for SearchHint {
             production_year: r.production_year,
             index_number: r.index_number,
             parent_index_number: r.parent_index_number,
-            run_time_ticks: r.run_time_ticks,
+            runtime_ticks: r.run_time_ticks,
             artists: r.artists,
             is_folder: r.is_folder,
         }

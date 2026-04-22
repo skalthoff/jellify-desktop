@@ -116,7 +116,7 @@ pub struct SearchHint {
     pub production_year: Option<i32>,
     pub index_number: Option<u32>,
     pub parent_index_number: Option<u32>,
-    pub run_time_ticks: Option<u64>,
+    pub runtime_ticks: Option<u64>,
     pub artists: Vec<String>,
     pub is_folder: Option<bool>,
 }

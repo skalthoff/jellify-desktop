@@ -667,7 +667,7 @@ async fn search_hints_builds_expected_query_and_parses() {
     assert_eq!(album.kind.as_deref(), Some("MusicAlbum"));
     assert_eq!(album.album_artist.as_deref(), Some("Colleen"));
     assert_eq!(album.production_year, Some(2013));
-    assert_eq!(album.run_time_ticks, Some(18_000_000_000));
+    assert_eq!(album.runtime_ticks, Some(18_000_000_000));
 
     let track = &results.search_hints[2];
     assert_eq!(track.kind.as_deref(), Some("Audio"));
