@@ -67,6 +67,14 @@ struct PlaylistView: View {
             tracks = await model.loadPlaylistTracks(playlist: playlist)
             isLoadingTracks = false
         }
+        // Keep the local `tracks` snapshot in sync with the shared
+        // `playlistTracks` cache so drag-reorder (BATCH-06b, #73) reflects
+        // immediately after `AppModel.moveTrackInPlaylist` mutates the
+        // cache. Without this the optimistic reorder only shows up after
+        // the next navigation away and back.
+        .onChange(of: model.playlistTracks[playlistID]) { _, newValue in
+            if let newValue = newValue { tracks = newValue }
+        }
     }
 
     // MARK: - Hero
@@ -307,6 +315,18 @@ struct PlaylistView: View {
                         track: track,
                         number: idx + 1,
                         onPlay: { model.play(tracks: tracks, startIndex: idx) }
+                    )
+                    // BATCH-06b (#73 / #235): drag-to-reorder. The modifier
+                    // lives in `PlaylistReorderHandle.swift` and routes drops
+                    // through `AppModel.moveTrackInPlaylist`. Uses the
+                    // playlist id from the resolved view model so a deep
+                    // link that arrives before the playlist cache is primed
+                    // still wires up cleanly (the modifier is a no-op if
+                    // `playlistTracks[id]` is empty).
+                    .playlistReorderable(
+                        playlistId: playlistID,
+                        trackId: track.id,
+                        index: idx
                     )
                 }
             }

@@ -377,6 +377,42 @@ final class AppModel {
     /// the dialog is modal — only one can be pending at a time. See #131.
     var playlistPendingDelete: Playlist?
 
+    // MARK: - Sidebar playlist edit (BATCH-06b, #71 / #75)
+    //
+    // The sidebar surfaces a compact "Playlists" section with inline edit
+    // affordances: ⌘N creates a new playlist row in edit mode, and the
+    // right-click context menu's Rename action flips an existing row into
+    // the same edit mode. Both paths funnel through a single pair of state
+    // variables so only one row can be in edit mode at a time.
+    //
+    // `sidebarEditingPlaylistId` is `nil` when no row is in edit mode; the
+    // sentinel value `sidebarNewPlaylistSentinel` (below) means "a new
+    // playlist placeholder, no id yet"; any other string is the id of the
+    // existing playlist being renamed. `sidebarEditingDraft` mirrors the
+    // TextField contents so the Sidebar can bind to the observable model
+    // without managing its own @State copy.
+
+    /// Sentinel used for the in-progress "new playlist" placeholder row
+    /// before the user commits a name. Picked to never collide with a real
+    /// Jellyfin item id (which are 32-char hex GUIDs).
+    static let sidebarNewPlaylistSentinel = "__jellify_new_playlist__"
+
+    /// Id of the playlist currently in inline edit mode in the sidebar.
+    /// `nil` when no row is being edited; `sidebarNewPlaylistSentinel` when
+    /// a brand-new placeholder row is showing a TextField; otherwise the
+    /// id of the existing playlist being renamed.
+    var sidebarEditingPlaylistId: String?
+
+    /// Draft text for the sidebar's inline TextField. Shared between the
+    /// Cmd+N "new playlist" row and the Rename affordance so only one edit
+    /// can be active at a time.
+    var sidebarEditingDraft: String = ""
+
+    /// Playlist ids that have a duplicate-in-progress server round trip in
+    /// flight. The sidebar row shows a small spinner while its id is in
+    /// this set. Cleared on success or error. See `duplicatePlaylist`.
+    var sidebarCopyingPlaylistIds: Set<String> = []
+
     /// Artists the user has "followed" in-app. Today this is purely local
     /// state (no server-side follow primitive on Jellyfin), persisted to
     /// `UserDefaults` on write. See #64 / #228.
@@ -705,6 +741,10 @@ final class AppModel {
         currentPlaylistTracks = []
         pendingPlaylistRemoval = nil
         playlistDescriptions = [:]
+        sidebarEditingPlaylistId = nil
+        sidebarEditingDraft = ""
+        sidebarCopyingPlaylistIds = []
+        playlistPendingDelete = nil
         artistTopTracks = [:]
         recentlyPlayed = []
         forYou = []
@@ -760,6 +800,10 @@ final class AppModel {
         currentPlaylistTracks = []
         pendingPlaylistRemoval = nil
         playlistDescriptions = [:]
+        sidebarEditingPlaylistId = nil
+        sidebarEditingDraft = ""
+        sidebarCopyingPlaylistIds = []
+        playlistPendingDelete = nil
         artistTopTracks = [:]
         recentlyPlayed = []
         forYou = []
@@ -2835,19 +2879,20 @@ final class AppModel {
         print("[AppModel] enqueueDownload(playlist:) not yet wired — see #70 / #222")
     }
 
-    /// Present a rename prompt for a playlist.
-    /// TODO: #75, #130 — rename UI sheet + `update_playlist` FFI not yet wired.
+    /// Flip the sidebar's inline TextField onto an existing playlist row so
+    /// the user can rename it in-place. Mirrors the #71 Cmd+N flow —
+    /// Escape / blur-without-change cancels, Return commits through
+    /// `commitSidebarPlaylistEdit` which dispatches to `renamePlaylist`.
+    /// See BATCH-06b / issue #75.
     func requestRename(playlist: Playlist) {
-        // TODO: #75 / #130 — rename sheet + update_playlist FFI not yet wired.
-        print("[AppModel] requestRename(playlist:) not yet wired — see #75 / #130")
+        sidebarEditingPlaylistId = playlist.id
+        sidebarEditingDraft = playlist.name
     }
 
-    /// Present a delete confirmation for a playlist.
-    /// TODO: #75, #131 — delete confirm alert + `delete_playlist` FFI not yet
-    /// wired.
+    /// Present a delete confirmation for a playlist. Alias for
+    /// `confirmDelete(playlist:)`, kept for historical call sites.
     func requestDelete(playlist: Playlist) {
-        // TODO: #75 / #131 — delete confirm + delete_playlist FFI not yet wired.
-        print("[AppModel] requestDelete(playlist:) not yet wired — see #75 / #131")
+        confirmDelete(playlist: playlist)
     }
 
     /// Raise a delete-confirmation dialog for a playlist. Sets
@@ -2860,15 +2905,12 @@ final class AppModel {
     }
 
     /// Execute the pending playlist deletion, if any. Called from the
-    /// confirmation dialog's destructive button.
-    /// TODO(#131): delete_playlist FFI not yet wired; for now, optimistically
-    /// drop from the local `playlists` array so the UI can be tested.
+    /// confirmation dialog's destructive button. Delegates to
+    /// `deletePlaylist(id:)` which owns the stub + local-remove behaviour.
     func performDeletePending() {
         guard let target = playlistPendingDelete else { return }
         playlistPendingDelete = nil
-        playlists.removeAll { $0.id == target.id }
-        // TODO(#131): delete_playlist FFI not yet wired — local drop only.
-        print("[AppModel] performDeletePending(\(target.name)) local-only — see #131")
+        deletePlaylist(id: target.id)
     }
 
     /// Dismiss the pending delete dialog without deleting anything.
@@ -2876,11 +2918,13 @@ final class AppModel {
         playlistPendingDelete = nil
     }
 
-    /// Duplicate a playlist: create a new playlist with the same tracks.
-    /// TODO(#126): create_playlist + add_to_playlist FFIs not yet wired.
+    /// Duplicate a playlist: create a new playlist named "<original> Copy"
+    /// and populate it with the same track ids. Fires-and-forgets on the
+    /// main actor; the sidebar row shows a progress indicator for the
+    /// source playlist while the round trip is in flight (see
+    /// `sidebarCopyingPlaylistIds`). See BATCH-06b / issues #75 / #126.
     func requestDuplicate(playlist: Playlist) {
-        // TODO(#126): create_playlist + add_to_playlist FFIs not yet wired.
-        print("[AppModel] requestDuplicate(playlist:) not yet wired — see #126")
+        Task { await duplicatePlaylist(id: playlist.id) }
     }
 
     /// Present a save panel and write the playlist to disk as an `.m3u8` file.
@@ -2892,29 +2936,10 @@ final class AppModel {
     }
 
     /// Rename a playlist in place from the playlist hero's click-to-edit
-    /// title (#234). Updates the cached `Playlist` in `playlists` so the hero
-    /// reflects the new name immediately.
-    ///
-    /// TODO: #130 — the `update_playlist` FFI / HTTP `POST /Items/{Id}` wrapper
-    /// is still pending. Until it lands this is an in-memory-only rename: on
-    /// the next library refresh the cached `Playlist` gets overwritten with
-    /// whatever the server still has. That's acceptable for now — the
-    /// interaction exercises the view plumbing, and the follow-up swap is a
-    /// one-line change here.
+    /// title (#234). Thin wrapper around `renamePlaylist(id:, newName:)`
+    /// so the hero and the sidebar share a single code path.
     func renamePlaylist(_ playlist: Playlist, newName: String) {
-        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, trimmed != playlist.name else { return }
-        // TODO: #130 — call `core.updatePlaylist(playlistId:, name:)` once the
-        // FFI lands. For now, optimistically update the in-memory cache.
-        print("[AppModel] renamePlaylist(\(playlist.id), \(trimmed)) not yet persisted — see #130")
-        guard let idx = playlists.firstIndex(where: { $0.id == playlist.id }) else { return }
-        playlists[idx] = Playlist(
-            id: playlist.id,
-            name: trimmed,
-            trackCount: playlist.trackCount,
-            runtimeTicks: playlist.runtimeTicks,
-            imageTag: playlist.imageTag
-        )
+        renamePlaylist(id: playlist.id, newName: newName)
     }
 
     /// Update the description (Jellyfin `Overview`) for a playlist from the
@@ -2935,6 +2960,194 @@ final class AppModel {
         } else {
             playlistDescriptions[playlist.id] = trimmed
         }
+    }
+
+    // MARK: - Sidebar playlist CRUD (BATCH-06b, #71 / #73 / #75)
+
+    /// Drop a placeholder row into edit mode so Cmd+N feels instant. The
+    /// placeholder is identified by `sidebarNewPlaylistSentinel`; the
+    /// sidebar renders a single TextField in its slot. Committing via
+    /// `commitSidebarPlaylistEdit` turns this into a real `create_playlist`
+    /// call; Escape / empty-blur bails out via `cancelSidebarPlaylistEdit`.
+    /// See issue #71.
+    func beginNewPlaylist() {
+        sidebarEditingPlaylistId = Self.sidebarNewPlaylistSentinel
+        sidebarEditingDraft = ""
+    }
+
+    /// Dismiss the inline TextField without saving. Used for Escape /
+    /// blur-with-empty-text on a new-playlist row, and for blur-without-
+    /// change on a rename-in-progress row.
+    func cancelSidebarPlaylistEdit() {
+        sidebarEditingPlaylistId = nil
+        sidebarEditingDraft = ""
+    }
+
+    /// Commit the current sidebar draft. Branches on the editing id:
+    ///   - `sidebarNewPlaylistSentinel` → `createPlaylist(name:)`;
+    ///   - any other id → `renamePlaylist(id:, newName:)`.
+    /// An empty or whitespace-only draft is treated as cancel, matching
+    /// macOS Finder conventions for inline rename. See #71 / #75.
+    func commitSidebarPlaylistEdit() async {
+        guard let editingId = sidebarEditingPlaylistId else { return }
+        let trimmed = sidebarEditingDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Clear the edit state up-front so the TextField unmounts before the
+        // async create / rename completes; prevents the view from appearing
+        // "stuck" on slow networks.
+        sidebarEditingPlaylistId = nil
+        sidebarEditingDraft = ""
+        guard !trimmed.isEmpty else { return }
+        if editingId == Self.sidebarNewPlaylistSentinel {
+            await createPlaylist(name: trimmed)
+        } else {
+            renamePlaylist(id: editingId, newName: trimmed)
+        }
+    }
+
+    /// Create a new (empty) playlist on the server and prepend it to the
+    /// in-memory `playlists` list so the sidebar surfaces it immediately.
+    /// Backed by `core.createPlaylist(name:, itemIds:)` — see #126.
+    /// A thin optimistic update: if the core call fails we fall back to
+    /// an `errorMessage` and do not insert the row.
+    func createPlaylist(name: String) async {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        do {
+            let newId = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.createPlaylist(name: trimmed, itemIds: [])
+            }.value
+            // The core returns only the id; build a minimal `Playlist`
+            // record client-side rather than refetching. An `imageTag` of
+            // `nil` falls through to the gradient placeholder until the
+            // next library refresh picks up the server's Primary tag.
+            let newPlaylist = Playlist(
+                id: newId,
+                name: trimmed,
+                trackCount: 0,
+                runtimeTicks: 0,
+                imageTag: nil
+            )
+            playlists.insert(newPlaylist, at: 0)
+        } catch {
+            errorMessage = "Create playlist failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Rename a playlist by id. Local-only update until the core exposes
+    /// `update_playlist` (see core-#130); on the next full library refresh
+    /// a local-only rename will be overwritten by the server's persisted
+    /// name. Shared by the sidebar inline rename and the playlist hero
+    /// click-to-edit title.
+    func renamePlaylist(id: String, newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        guard let idx = playlists.firstIndex(where: { $0.id == id }) else { return }
+        let existing = playlists[idx]
+        guard trimmed != existing.name else { return }
+        // TODO(core-#130): call `core.updatePlaylist(playlistId:, name:)`
+        // once the FFI lands. For now, optimistically update in place.
+        print("[AppModel] renamePlaylist(\(id)) local-only — see core-#130")
+        playlists[idx] = Playlist(
+            id: existing.id,
+            name: trimmed,
+            trackCount: existing.trackCount,
+            runtimeTicks: existing.runtimeTicks,
+            imageTag: existing.imageTag
+        )
+    }
+
+    /// Duplicate a playlist: create "<original> Copy" and seed it with the
+    /// same tracks via `add_to_playlist`. Shows a per-row spinner while the
+    /// two round trips are in flight (tracked in
+    /// `sidebarCopyingPlaylistIds`). No-op if the source playlist isn't in
+    /// the in-memory list. See #75 / #126.
+    func duplicatePlaylist(id: String) async {
+        guard let source = playlists.first(where: { $0.id == id }) else { return }
+        sidebarCopyingPlaylistIds.insert(id)
+        defer { sidebarCopyingPlaylistIds.remove(id) }
+
+        // Gather every track id on the source playlist so the copy starts
+        // with the same contents. `loadAllPlaylistTracks` already walks the
+        // server in pages and caps pathological playlists at the safety
+        // limit — reusing it keeps behaviour consistent with what the
+        // user sees in the detail view.
+        let tracks = await loadAllPlaylistTracks(playlistID: source.id)
+        let trackIds = tracks.map(\.id)
+        let copyName = "\(source.name) Copy"
+        do {
+            let newId = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.createPlaylist(name: copyName, itemIds: trackIds)
+            }.value
+            // Core's `create_playlist` can accept seed items directly; the
+            // `itemIds` path above covers the common case. We still build a
+            // fresh `Playlist` record locally rather than refetch.
+            let newPlaylist = Playlist(
+                id: newId,
+                name: copyName,
+                trackCount: UInt32(trackIds.count),
+                runtimeTicks: source.runtimeTicks,
+                imageTag: nil
+            )
+            playlists.insert(newPlaylist, at: 0)
+            // Prime the tracks cache so the detail view doesn't have to
+            // re-walk the server the first time the user opens the copy.
+            if !tracks.isEmpty {
+                playlistTracks[newId] = tracks
+            }
+        } catch {
+            errorMessage = "Duplicate playlist failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Delete a playlist. Today this is an in-memory drop with a matching
+    /// TODO stub — the core's `delete_playlist` FFI hasn't landed yet
+    /// (see core-#131). When it does, swap the `print` line for a
+    /// `try core.deletePlaylist(id:)` call.
+    func deletePlaylist(id: String) {
+        playlists.removeAll { $0.id == id }
+        playlistTracks.removeValue(forKey: id)
+        playlistDescriptions.removeValue(forKey: id)
+        // TODO(core-#131): delete_playlist FFI not yet wired — local drop only.
+        print("[AppModel] deletePlaylist(\(id)) local-only — see core-#131")
+    }
+
+    /// Resolve a dropped track id (from the drag-reorder affordance in
+    /// `PlaylistReorderHandle`) back to an index and dispatch the move.
+    /// Separated from `moveTrackInPlaylist` so the drop delegate doesn't
+    /// need to hold an index snapshot that could go stale by the time the
+    /// async `NSItemProvider` callback fires.
+    func applyPlaylistDrop(playlistId: String, trackId: String, destinationIndex: Int) {
+        guard let tracks = playlistTracks[playlistId] else { return }
+        guard let sourceIndex = tracks.firstIndex(where: { $0.id == trackId }) else { return }
+        moveTrackInPlaylist(playlistId: playlistId, from: sourceIndex, to: destinationIndex)
+    }
+
+    /// Reorder a track within a playlist. Swaps the local cache entry so
+    /// the UI reflects the new order immediately, then defers the server
+    /// round trip until `move_playlist_item` (core-#129) lands. Matches
+    /// the optimistic-update pattern used for rename/delete above.
+    ///
+    /// Indices are relative to the current cached order in
+    /// `playlistTracks[playlistId]`. Out-of-range indices are silently
+    /// dropped. The semantics match SwiftUI's native
+    /// `Array.move(fromOffsets:toOffset:)` so the detail view can feed its
+    /// drop position straight through.
+    func moveTrackInPlaylist(playlistId: String, from: Int, to: Int) {
+        guard var tracks = playlistTracks[playlistId] else { return }
+        guard from >= 0, from < tracks.count else { return }
+        // SwiftUI's `move(fromOffsets:toOffset:)` accepts `to` as an
+        // insertion index in the pre-move list, so the valid range is
+        // [0, tracks.count]. `from == to` and `from + 1 == to` are both
+        // no-ops — bail early to avoid a needless assignment + notify.
+        guard to >= 0, to <= tracks.count else { return }
+        guard to != from, to != from + 1 else { return }
+        let track = tracks.remove(at: from)
+        let insertIndex = to > from ? to - 1 : to
+        tracks.insert(track, at: insertIndex)
+        playlistTracks[playlistId] = tracks
+        // TODO(core-#129): call `core.movePlaylistItem(playlistId:, fromIndex:, toIndex:)`
+        // once the FFI lands. Local-only for now.
+        print("[AppModel] moveTrackInPlaylist(\(playlistId)) \(from) → \(to) local-only — see core-#129")
     }
 
     // MARK: - Playlist sharing
