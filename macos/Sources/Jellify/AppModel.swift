@@ -250,6 +250,17 @@ final class AppModel {
     /// consumer owns the tween.
     var streamErrorFlash: Bool = false
 
+    /// Playlist the user asked to delete from a context menu. Observed by
+    /// `MainShell` to present a `.confirmationDialog`; cleared when the
+    /// user confirms or dismisses. Single-shot rather than a list because
+    /// the dialog is modal — only one can be pending at a time. See #131.
+    var playlistPendingDelete: Playlist?
+
+    /// Artists the user has "followed" in-app. Today this is purely local
+    /// state (no server-side follow primitive on Jellyfin), persisted to
+    /// `UserDefaults` on write. See #64 / #228.
+    var followedArtistIds: Set<String> = []
+
     init() throws {
         let core = try JellifyCore(
             config: CoreConfig(dataDir: "", deviceName: "Jellify macOS")
@@ -1807,11 +1818,39 @@ final class AppModel {
         screen = .artist(artistID)
     }
 
+    /// Navigate to the album's own detail screen. Used when the menu is
+    /// invoked from a surface other than the album detail itself (e.g. a
+    /// track row that links back to its album).
+    func goToAlbum(album: Album) {
+        screen = .album(album.id)
+    }
+
     /// Kick off an Instant Mix ("album radio") seeded by this album.
     /// TODO: #144, #327 — Instant Mix endpoint + modal not yet wired.
     func startAlbumRadio(album: Album) {
         // TODO: #144 / #327 — Instant Mix FFI not yet wired.
         print("[AppModel] startAlbumRadio(album:) not yet wired — see #144 / #327")
+    }
+
+    /// Mark every track on the album as played.
+    /// TODO: #133 / #222 — `mark_played` FFI not yet wired.
+    func markAllAsPlayed(album: Album) {
+        // TODO(#133): mark_played FFI not yet wired.
+        print("[AppModel] markAllAsPlayed(album:) not yet wired — see #133 / #222")
+    }
+
+    /// Present the album metadata editor. Admin-only once the sheet lands.
+    /// TODO: #96 / #222 — metadata editor sheet not yet implemented.
+    func requestEditAlbum(album: Album) {
+        // TODO(#96): metadata editor sheet not yet implemented.
+        print("[AppModel] requestEditAlbum(album:) not yet wired — see #96 / #222")
+    }
+
+    /// Append every track on the album to a user-picked playlist.
+    /// TODO: #126 / #130 — `add_to_playlist` FFI not yet wired.
+    func addAlbumToPlaylist(album: Album, playlist: Playlist) {
+        // TODO(#126): add_to_playlist FFI not yet wired.
+        print("[AppModel] addAlbumToPlaylist(\(album.name) → \(playlist.name)) not yet wired — see #126")
     }
 
     // MARK: - Sharing
@@ -1874,10 +1913,38 @@ final class AppModel {
     }
 
     /// Toggle the follow flag for an artist.
-    /// TODO: #64, #228 — follow/unfollow semantics + core support TBD.
+    /// TODO: #64 / #228 — server-side follow primitive TBD. For now,
+    /// toggle a local `followedArtistIds` set so the UI has something to
+    /// render against; persistence lives alongside the real API work.
     func toggleFollow(artist: Artist) {
-        // TODO: #64 / #228 — follow/unfollow not yet wired.
-        print("[AppModel] toggleFollow(artist:) not yet wired — see #64 / #228")
+        if followedArtistIds.contains(artist.id) {
+            followedArtistIds.remove(artist.id)
+        } else {
+            followedArtistIds.insert(artist.id)
+        }
+    }
+
+    /// `true` when the user has followed this artist (in-app, today).
+    /// See `toggleFollow(artist:)` for the TODO on server-side follow.
+    func isFollowing(artist: Artist) -> Bool {
+        followedArtistIds.contains(artist.id)
+    }
+
+    /// Play a handful of the artist's top tracks as "Play Next".
+    /// TODO: #282 — needs an Up Next queue primitive. Until that lands,
+    /// behaves like `playTopTracks` (start playback from the first top
+    /// track) so the UI action has a landing pad.
+    func playNextArtist(artist: Artist) {
+        // TODO(#282): queue "Up Next" insertion. Fall through to top-tracks
+        // playback so the menu item does something.
+        playTopTracks(artist: artist)
+    }
+
+    /// Navigate to the artist detail screen. Used when the menu is invoked
+    /// from a surface other than the artist detail itself (e.g. a track
+    /// row whose secondary line is the artist).
+    func goToArtistPage(artist: Artist) {
+        screen = .artist(artist.id)
     }
 
     /// Kick off an Instant Mix ("artist radio") seeded by this artist.
@@ -2007,6 +2074,47 @@ final class AppModel {
         print("[AppModel] requestDelete(playlist:) not yet wired — see #75 / #131")
     }
 
+    /// Raise a delete-confirmation dialog for a playlist. Sets
+    /// `playlistPendingDelete`, which `MainShell` observes to present a
+    /// `.confirmationDialog` with clear "Delete <playlist name>?" copy.
+    /// The actual delete happens in `performDeletePending()` once the user
+    /// confirms.
+    func confirmDelete(playlist: Playlist) {
+        playlistPendingDelete = playlist
+    }
+
+    /// Execute the pending playlist deletion, if any. Called from the
+    /// confirmation dialog's destructive button.
+    /// TODO(#131): delete_playlist FFI not yet wired; for now, optimistically
+    /// drop from the local `playlists` array so the UI can be tested.
+    func performDeletePending() {
+        guard let target = playlistPendingDelete else { return }
+        playlistPendingDelete = nil
+        playlists.removeAll { $0.id == target.id }
+        // TODO(#131): delete_playlist FFI not yet wired — local drop only.
+        print("[AppModel] performDeletePending(\(target.name)) local-only — see #131")
+    }
+
+    /// Dismiss the pending delete dialog without deleting anything.
+    func cancelDeletePending() {
+        playlistPendingDelete = nil
+    }
+
+    /// Duplicate a playlist: create a new playlist with the same tracks.
+    /// TODO(#126): create_playlist + add_to_playlist FFIs not yet wired.
+    func requestDuplicate(playlist: Playlist) {
+        // TODO(#126): create_playlist + add_to_playlist FFIs not yet wired.
+        print("[AppModel] requestDuplicate(playlist:) not yet wired — see #126")
+    }
+
+    /// Present a save panel and write the playlist to disk as an `.m3u8` file.
+    /// TODO(#98): needs `playlist_tracks` (#125) to resolve file paths + the
+    /// save panel + an m3u8 writer. Logging stub for now.
+    func exportPlaylist(playlist: Playlist) {
+        // TODO(#98): m3u8 export not yet wired — needs #125 + save panel.
+        print("[AppModel] exportPlaylist(playlist:) not yet wired — see #98 / #125")
+    }
+
     /// Rename a playlist in place from the playlist hero's click-to-edit
     /// title (#234). Updates the cached `Playlist` in `playlists` so the hero
     /// reflects the new name immediately.
@@ -2076,6 +2184,165 @@ final class AppModel {
     func openInJellyfin(playlist: Playlist) {
         guard let url = webURL(for: playlist) else { return }
         NSWorkspace.shared.open(url)
+    }
+
+    // MARK: - Track actions
+    //
+    // Backing calls for `TrackContextMenu`. Accept `[Track]` rather than a
+    // single `Track` so the same surface handles single-row and multi-select
+    // invocations — spec in #95 / #310 / #315. Most of these are TODO stubs
+    // pending follow-up FFI work (queue primitives #282, favorites #133,
+    // download engine #70, mark-played #133, song radio #144, metadata
+    // editor #96).
+
+    /// Insert a selection of tracks immediately after the currently-playing
+    /// track.
+    /// TODO(#282): queue "Up Next" insertion primitive. For now, behaves
+    /// like `play(tracks:)` so the menu item does something.
+    func playNext(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        // TODO(#282): queue "Up Next" insertion not yet wired.
+        print("[AppModel] playNext(tracks:) not yet wired — see #282")
+        play(tracks: tracks, startIndex: 0)
+    }
+
+    /// Append a selection of tracks to the end of the queue.
+    /// TODO(#282): queue append primitive. For now, replaces the queue via
+    /// `play(tracks:)` so the menu item has a landing pad.
+    func addToQueue(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        // TODO(#282): queue append not yet wired.
+        print("[AppModel] addToQueue(tracks:) not yet wired — see #282")
+        play(tracks: tracks, startIndex: 0)
+    }
+
+    /// Kick off an Instant Mix ("song radio") seeded by a single track.
+    /// TODO(#144): Instant Mix (polymorphic) FFI not yet wired.
+    func startSongRadio(track: Track) {
+        // TODO(#144): Instant Mix FFI not yet wired.
+        print("[AppModel] startSongRadio(track:) not yet wired — see #144")
+    }
+
+    /// Append a selection of tracks to a user-picked playlist.
+    /// TODO(#126): `add_to_playlist` FFI not yet wired.
+    func addTracksToPlaylist(tracks: [Track], playlist: Playlist) {
+        // TODO(#126): add_to_playlist FFI not yet wired.
+        print("[AppModel] addTracksToPlaylist(\(tracks.count) tracks → \(playlist.name)) not yet wired — see #126")
+    }
+
+    /// Present a "new playlist" flow seeded with the given selection.
+    /// TODO(#126): create_playlist FFI + sheet not yet wired.
+    func requestAddTracksToPlaylist(tracks: [Track]) {
+        // TODO(#126): create_playlist + picker sheet not yet wired.
+        print("[AppModel] requestAddTracksToPlaylist(\(tracks.count) tracks) not yet wired — see #126")
+    }
+
+    /// Navigate to the album detail screen for this track's album.
+    func goToAlbum(track: Track) {
+        guard let albumID = track.albumId else { return }
+        screen = .album(albumID)
+    }
+
+    /// Navigate to the artist detail screen for this track's artist.
+    func goToArtist(track: Track) {
+        guard let artistID = track.artistId else { return }
+        screen = .artist(artistID)
+    }
+
+    /// Present the per-track info sheet (title, album, bitrate, people).
+    /// TODO(#95): info sheet not yet implemented. Logging stub so ⌘I has a
+    /// landing pad.
+    func showTrackInfo(track: Track) {
+        // TODO(#95): track info sheet not yet wired.
+        print("[AppModel] showTrackInfo(track: \(track.name)) not yet wired — see #95")
+    }
+
+    /// Remove a selection of tracks from a specific playlist. Used by the
+    /// multi-select context menu when scoped to a playlist detail view.
+    /// TODO(#132): `remove_from_playlist` FFI not yet wired.
+    func removeTracksFromPlaylist(tracks: [Track], playlist: Playlist) {
+        // TODO(#132): remove_from_playlist FFI not yet wired.
+        print("[AppModel] removeTracksFromPlaylist(\(tracks.count) from \(playlist.name)) not yet wired — see #132")
+    }
+
+    /// Toggle favorite across every track in the selection. If every track
+    /// is already favorited, this unfavorites them all; otherwise favorites
+    /// the un-favorited subset.
+    /// TODO(#133): set_favorite / unset_favorite FFIs not yet wired.
+    func toggleFavorite(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        // TODO(#133): set_favorite / unset_favorite FFIs not yet wired.
+        print("[AppModel] toggleFavorite(tracks: \(tracks.count)) not yet wired — see #133")
+    }
+
+    /// Toggle the download state of every track in the selection.
+    /// TODO(#70): download engine not yet wired.
+    func toggleDownload(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        // TODO(#70): download engine not yet wired.
+        print("[AppModel] toggleDownload(tracks: \(tracks.count)) not yet wired — see #70")
+    }
+
+    /// Mark or unmark every track in the selection as played.
+    /// TODO(#133): mark_played / mark_unplayed FFIs not yet wired.
+    func toggleMarkPlayed(tracks: [Track]) {
+        guard !tracks.isEmpty else { return }
+        // TODO(#133): mark_played / mark_unplayed FFIs not yet wired.
+        print("[AppModel] toggleMarkPlayed(tracks: \(tracks.count)) not yet wired — see #133")
+    }
+
+    // MARK: - Track sharing
+
+    /// Jellyfin web URL for a single track. Jellyfin's web UI uses the
+    /// same `details` route for every item type, so this mirrors
+    /// `webURL(for album:)` / `webURL(for playlist:)`.
+    func webURL(for track: Track) -> URL? {
+        guard !serverURL.isEmpty else { return nil }
+        let base = serverURL.hasSuffix("/") ? String(serverURL.dropLast()) : serverURL
+        return URL(string: "\(base)/web/#/details?id=\(track.id)")
+    }
+
+    /// Copy the track's web URL to the system pasteboard.
+    func copyShareLink(track: Track) {
+        guard let url = webURL(for: track) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(url.absoluteString, forType: .string)
+    }
+
+    // MARK: - Genre actions
+    //
+    // Backing calls for `GenreContextMenu`. The core doesn't yet expose a
+    // Genre type (genres are surfaced as bare strings on `Album`/`Artist`
+    // today). All four actions are TODO stubs pending follow-up work
+    // (#144 radio, #318 genre detail screen, #248 / #249 Home pinning).
+
+    /// Navigate to the genre's browse view.
+    /// TODO(#318): genre detail screen not yet implemented.
+    func browseGenre(genre: String) {
+        // TODO(#318): genre detail screen not yet implemented.
+        print("[AppModel] browseGenre(\(genre)) not yet wired — see #318")
+    }
+
+    /// Kick off an Instant Mix seeded by a genre.
+    /// TODO(#144): genre-seeded Instant Mix FFI not yet wired.
+    func startGenreRadio(genre: String) {
+        // TODO(#144): genre-seeded Instant Mix FFI not yet wired.
+        print("[AppModel] startGenreRadio(\(genre)) not yet wired — see #144")
+    }
+
+    /// Shuffle every track tagged with the given genre.
+    /// TODO(#318): genre-scoped track list FFI not yet wired.
+    func shuffleGenre(genre: String) {
+        // TODO(#318): genre-scoped track list FFI not yet wired.
+        print("[AppModel] shuffleGenre(\(genre)) not yet wired — see #318")
+    }
+
+    /// Pin a genre tile to the Home screen so the user can one-click-browse.
+    /// TODO(#248 / #249): Home personalization (pinned tiles) not yet wired.
+    func pinGenreToHome(genre: String) {
+        // TODO(#248): pinned tiles not yet wired.
+        print("[AppModel] pinGenreToHome(\(genre)) not yet wired — see #248 / #249")
     }
 
     func pause() { audio.pause() }

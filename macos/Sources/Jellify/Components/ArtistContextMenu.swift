@@ -4,41 +4,60 @@ import SwiftUI
 /// Shared right-click / long-press context menu for artist surfaces
 /// (library/search rows + artist detail hero).
 ///
-/// Issue: #312. Many of the backing actions are TODO stubs pending
-/// follow-up FFI work (see individual `AppModel` methods for issue refs).
+/// Menu order follows Apple Music + Spotify convention and the spec in #97:
+///
+///     Play All, Shuffle All, Play Next
+///     ─
+///     Start Artist Radio
+///     ─
+///     Follow / Unfollow, Go to Artist Page
+///     ─
+///     Copy Link, Share
+///
+/// `showGoToArtist` is omitted when the menu is invoked from the artist's
+/// own detail screen — mirrors the spec's "if invoked elsewhere" qualifier.
+/// Defaults to `true` so call sites like grid rows don't need to think
+/// about it.
+///
+/// Many of the backing actions are TODO stubs pending follow-up FFI work
+/// (see individual `AppModel` methods for issue refs).
 struct ArtistContextMenu: View {
     @Environment(AppModel.self) private var model
     let artist: Artist
+    var showGoToArtist: Bool = true
 
     var body: some View {
         Button("Play All", systemImage: "play.fill") { model.playAll(artist: artist) }
-        Button("Shuffle", systemImage: "shuffle") { model.shuffle(artist: artist) }
-        Button("Play Top Tracks", systemImage: "chart.bar.fill") {
-            model.playTopTracks(artist: artist)
-        }
-
-        Divider()
-
-        Button("Favorite", systemImage: "heart") { model.toggleFavorite(artist: artist) }
-        Button("Follow", systemImage: "person.badge.plus") { model.toggleFollow(artist: artist) }
+        Button("Shuffle All", systemImage: "shuffle") { model.shuffle(artist: artist) }
+        Button("Play Next", systemImage: "text.insert") { model.playNextArtist(artist: artist) }
 
         Divider()
 
         Button("Start Artist Radio", systemImage: "dot.radiowaves.left.and.right") {
             model.startArtistRadio(artist: artist)
         }
-        Button("Go to Discography", systemImage: "square.stack") {
-            model.goToDiscography(artist: artist)
-        }
-        Button("Show Similar", systemImage: "person.2") {
-            model.showSimilar(artist: artist)
+
+        Divider()
+
+        Button(
+            model.isFollowing(artist: artist) ? "Unfollow" : "Follow",
+            systemImage: model.isFollowing(artist: artist) ? "person.badge.minus" : "person.badge.plus"
+        ) { model.toggleFollow(artist: artist) }
+        if showGoToArtist {
+            Button("Go to Artist Page", systemImage: "person") {
+                model.goToArtistPage(artist: artist)
+            }
         }
 
         Divider()
 
-        Button("Share Link", systemImage: "link") { model.copyShareLink(artist: artist) }
+        Button("Copy Link", systemImage: "link") { model.copyShareLink(artist: artist) }
             .disabled(model.webURL(for: artist) == nil)
-        Button("Show in Jellyfin", systemImage: "safari") { model.openInJellyfin(artist: artist) }
-            .disabled(model.webURL(for: artist) == nil)
+        // Share is not yet wired — disabled per spec. NSSharingServicePicker
+        // support lands with #318.
+        Button("Share", systemImage: "square.and.arrow.up") {
+            // TODO(#318): present NSSharingServicePicker.
+        }
+        .disabled(true)
     }
 }

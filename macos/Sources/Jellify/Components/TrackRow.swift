@@ -64,6 +64,7 @@ struct TrackRow: View {
         .onHover { isHovering = $0 }
         .onTapGesture(count: 2) { onPlay?() }
         .onTapGesture(count: 1) { onPlay?() }
+        .contextMenu { TrackContextMenu(selection: [track]) }
     }
 }
 

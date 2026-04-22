@@ -29,6 +29,22 @@ struct MainShell: View {
                 model.authExpired = false
             }
         }
+        // Playlist-delete confirmation — see #98 / #131. Triggered from
+        // `PlaylistContextMenu` via `AppModel.confirmDelete(playlist:)`.
+        .confirmationDialog(
+            model.playlistPendingDelete.map { "Delete \($0.name)?" } ?? "",
+            isPresented: .init(
+                get: { model.playlistPendingDelete != nil },
+                set: { if !$0 { model.cancelDeletePending() } }
+            ),
+            titleVisibility: .visible,
+            presenting: model.playlistPendingDelete
+        ) { _ in
+            Button("Delete", role: .destructive) { model.performDeletePending() }
+            Button("Cancel", role: .cancel) { model.cancelDeletePending() }
+        } message: { playlist in
+            Text("This will permanently delete \"\(playlist.name)\". This action cannot be undone.")
+        }
     }
 
     @ViewBuilder
