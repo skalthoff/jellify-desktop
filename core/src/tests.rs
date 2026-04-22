@@ -1,12 +1,116 @@
 use crate::client::JellyfinClient;
 use crate::models::{ImageType, Paging};
-use crate::storage::Database;
+use crate::storage::{CredentialStore, Database};
+use crate::{CoreConfig, JellifyCore};
 use serde_json::json;
+use std::sync::Once;
 use wiremock::matchers::{method, path, query_param};
 use wiremock::{Mock, MockServer, Request, ResponseTemplate};
 
 fn mock_client(base: &str) -> JellyfinClient {
     JellyfinClient::new(base, "test-device".into(), "Test Device".into()).unwrap()
+}
+
+/// Register a process-wide in-memory credential store as `keyring`'s default
+/// the first time a test touches the credential layer. Without this, on macOS
+/// the crate's `apple-native` feature would route every test into the real
+/// user keychain — which both pollutes the login keychain across runs and
+/// would flake in a headless CI environment.
+///
+/// `keyring`'s built-in `mock` builder hands out a brand-new `MockCredential`
+/// on every `Entry::new`, so it can't round-trip `save → load` across two
+/// `Entry` instances (which is exactly what `CredentialStore::save_token`
+/// followed by `CredentialStore::load_token` does). Our shim keeps one
+/// `HashMap` keyed on `(service, user)` so saves are visible to subsequent
+/// loads, which is the behaviour we need to exercise `resume_session`.
+///
+/// Tests still need to pick distinct `(server_id, username)` pairs — the
+/// harness intentionally does NOT clear the map between tests because tearing
+/// it down is racy under `cargo test`'s default parallelism.
+fn install_mock_keyring() {
+    use keyring::credential::{
+        Credential, CredentialApi, CredentialBuilder, CredentialBuilderApi, CredentialPersistence,
+    };
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex, OnceLock};
+
+    type Store = Arc<Mutex<HashMap<(String, String), Vec<u8>>>>;
+
+    fn store() -> Store {
+        static STORE: OnceLock<Store> = OnceLock::new();
+        STORE
+            .get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+            .clone()
+    }
+
+    struct SharedMockCredential {
+        service: String,
+        user: String,
+        store: Store,
+    }
+
+    impl CredentialApi for SharedMockCredential {
+        fn set_secret(&self, password: &[u8]) -> keyring::Result<()> {
+            self.store
+                .lock()
+                .unwrap()
+                .insert((self.service.clone(), self.user.clone()), password.to_vec());
+            Ok(())
+        }
+
+        fn get_secret(&self) -> keyring::Result<Vec<u8>> {
+            self.store
+                .lock()
+                .unwrap()
+                .get(&(self.service.clone(), self.user.clone()))
+                .cloned()
+                .ok_or(keyring::Error::NoEntry)
+        }
+
+        fn delete_credential(&self) -> keyring::Result<()> {
+            self.store
+                .lock()
+                .unwrap()
+                .remove(&(self.service.clone(), self.user.clone()))
+                .map(|_| ())
+                .ok_or(keyring::Error::NoEntry)
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+    }
+
+    struct SharedMockBuilder;
+
+    impl CredentialBuilderApi for SharedMockBuilder {
+        fn build(
+            &self,
+            _target: Option<&str>,
+            service: &str,
+            user: &str,
+        ) -> keyring::Result<Box<Credential>> {
+            Ok(Box::new(SharedMockCredential {
+                service: service.to_string(),
+                user: user.to_string(),
+                store: store(),
+            }))
+        }
+
+        fn as_any(&self) -> &dyn std::any::Any {
+            self
+        }
+
+        fn persistence(&self) -> CredentialPersistence {
+            CredentialPersistence::ProcessOnly
+        }
+    }
+
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        let builder: Box<CredentialBuilder> = Box::new(SharedMockBuilder);
+        keyring::set_default_credential_builder(builder);
+    });
 }
 
 #[tokio::test]
@@ -1776,4 +1880,359 @@ fn play_history_counts() {
     assert_eq!(db.play_count("track-1").unwrap(), 2);
     assert_eq!(db.play_count("track-2").unwrap(), 1);
     assert_eq!(db.play_count("unknown").unwrap(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Session auto-restore (resume_session / login persistence)
+// ---------------------------------------------------------------------------
+
+/// Build a temp-backed `JellifyCore` so each test gets its own `jellify.db`
+/// without colliding with other tests or leaking into the user's real data
+/// directory.
+fn resume_test_core(tmp: &tempfile::TempDir) -> std::sync::Arc<JellifyCore> {
+    install_mock_keyring();
+    JellifyCore::new(CoreConfig {
+        data_dir: tmp.path().to_string_lossy().into_owned(),
+        device_name: "Test".into(),
+    })
+    .expect("core init")
+}
+
+#[test]
+fn resume_session_returns_none_when_no_settings() {
+    let tmp = tempfile::tempdir().unwrap();
+    let core = resume_test_core(&tmp);
+    let resumed = core.resume_session().expect("resume_session");
+    assert!(resumed.is_none(), "expected None on a fresh core");
+}
+
+#[test]
+fn resume_session_returns_none_when_token_missing() {
+    // Seed every `last_*` setting but leave the keyring empty — auto-restore
+    // should bail cleanly rather than hand back a session with no token.
+    let tmp = tempfile::tempdir().unwrap();
+    let core = resume_test_core(&tmp);
+    {
+        let inner = core.inner.lock();
+        inner
+            .db
+            .set_setting("last_server_url", "https://jellyfin.example/")
+            .unwrap();
+        inner
+            .db
+            .set_setting("last_username", "token-missing-user")
+            .unwrap();
+        inner
+            .db
+            .set_setting("last_server_id", "srv-token-missing")
+            .unwrap();
+        inner
+            .db
+            .set_setting("last_user_id", "usr-token-missing")
+            .unwrap();
+    }
+    // Belt-and-braces: explicitly clear any stale token for this pair.
+    CredentialStore::delete_token("srv-token-missing", "token-missing-user").unwrap();
+
+    let resumed = core.resume_session().expect("resume_session");
+    assert!(
+        resumed.is_none(),
+        "expected None when keyring entry is absent"
+    );
+}
+
+#[test]
+fn resume_session_returns_session_when_all_settings_present() {
+    let tmp = tempfile::tempdir().unwrap();
+    let core = resume_test_core(&tmp);
+    // Pick IDs unique to this test so parallel runs don't read each other's
+    // mock keyring entries.
+    let server_id = "srv-resume-full";
+    let username = "resume-full-user";
+    let user_id = "usr-resume-full";
+    let server_url = "https://resume.example/";
+    let token = "token-resume-full";
+    {
+        let inner = core.inner.lock();
+        inner.db.set_setting("last_server_url", server_url).unwrap();
+        inner.db.set_setting("last_username", username).unwrap();
+        inner.db.set_setting("last_server_id", server_id).unwrap();
+        inner.db.set_setting("last_user_id", user_id).unwrap();
+    }
+    CredentialStore::save_token(server_id, username, token).unwrap();
+
+    let resumed = core
+        .resume_session()
+        .expect("resume_session")
+        .expect("expected Some(session)");
+    assert_eq!(resumed.access_token, token);
+    assert_eq!(resumed.user.id, user_id);
+    assert_eq!(resumed.user.name, username);
+    assert_eq!(resumed.user.server_id.as_deref(), Some(server_id));
+    assert_eq!(resumed.server.id.as_deref(), Some(server_id));
+    // `Url::parse` round-trips the trailing slash; exact equality keeps the
+    // assertion tight so a future change to how we resolve the URL surfaces
+    // immediately.
+    assert_eq!(resumed.server.url, server_url);
+
+    // And the core should now have a live client wired to the restored
+    // credentials — any library call that follows can skip the login screen.
+    assert!(
+        core.inner.lock().client.is_some(),
+        "resume_session must rehydrate the JellyfinClient"
+    );
+}
+
+#[test]
+fn resume_session_noop_when_only_partial_settings() {
+    // Missing `last_user_id` on its own should still short-circuit to None.
+    let tmp = tempfile::tempdir().unwrap();
+    let core = resume_test_core(&tmp);
+    {
+        let inner = core.inner.lock();
+        inner
+            .db
+            .set_setting("last_server_url", "https://partial.example/")
+            .unwrap();
+        inner
+            .db
+            .set_setting("last_username", "partial-user")
+            .unwrap();
+        inner
+            .db
+            .set_setting("last_server_id", "srv-partial")
+            .unwrap();
+        // Intentionally omit `last_user_id`.
+    }
+    CredentialStore::save_token("srv-partial", "partial-user", "partial-token").unwrap();
+
+    let resumed = core.resume_session().expect("resume_session");
+    assert!(
+        resumed.is_none(),
+        "partial settings must not rehydrate a half-built session"
+    );
+    assert!(
+        core.inner.lock().client.is_none(),
+        "client must not be reconstructed when settings are incomplete"
+    );
+
+    // Cleanup so a rerun of this test (or its neighbours) starts clean.
+    CredentialStore::delete_token("srv-partial", "partial-user").unwrap();
+}
+
+#[tokio::test]
+async fn login_persists_user_id_and_supports_resume() {
+    // End-to-end: log in against a mock Jellyfin, then stand up a fresh core
+    // pointed at the same data dir and assert `resume_session` hands back the
+    // same session without a network round-trip.
+    //
+    // `JellifyCore::login` is a sync FFI wrapper that `block_on`s its own
+    // tokio runtime, so we route it through `spawn_blocking` to keep it off
+    // the test harness's current-thread runtime (otherwise tokio refuses
+    // with "Cannot start a runtime from within a runtime").
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "persisted-token",
+            "ServerId": "srv-persisted",
+            "ServerName": "My Jellyfin",
+            "User": {
+                "Id": "usr-persisted",
+                "Name": "persisted-user",
+                "ServerId": "srv-persisted",
+                "PrimaryImageTag": null
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let server_url = server.uri();
+
+    // --- first process: login ---
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
+    let tmp_path_for_login = tmp_path.clone();
+    let server_url_for_login = server_url.clone();
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path_for_login,
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        let session = core
+            .login(server_url_for_login, "persisted-user".into(), "pw".into())
+            .expect("login");
+        assert_eq!(session.user.id, "usr-persisted");
+
+        // `login` must write `last_user_id` alongside the other identifiers so
+        // the next launch can look up the keychain entry.
+        let inner = core.inner.lock();
+        assert_eq!(
+            inner.db.get_setting("last_user_id").unwrap().as_deref(),
+            Some("usr-persisted")
+        );
+        assert_eq!(
+            inner.db.get_setting("last_server_id").unwrap().as_deref(),
+            Some("srv-persisted")
+        );
+        assert_eq!(
+            inner.db.get_setting("last_username").unwrap().as_deref(),
+            Some("persisted-user")
+        );
+    })
+    .await
+    .expect("join login task");
+
+    // --- second process: resume without re-authenticating ---
+    let tmp_path_for_resume = tmp_path.clone();
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core2 = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path_for_resume,
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        let resumed = core2
+            .resume_session()
+            .expect("resume_session")
+            .expect("expected Some(session) after login persisted");
+        assert_eq!(resumed.access_token, "persisted-token");
+        assert_eq!(resumed.user.id, "usr-persisted");
+        assert_eq!(resumed.user.name, "persisted-user");
+        assert_eq!(resumed.server.id.as_deref(), Some("srv-persisted"));
+        assert!(
+            core2.inner.lock().client.is_some(),
+            "resume_session must produce a live JellyfinClient"
+        );
+    })
+    .await
+    .expect("join resume task");
+}
+
+#[tokio::test]
+async fn logout_clears_persisted_settings() {
+    // After an explicit logout the next launch should start fresh — no
+    // half-baked auto-restore attempt against a dead session.
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "logout-token",
+            "ServerId": "srv-logout",
+            "ServerName": "S",
+            "User": {
+                "Id": "usr-logout",
+                "Name": "logout-user",
+                "ServerId": "srv-logout",
+                "PrimaryImageTag": null
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
+    let server_url = server.uri();
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path.clone(),
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        let _ = core
+            .login(server_url, "logout-user".into(), "pw".into())
+            .expect("login");
+        core.logout().expect("logout");
+
+        {
+            let inner = core.inner.lock();
+            assert_eq!(inner.db.get_setting("last_server_url").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_username").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_server_id").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_user_id").unwrap(), None);
+        }
+        assert!(
+            CredentialStore::load_token("srv-logout", "logout-user")
+                .unwrap()
+                .is_none(),
+            "logout must also remove the keychain token"
+        );
+
+        // Resume on a brand-new core over the same data dir should now bail.
+        let core2 = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path,
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        assert!(core2.resume_session().expect("resume_session").is_none());
+    })
+    .await
+    .expect("join logout task");
+}
+
+#[tokio::test]
+async fn forget_token_preserves_server_url_and_username() {
+    // The auth-expired flow wipes the token so the user has to sign back in,
+    // but should keep the pre-fill fields so they don't have to retype the
+    // server URL / username.
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "forget-token",
+            "ServerId": "srv-forget",
+            "ServerName": "S",
+            "User": {
+                "Id": "usr-forget",
+                "Name": "forget-user",
+                "ServerId": "srv-forget",
+                "PrimaryImageTag": null
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
+    let server_url = server.uri();
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path,
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        let _ = core
+            .login(server_url, "forget-user".into(), "pw".into())
+            .expect("login");
+        core.forget_token().expect("forget_token");
+
+        {
+            let inner = core.inner.lock();
+            // server URL + username stick around so the login form pre-fills.
+            assert!(inner.db.get_setting("last_server_url").unwrap().is_some());
+            assert_eq!(
+                inner.db.get_setting("last_username").unwrap().as_deref(),
+                Some("forget-user")
+            );
+            // The ids that key into the keychain entry are wiped so a stale
+            // resume_session lookup can't accidentally grab a dangling token.
+            assert_eq!(inner.db.get_setting("last_server_id").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_user_id").unwrap(), None);
+        }
+        assert!(
+            CredentialStore::load_token("srv-forget", "forget-user")
+                .unwrap()
+                .is_none(),
+            "forget_token must remove the keychain token"
+        );
+
+        // resume_session needs all four settings; with ids cleared it must say no.
+        assert!(core.resume_session().expect("resume_session").is_none());
+    })
+    .await
+    .expect("join forget task");
 }

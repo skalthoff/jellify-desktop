@@ -38,6 +38,16 @@ parking_lot.workspace = true
 
 uniffi.workspace = true
 
+# Platform-native credential store backends. Without these `keyring` falls back
+# to its in-memory mock store with no cross-process persistence, which makes
+# `resume_session()` a no-op across app restarts. The Linux target will land
+# alongside the GTK port (see research/09-linux-port.md).
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+keyring = { workspace = true, features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { workspace = true, features = ["windows-native"] }
+
 [dev-dependencies]
 wiremock.workspace = true
 tempfile.workspace = true

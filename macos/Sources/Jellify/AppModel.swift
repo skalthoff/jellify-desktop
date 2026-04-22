@@ -125,6 +125,18 @@ final class AppModel {
     var isLoadingLibrary = false
     var errorMessage: String?
 
+    /// Set during the one-shot `attemptRestoreSession` pass at launch. `RootView`
+    /// renders a minimal loading state while this is true so we don't briefly
+    /// flash `LoginView` on cold start even though a valid session is about to
+    /// be rehydrated from the keychain.
+    ///
+    /// Starts `true` so the very first render (which happens before
+    /// `RootView.task` fires) shows the loading splash rather than a
+    /// one-frame flash of `LoginView`. `attemptRestoreSession` flips this to
+    /// `false` once the restore pass is done — either a session was
+    /// rehydrated or there was nothing to restore.
+    var isRestoringSession = true
+
     /// Set when a core call fails because the server rejected our token
     /// (HTTP 401) or the core reports no-longer-authenticated. Drives the
     /// modal prompt in `MainShell`. Reset after the user dismisses the sheet
@@ -187,6 +199,53 @@ final class AppModel {
         }
     }
 
+    /// Rehydrate the previous session from on-disk settings + the keychain
+    /// token. Called once from `RootView.task` on cold start. No-ops when the
+    /// core has nothing to restore (first launch, post-logout, etc.); in that
+    /// case `RootView` falls through to `LoginView`.
+    ///
+    /// Silent on errors: the core's `resume_session` is best-effort, so if the
+    /// local state is inconsistent we log and let the user sign in again
+    /// rather than blocking the app. Library fetches against the restored
+    /// session go through the regular `handleAuthError` flow, so a 401 on the
+    /// first call surfaces the auth-expired sheet just like a mid-session
+    /// expiry. Silent reauth is the rest of #440.
+    func attemptRestoreSession() async {
+        // Run at most once per AppModel lifetime. `hasAttemptedRestore`
+        // flips the first time this runs so re-renders of `RootView` that
+        // re-fire `.task` don't repeat the restore pass.
+        guard !hasAttemptedRestore else { return }
+        hasAttemptedRestore = true
+        guard session == nil else {
+            isRestoringSession = false
+            return
+        }
+        defer { isRestoringSession = false }
+        do {
+            let restored = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.resumeSession()
+            }.value
+            guard let session = restored else { return }
+            self.session = session
+            self.serverURL = session.server.url
+            self.username = session.user.name
+            self.errorMessage = nil
+            startPolling()
+            await refreshLibrary()
+        } catch {
+            // Best-effort: leave `session == nil` so RootView renders LoginView.
+            // No banner — the user sees the login form, which is already the
+            // recovery path, and the library refetch after a manual sign-in
+            // will noisily surface any persistent server problem.
+            print("[AppModel] attemptRestoreSession failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Internal guard for `attemptRestoreSession` — the restore pass should
+    /// run exactly once per app lifetime. Separate from `isRestoringSession`
+    /// so the UI flag can be flipped without gating re-entry, and vice-versa.
+    private var hasAttemptedRestore = false
+
     func logout() {
         audio.stop()
         try? core.logout()
@@ -209,9 +268,15 @@ final class AppModel {
     /// against the same server by re-entering only their password. Called
     /// when the user taps "Sign in" on the auth-expired sheet. Note: the
     /// caller still owns toggling `authExpired` off and nilling `session`.
+    ///
+    /// Unlike `logout`, this goes through the core's `forget_token` which
+    /// keeps `last_server_url` / `last_username` on disk for the login-form
+    /// prefill and only drops the credential store token plus the id settings
+    /// that key into it. So a subsequent `attemptRestoreSession` on next launch
+    /// short-circuits to `None` (safe), and the form is pre-populated.
     func forgetToken() {
         audio.stop()
-        try? core.logout()
+        try? core.forgetToken()
         albums = []
         artists = []
         tracks = []

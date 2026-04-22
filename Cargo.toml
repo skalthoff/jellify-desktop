@@ -26,6 +26,8 @@ url = { version = "2", features = ["serde"] }
 
 # Storage
 rusqlite = { version = "0.32", features = ["bundled"] }
+# keyring's default backend is the mock (no persistence). Each platform enables
+# the appropriate native store via a cfg-gated override in `core/Cargo.toml`.
 keyring = "3"
 
 # (Audio playback happens on the platform side via AVFoundation/MediaPlayer/GStreamer.

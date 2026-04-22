@@ -161,14 +161,48 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if model.session == nil {
+            if model.isRestoringSession {
+                // One-shot loading state on cold start while the core attempts
+                // to rehydrate a session from persisted settings + keychain.
+                // We don't want to briefly flash `LoginView` on every launch
+                // just because the restore hasn't completed yet.
+                RestoreLoadingView()
+            } else if model.session == nil {
                 LoginView()
             } else {
                 MainShell()
             }
         }
         .background(Theme.bg)
-        // Login <-> main shell swap is instant under Reduce Motion.
+        // Login <-> main shell swap (and restore-loading <-> either) is
+        // instant under Reduce Motion.
         .animation(reduceMotion ? nil : .default, value: model.session != nil)
+        .animation(reduceMotion ? nil : .default, value: model.isRestoringSession)
+        .task {
+            // Kick off session restore exactly once, on the first appearance
+            // of the root view. `attemptRestoreSession` guards against
+            // re-entry, so a `.task` firing on every scene rebuild is safe.
+            await model.attemptRestoreSession()
+        }
+    }
+}
+
+/// Minimal cold-start splash shown while the core rehydrates a persisted
+/// session in the background. Kept lightweight on purpose — the restore pass
+/// completes on a userInitiated Task and this view exists solely to avoid a
+/// LoginView flash on every launch for a signed-in user.
+private struct RestoreLoadingView: View {
+    var body: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            VStack(spacing: 16) {
+                Text("Jellify")
+                    .font(Theme.font(40, weight: .black, italic: true))
+                    .foregroundStyle(Theme.ink)
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(Theme.ink3)
+            }
+        }
     }
 }
