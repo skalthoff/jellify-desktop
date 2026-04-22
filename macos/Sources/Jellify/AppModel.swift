@@ -42,6 +42,21 @@ final class AppModel {
     /// even when already on the Search screen.
     var requestSearchFocus: Bool = false
 
+    /// Mirror of `requestSearchFocus` published as a plain focus flag so
+    /// toolbar / search fields can bind a SwiftUI `@FocusState` to it via the
+    /// usual projected-value pattern. `focusSearch()` writes both (keeping the
+    /// legacy flag alive for `SearchView`'s existing onChange handler) and
+    /// observers are expected to reset it once focus has landed. See #7 / #104.
+    var isSearchFieldFocused: Bool = false
+
+    /// Track id that currently has keyboard focus inside an arrow-navigable
+    /// list row (Library Tracks tab, album / playlist detail). Set by
+    /// `TrackListRow` / `TrackRow` when they gain focus and by arrow-key
+    /// handlers when focus moves between siblings. `nil` when no list row is
+    /// focused. Return plays the focused id; Space toggles global play/pause
+    /// regardless. See #105.
+    var focusedTrackId: String?
+
     // MARK: - Library
     var albums: [Album] = []
     var artists: [Artist] = []
@@ -1672,10 +1687,14 @@ final class AppModel {
 
 
     /// Switch to the Search screen and request keyboard focus in the search
-    /// field. Called from the ⌘F menu command.
+    /// field. Called from the ⌘F menu command. Writes both the legacy
+    /// one-shot `requestSearchFocus` flag (which `SearchView` already observes)
+    /// and the new `isSearchFieldFocused` mirror so toolbar / field bindings
+    /// introduced by #7 can attach a `@FocusState` via `$model.isSearchFieldFocused`.
     func focusSearch() {
         screen = .search
         requestSearchFocus = true
+        isSearchFieldFocused = true
     }
 
     /// Programmatic navigation entry point. Views that want to push a screen
@@ -2718,6 +2737,20 @@ final class AppModel {
     }
 
     func setVolume(_ v: Float) { audio.setVolume(v) }
+
+    /// Seek the current track by a relative offset (seconds). Negative rewinds,
+    /// positive fast-forwards. Clamped to `[0, duration]` so the seek never
+    /// overshoots the track's own bounds; routes through `audio.seek` exactly
+    /// like the scrubber / `mediaSessionSeek` so the `MPNowPlayingInfoCenter`
+    /// widget gets the same one-writer update. Wired to the ⌘⇧← / ⌘⇧→ menu
+    /// shortcuts and the list row "skip back/forward" affordances. See #6.
+    func seek(by delta: Double) {
+        guard status.currentTrack != nil else { return }
+        let duration = max(0, status.durationSeconds)
+        let target = status.positionSeconds + delta
+        let clamped = max(0, duration > 0 ? min(target, duration) : target)
+        audio.seek(toSeconds: clamped)
+    }
 
     func togglePlayPause() {
         switch status.state {

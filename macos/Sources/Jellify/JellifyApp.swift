@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -46,85 +47,81 @@ struct JellifyApp: App {
     }
 }
 
-/// Global keyboard shortcuts. See issue #321 for the full matrix.
+/// Full macOS menu bar. See issues #5 (menu structure), #6 (Playback menu),
+/// #7 (tab & find shortcuts), #8 (media keys — doc-only; routed through
+/// `MediaSession`/`MPRemoteCommandCenter`, see #29/#31), #104 (global shortcut
+/// map), and #105 (list arrow navigation; rows own the actual key handlers).
 ///
-/// Transport commands live under a dedicated "Playback" menu; navigation
-/// sits alongside the standard View group via `.sidebar` placement. Each
-/// Button disables itself when the underlying action is not meaningful
-/// (e.g., skipping next while no track is loaded).
+/// The transport commands live under a dedicated **Playback** `CommandMenu`
+/// that slots in between View and Window per macOS HIG (see e.g. Music.app).
+/// Navigation overrides hang off the standard `.sidebar` group; **File** and
+/// **View** get additive entries so system defaults (New Window from
+/// `WindowGroup`, Show Tab Bar, Enter Full Screen) stay intact.
+///
+/// Every Button disables itself when the underlying action isn't meaningful
+/// (e.g. skipping next while no track is loaded or switching tabs while
+/// signed out), so the menu's enabled state is a cheap visual map of what's
+/// currently actionable.
+///
+/// Media keys (F7/F8/F9) and Bluetooth/AVRCP transport are intentionally NOT
+/// registered here — `MediaSession` already owns the single
+/// `MPRemoteCommandCenter` registration (introduced in #527) and routes those
+/// events through `MediaSessionDelegate` into the same `togglePlayPause()` /
+/// `skipNext()` / `skipPrevious()` entry points this menu uses. Double-binding
+/// would race the two registrations. See `MediaSession.configureRemoteCommands`.
 struct JellifyCommands: Commands {
     @Bindable var model: AppModel
 
     var body: some Commands {
-        // MARK: Playback (Space, prev/next, volume, mini player)
-        CommandMenu("Playback") {
-            Button(playPauseLabel) {
-                model.togglePlayPause()
+        // MARK: - File menu additions (New Playlist alongside system New Window)
+        //
+        // SwiftUI's `WindowGroup` auto-provides File > New Window (⌘N) and
+        // Close Window (⌘W). We append a "New Playlist…" entry after the
+        // built-in new-item block so both show up together under File > New.
+        CommandGroup(after: .newItem) {
+            Button("New Playlist…") {
+                // TODO(#131 / #234): wire to `core.createPlaylist(name:itemIds:)`
+                // once the FFI lands. For now this is a menu placeholder so the
+                // shortcut is reserved and discoverable.
+                model.errorMessage = "Creating playlists isn't wired yet — see #131."
             }
-            .keyboardShortcut(.space, modifiers: [])
-            .disabled(model.status.currentTrack == nil)
-
-            Divider()
-
-            Button("Previous Track") {
-                model.skipPrevious()
-            }
-            .keyboardShortcut(.leftArrow, modifiers: .command)
-            .disabled(model.status.currentTrack == nil)
-
-            Button("Next Track") {
-                model.skipNext()
-            }
-            .keyboardShortcut(.rightArrow, modifiers: .command)
-            .disabled(model.status.currentTrack == nil)
-
-            Divider()
-
-            Button("Volume Up") {
-                let next = min(1.0, model.status.volume + 0.05)
-                model.setVolume(next)
-            }
-            .keyboardShortcut(.upArrow, modifiers: .command)
-
-            Button("Volume Down") {
-                let next = max(0.0, model.status.volume - 0.05)
-                model.setVolume(next)
-            }
-            .keyboardShortcut(.downArrow, modifiers: .command)
-
-            Divider()
-
-            // Full Now Playing view — #89. Swaps the detail column to the
-            // large player + lyrics/queue/about/credits tabs. When already
-            // on Now Playing, the shortcut pops back to the previous
-            // screen so pressing it again feels like a toggle.
-            Button("Show Now Playing") {
-                if model.screen == .nowPlaying {
-                    model.screen = model.previousScreen ?? .library
-                    model.previousScreen = nil
-                } else {
-                    model.previousScreen = model.screen
-                    model.screen = .nowPlaying
-                }
-            }
-            .keyboardShortcut("l", modifiers: [.command, .option])
+            .keyboardShortcut("n", modifiers: [.command, .shift])
             .disabled(model.session == nil)
-
-            Divider()
-
-            // TODO(#321): Wire to the mini-player scene once it exists.
-            // Tracked separately in the macOS polish milestone.
-            Button("Toggle Mini Player") {
-                // No-op placeholder until the mini-player view is implemented.
-            }
-            .keyboardShortcut("m", modifiers: [.command, .shift])
-            .disabled(true)
         }
 
-        // MARK: View / navigation (⌘1–5, ⌘L, ⌘F, ⌘K)
+        // MARK: - View menu additions (sidebar + queue inspector + full screen)
+        //
+        // SwiftUI already provides Enter Full Screen (⌘⌃F) via the default
+        // windowing commands. We append optional panel toggles next to the
+        // built-in items so the user can cycle between the full shell and a
+        // more focused view.
         CommandGroup(after: .sidebar) {
             Divider()
 
+            Button("Show Sidebar") {
+                // TODO(#5): bind to a published `isSidebarVisible` flag on
+                // AppModel and have `MainShell` conditionally mount `Sidebar()`.
+                // The menu item is reserved now so the shortcut exists.
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .disabled(true)
+
+            Button("Show Queue Inspector") {
+                // TODO(#272): the queue drawer lands with BATCH-07's rich
+                // inspector. Menu item reserved so ⌘⌥Q resolves to something
+                // discoverable once the panel exists.
+            }
+            .keyboardShortcut("q", modifiers: [.command, .option])
+            .disabled(true)
+
+            Divider()
+
+            // MARK: Tab shortcuts (#7)
+            //
+            // The sidebar currently has three top-level destinations:
+            // Home, Library, Search. `model.screen` is the source of truth
+            // and re-assigning it triggers the same `MainShell` animation
+            // as clicking the sidebar.
             Button("Home") {
                 model.screen = .home
             }
@@ -143,25 +140,25 @@ struct JellifyCommands: Commands {
             .keyboardShortcut("3", modifiers: .command)
             .disabled(model.session == nil)
 
-            // ⌘4 / ⌘5 are reserved for additional top-level tabs. The
-            // current sidebar only has three entries (Home, Library,
-            // Search); expand this block when more nav targets land.
-
             Divider()
 
-            // ⌘L is a convenience alias for the Library tab.
-            Button("Go to Library") {
-                model.screen = .library
-            }
-            .keyboardShortcut("l", modifiers: .command)
-            .disabled(model.session == nil)
-
-            // ⌘F focuses search. Uses focusSearch() so the search TextField
-            // actually receives keyboard focus — not just a screen switch.
+            // ⌘F focuses search. `focusSearch()` sets both the legacy
+            // `requestSearchFocus` one-shot and the new `isSearchFieldFocused`
+            // mirror so any field binding a `@FocusState` to either will
+            // receive focus. See #7 / #104.
             Button("Find…") {
                 model.focusSearch()
             }
             .keyboardShortcut("f", modifiers: .command)
+            .disabled(model.session == nil)
+
+            // ⌘L jumps to the full Now Playing view and toggles back to the
+            // previous screen when pressed again (matches Music.app feel).
+            // See #89 / #6 and the Playback menu's mirror shortcut.
+            Button("Go to Now Playing") {
+                toggleNowPlaying()
+            }
+            .keyboardShortcut("l", modifiers: .command)
             .disabled(model.session == nil)
 
             // Command Palette (#305). Full-screen ⌘K overlay with library
@@ -175,14 +172,153 @@ struct JellifyCommands: Commands {
             .disabled(model.session == nil)
         }
 
-        // Note: ⌘, (Preferences) is automatically provided by SwiftUI when a
-        // `Settings` scene is declared. Settings UI for the macOS app is
-        // tracked separately; leaving the system default in place so the
-        // menu item shows up as soon as that scene is added.
+        // MARK: - Playback menu (#6)
+        //
+        // Every transport affordance has a keyboard equivalent here so the
+        // whole app is usable from the home row. Media keys (F7/F8/F9) and
+        // Bluetooth AVRCP events hit the same `AppModel` methods via
+        // `MediaSession` — see file header for why they aren't re-registered.
+        CommandMenu("Playback") {
+            Button(playPauseLabel) {
+                model.togglePlayPause()
+            }
+            .keyboardShortcut(.space, modifiers: [])
+            .disabled(model.status.currentTrack == nil)
+
+            Divider()
+
+            Button("Next Track") {
+                model.skipNext()
+            }
+            .keyboardShortcut(.rightArrow, modifiers: .command)
+            .disabled(model.status.currentTrack == nil)
+
+            Button("Previous Track") {
+                model.skipPrevious()
+            }
+            .keyboardShortcut(.leftArrow, modifiers: .command)
+            .disabled(model.status.currentTrack == nil)
+
+            Divider()
+
+            Button("Volume Up") {
+                let next = min(1.0, model.status.volume + 0.05)
+                model.setVolume(next)
+            }
+            .keyboardShortcut(.upArrow, modifiers: .command)
+
+            Button("Volume Down") {
+                let next = max(0.0, model.status.volume - 0.05)
+                model.setVolume(next)
+            }
+            .keyboardShortcut(.downArrow, modifiers: .command)
+
+            Divider()
+
+            Button("Seek Forward 10s") {
+                model.seek(by: 10)
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.command, .shift])
+            .disabled(model.status.currentTrack == nil)
+
+            Button("Seek Back 10s") {
+                model.seek(by: -10)
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.command, .shift])
+            .disabled(model.status.currentTrack == nil)
+
+            Divider()
+
+            Button("Stop") {
+                model.stop()
+            }
+            .keyboardShortcut(".", modifiers: .command)
+            .disabled(model.status.currentTrack == nil)
+
+            Button("Go to Now Playing") {
+                toggleNowPlaying()
+            }
+            .keyboardShortcut("l", modifiers: .command)
+            .disabled(model.session == nil)
+        }
+
+        // MARK: - Window menu additions
+        //
+        // SwiftUI's default Window menu already ships Minimize (⌘M), Zoom,
+        // Bring All to Front, and (on macOS 14+) the tiling entries. We add
+        // an explicit Tile Window action so the command is discoverable
+        // even when the system hasn't surfaced the OS-level tiling item.
+        CommandGroup(after: .windowArrangement) {
+            Button("Tile Window to Left of Screen") {
+                tileCurrentWindow(edge: .left)
+            }
+            .keyboardShortcut(.leftArrow, modifiers: [.control, .option, .command])
+            .disabled(NSApp.keyWindow == nil)
+
+            Button("Tile Window to Right of Screen") {
+                tileCurrentWindow(edge: .right)
+            }
+            .keyboardShortcut(.rightArrow, modifiers: [.control, .option, .command])
+            .disabled(NSApp.keyWindow == nil)
+        }
+
+        // MARK: - Help menu (replace default "Jellify Help" placeholder)
+        //
+        // SwiftUI's default "Help" menu points at an empty Apple-help book.
+        // We redirect it to the repo's issue tracker so the menu item
+        // actually leads somewhere useful.
+        CommandGroup(replacing: .help) {
+            Button("Jellify Help") {
+                if let url = URL(string: "https://github.com/skalthoff/jellify-desktop") {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+        }
+
+        // Note: ⌘, (Preferences), ⌘Q (Quit), Hide / Hide Others / Services,
+        // Cut / Copy / Paste / Undo / Redo / Select All, New Window (⌘N),
+        // Close Window (⌘W), Minimize (⌘M), Zoom, Enter Full Screen (⌘⌃F),
+        // Bring All to Front, and the app's About box are all provided
+        // automatically by SwiftUI + AppKit when a `Settings` scene and
+        // `WindowGroup` are declared. We intentionally DON'T replace those
+        // groups — overriding them would mean losing the system-standard
+        // behavior (e.g. AppKit's responder-chain text editing actions).
     }
 
     private var playPauseLabel: String {
         model.status.state == .playing ? "Pause" : "Play"
+    }
+
+    /// Toggle behaviour for the "Go to Now Playing" menu item: first press
+    /// navigates to the full player, second press pops back. Shared between
+    /// the View / Library ⌘L entry and the Playback ⌘L mirror so either
+    /// menu gesture does the same thing. See #89.
+    private func toggleNowPlaying() {
+        if model.screen == .nowPlaying {
+            model.screen = model.previousScreen ?? .library
+            model.previousScreen = nil
+        } else {
+            model.previousScreen = model.screen
+            model.screen = .nowPlaying
+        }
+    }
+
+    /// Tile the current key window to the left or right half of its screen.
+    /// Uses plain AppKit frame math rather than the 14+ tiling APIs so the
+    /// command works on `.macOS(.v14)` without the Stage-Manager-dependent
+    /// `NSWindow.tileWindow(_:)` path. If no key window is available this
+    /// is a no-op.
+    private enum TileEdge { case left, right }
+    private func tileCurrentWindow(edge: TileEdge) {
+        guard
+            let window = NSApp.keyWindow,
+            let screen = window.screen ?? NSScreen.main
+        else { return }
+        let vf = screen.visibleFrame
+        let halfWidth = floor(vf.width / 2)
+        let originX: CGFloat = edge == .left ? vf.minX : vf.minX + halfWidth
+        let newFrame = NSRect(x: originX, y: vf.minY, width: halfWidth, height: vf.height)
+        window.setFrame(newFrame, display: true, animate: true)
     }
 }
 

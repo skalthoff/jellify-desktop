@@ -10,6 +10,15 @@ import SwiftUI
 /// `AppModel.play(tracks:startIndex:)`. Hover reveals an inline play button
 /// for parity with the album row affordance. Right-click opens a context
 /// menu with the standard track actions (play / play next / queue / share).
+///
+/// Keyboard navigation (#105): rows are `.focusable()` so Tab / arrow keys
+/// move focus between siblings. `model.focusedTrackId` is the shared focus
+/// cursor — on focus the row writes its id; on change the matching sibling
+/// pulls focus to itself via its local `@FocusState`. Up / Down arrows
+/// rewrite `focusedTrackId` to the previous / next row's id, Return plays
+/// the focused track, and Space toggles global play/pause. Type-ahead
+/// (letter keys matching a title prefix) is tracked as a follow-up — see
+/// the TODO below.
 struct TrackListRow: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,6 +29,7 @@ struct TrackListRow: View {
     let tracks: [Track]
     let index: Int
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
 
     private var isActive: Bool {
         model.status.currentTrack?.id == track.id
@@ -94,7 +104,13 @@ struct TrackListRow: View {
             .padding(.vertical, 6)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? Theme.surface2 : (isHovering ? Theme.rowHover : .clear))
+                    .fill(rowBackground)
+            )
+            .overlay(
+                // Subtle outline so focus-via-keyboard is visible even when
+                // the row is also hovered or active. See #105.
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(isFocused ? Theme.accent.opacity(0.6) : .clear, lineWidth: 1)
             )
             .contentShape(Rectangle())
         }
@@ -108,5 +124,63 @@ struct TrackListRow: View {
         }
         .contextMenu { TrackContextMenu(selection: [track]) }
         .accessibilityLabel("\(track.name) by \(track.artistName)")
+        // MARK: Keyboard navigation (#105)
+        .focusable()
+        .focused($isFocused)
+        .onChange(of: isFocused) { _, nowFocused in
+            if nowFocused {
+                model.focusedTrackId = track.id
+            }
+        }
+        .onChange(of: model.focusedTrackId) { _, newId in
+            // Sibling rows observe the shared focus cursor; the one that
+            // matches pulls focus to itself. Without this the arrow keys
+            // would write the new id but no row would actually focus.
+            if newId == track.id && !isFocused {
+                isFocused = true
+            }
+        }
+        .onKeyPress(.upArrow) {
+            moveFocus(by: -1)
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            moveFocus(by: 1)
+            return .handled
+        }
+        .onKeyPress(.return) {
+            model.play(tracks: tracks, startIndex: index)
+            return .handled
+        }
+        .onKeyPress(.space) {
+            // Space toggles global play/pause regardless of focus target so
+            // "pause while scrolling" works from anywhere in the list.
+            model.togglePlayPause()
+            return .handled
+        }
+        // TODO(#105): type-ahead search — buffer letter key presses for
+        // ~500ms and move focus to the first row whose title starts with
+        // the buffer. Needs either a shared FocusState container above the
+        // ForEach (so rows can delegate) or a focus-system state on
+        // AppModel that remembers both the list scope and the last key
+        // timestamp. Out of scope for the first cut of keyboard nav.
+    }
+
+    private var rowBackground: Color {
+        if isActive { return Theme.surface2 }
+        if isFocused { return Theme.rowHover }
+        if isHovering { return Theme.rowHover }
+        return .clear
+    }
+
+    /// Advance the focused row by `delta` (+1 for down, -1 for up) inside
+    /// the ordered `tracks` array. Because each row owns its own
+    /// `@FocusState`, we hand focus off via `model.focusedTrackId` — the
+    /// sibling row whose id matches observes the change above and pulls
+    /// focus to itself.
+    private func moveFocus(by delta: Int) {
+        let target = index + delta
+        guard target >= 0, target < tracks.count else { return }
+        model.focusedTrackId = tracks[target].id
     }
 }
