@@ -2103,6 +2103,742 @@ async fn add_to_playlist_requires_authenticated_session() {
     );
 }
 
+// ---------------------------------------------------------------------------
+// report_playback_started — POST /Sessions/Playing
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn report_playback_started_posts_pascal_case_body() {
+    use crate::models::PlaybackStartInfo;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Playing"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .report_playback_started(PlaybackStartInfo {
+            item_id: "track-xyz".into(),
+            media_source_id: Some("src-1".into()),
+            play_session_id: Some("play-session-abc".into()),
+            play_method: Some("DirectPlay".into()),
+            position_ticks: Some(0),
+            can_seek: true,
+            is_paused: false,
+            is_muted: false,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Sessions/Playing")
+        .expect("expected POST to /Sessions/Playing");
+    let body: serde_json::Value = serde_json::from_slice(&post.body).expect("json body");
+
+    // Required fields must be PascalCase.
+    assert_eq!(
+        body.get("ItemId").and_then(|v| v.as_str()),
+        Some("track-xyz"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("MediaSourceId").and_then(|v| v.as_str()),
+        Some("src-1")
+    );
+    assert_eq!(
+        body.get("PlaySessionId").and_then(|v| v.as_str()),
+        Some("play-session-abc")
+    );
+    assert_eq!(
+        body.get("PlayMethod").and_then(|v| v.as_str()),
+        Some("DirectPlay")
+    );
+    assert_eq!(body.get("CanSeek").and_then(|v| v.as_bool()), Some(true));
+    assert_eq!(body.get("IsPaused").and_then(|v| v.as_bool()), Some(false));
+    assert_eq!(body.get("IsMuted").and_then(|v| v.as_bool()), Some(false));
+    assert_eq!(body.get("PositionTicks").and_then(|v| v.as_i64()), Some(0));
+
+    // None-valued optional fields must be elided from the payload.
+    assert!(
+        !body.as_object().unwrap().contains_key("SessionId"),
+        "unset optional should not appear: {body}"
+    );
+    assert!(
+        !body.as_object().unwrap().contains_key("VolumeLevel"),
+        "unset optional should not appear: {body}"
+    );
+
+    // No snake_case leakage from serde.
+    assert!(
+        body.as_object().unwrap().keys().all(|k| !k.contains('_')),
+        "expected PascalCase keys only: {:?}",
+        body.as_object().unwrap().keys().collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
+async fn report_playback_started_requires_authenticated_session() {
+    use crate::models::PlaybackStartInfo;
+
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .report_playback_started(PlaybackStartInfo {
+            item_id: "anything".into(),
+            ..Default::default()
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// post_capabilities — POST /Sessions/Capabilities/Full
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn post_capabilities_posts_full_client_capabilities_dto() {
+    use crate::models::{ClientCapabilities, DeviceProfile};
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Capabilities/Full"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let caps = ClientCapabilities {
+        playable_media_types: vec!["Audio".into()],
+        supported_commands: vec!["VolumeUp".into(), "Pause".into()],
+        supports_media_control: true,
+        supports_persistent_identifier: true,
+        device_profile: DeviceProfile::default_macos_profile(),
+        app_store_url: None,
+        icon_url: Some("https://example.com/icon.png".into()),
+    };
+    client.post_capabilities(caps).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Sessions/Capabilities/Full")
+        .expect("expected POST to /Sessions/Capabilities/Full");
+    let body: serde_json::Value = serde_json::from_slice(&post.body).expect("json body");
+
+    assert_eq!(
+        body.get("PlayableMediaTypes").and_then(|v| v.as_array()),
+        Some(&vec![serde_json::Value::String("Audio".into())])
+    );
+    assert_eq!(
+        body.get("SupportsMediaControl").and_then(|v| v.as_bool()),
+        Some(true)
+    );
+    assert_eq!(
+        body.get("IconUrl").and_then(|v| v.as_str()),
+        Some("https://example.com/icon.png")
+    );
+    // Device profile round-trips with PascalCase nested fields.
+    let profile = body
+        .get("DeviceProfile")
+        .and_then(|v| v.as_object())
+        .expect("DeviceProfile object");
+    assert!(profile.contains_key("MaxStreamingBitrate"));
+    assert!(profile.contains_key("DirectPlayProfiles"));
+    assert!(profile.contains_key("TranscodingProfiles"));
+    // None-valued optional AppStoreUrl should be elided.
+    assert!(
+        !body.as_object().unwrap().contains_key("AppStoreUrl"),
+        "unset optional should not appear: {body}"
+    );
+}
+
+#[tokio::test]
+async fn post_capabilities_requires_authenticated_session() {
+    use crate::models::{ClientCapabilities, DeviceProfile};
+
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .post_capabilities(ClientCapabilities {
+            playable_media_types: vec![],
+            supported_commands: vec![],
+            supports_media_control: false,
+            supports_persistent_identifier: false,
+            device_profile: DeviceProfile::default_macos_profile(),
+            app_store_url: None,
+            icon_url: None,
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// playback_info — POST /Items/{id}/PlaybackInfo
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn playback_info_posts_device_profile_and_parses_response() {
+    use crate::models::{DeviceProfile, PlaybackInfoOpts};
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Items/track-xyz/PlaybackInfo"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "MediaSources": [
+                {
+                    "Id": "src-1",
+                    "Path": "/music/song.flac",
+                    "Container": "flac",
+                    "Bitrate": 900000,
+                    "Size": 42_000_000i64,
+                    "RunTimeTicks": 1800000000i64,
+                    "SupportsDirectPlay": true,
+                    "SupportsDirectStream": true,
+                    "SupportsTranscoding": true,
+                    "TranscodingUrl": "/Audio/track-xyz/stream.mp3?PlaySessionId=abc",
+                    "TranscodingSubProtocol": "http",
+                    "TranscodingContainer": "mp3"
+                }
+            ],
+            "PlaySessionId": "play-session-abc"
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let opts = PlaybackInfoOpts {
+        device_profile: Some(DeviceProfile::default_macos_profile()),
+        max_streaming_bitrate: Some(320_000),
+        ..Default::default()
+    };
+    let resp = client.playback_info("track-xyz", opts).await.unwrap();
+
+    assert_eq!(resp.play_session_id.as_deref(), Some("play-session-abc"));
+    assert_eq!(resp.media_sources.len(), 1);
+    let src = &resp.media_sources[0];
+    assert_eq!(src.id, "src-1");
+    assert_eq!(src.container.as_deref(), Some("flac"));
+    assert_eq!(src.bitrate, Some(900_000));
+    assert!(src.supports_direct_play);
+    assert_eq!(
+        src.transcoding_url.as_deref(),
+        Some("/Audio/track-xyz/stream.mp3?PlaySessionId=abc")
+    );
+
+    // Body fills in the live session's user id even when the caller
+    // leaves `user_id` unset.
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Items/track-xyz/PlaybackInfo")
+        .expect("expected POST to /Items/track-xyz/PlaybackInfo");
+    let body: serde_json::Value = serde_json::from_slice(&post.body).expect("json body");
+    assert_eq!(body.get("UserId").and_then(|v| v.as_str()), Some("u1"));
+    assert_eq!(
+        body.get("MaxStreamingBitrate").and_then(|v| v.as_u64()),
+        Some(320_000)
+    );
+    assert!(body.get("DeviceProfile").is_some());
+}
+
+#[tokio::test]
+async fn playback_info_requires_authenticated_session() {
+    use crate::models::PlaybackInfoOpts;
+
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .playback_info("anything", PlaybackInfoOpts::default())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Library resolution — /UserViews + ManualPlaylistsFolder
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn user_views_parses_and_returns_all_libraries() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/UserViews"))
+        .and(query_param("userId", "u1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "lib-music", "Name": "Music", "CollectionType": "music" },
+                { "Id": "lib-movies", "Name": "Movies", "CollectionType": "movies" },
+                { "Id": "lib-pl", "Name": "Playlists", "CollectionType": "playlists" }
+            ],
+            "TotalRecordCount": 3
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let views = client.user_views().await.unwrap();
+    assert_eq!(views.len(), 3);
+    assert_eq!(views[0].id, "lib-music");
+    assert_eq!(views[0].collection_type.as_deref(), Some("music"));
+    assert_eq!(views[2].collection_type.as_deref(), Some("playlists"));
+}
+
+#[tokio::test]
+async fn music_library_id_filters_and_caches() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/UserViews"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "lib-movies", "Name": "Movies", "CollectionType": "movies" },
+                { "Id": "lib-music", "Name": "Music", "CollectionType": "music" }
+            ],
+            "TotalRecordCount": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let first = client.music_library_id().await.unwrap();
+    assert_eq!(first, "lib-music");
+
+    // Second call must come from the cache, not a fresh HTTP hit — if the
+    // cache regresses this count would be 2.
+    let second = client.music_library_id().await.unwrap();
+    assert_eq!(second, "lib-music");
+    let get_count = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "GET" && r.url.path() == "/UserViews")
+        .count();
+    assert_eq!(
+        get_count, 1,
+        "music_library_id must cache /UserViews response"
+    );
+}
+
+#[tokio::test]
+async fn music_library_id_returns_404_when_no_music_view() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/UserViews"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "lib-movies", "Name": "Movies", "CollectionType": "movies" }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client.music_library_id().await.unwrap_err();
+    match err {
+        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 404),
+        other => panic!("expected Server 404, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn playlist_library_id_finds_manual_playlists_folder() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("userId", "u1"))
+        .and(query_param("includeItemTypes", "ManualPlaylistsFolder"))
+        .and(query_param("excludeItemTypes", "CollectionFolder"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "lib-pl", "Name": "Playlists", "CollectionType": "playlists" }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let id = client.playlist_library_id().await.unwrap();
+    assert_eq!(id, "lib-pl");
+
+    // Second call is served from the cache.
+    let again = client.playlist_library_id().await.unwrap();
+    assert_eq!(again, "lib-pl");
+    let get_count = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "GET" && r.url.path() == "/Items")
+        .count();
+    assert_eq!(
+        get_count, 1,
+        "playlist_library_id must cache its resolution"
+    );
+}
+
+#[tokio::test]
+async fn library_resolution_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.user_views().await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated on user_views, got {err:?}"
+    );
+    let err = client.music_library_id().await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated on music_library_id, got {err:?}"
+    );
+    let err = client.playlist_library_id().await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated on playlist_library_id, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn set_session_invalidates_library_cache() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/UserViews"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "lib-music", "Name": "Music", "CollectionType": "music" }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client.music_library_id().await.unwrap();
+    // Re-auth against the same mock: cache must be dropped so the new
+    // session triggers a fresh /UserViews lookup.
+    client.set_session("t2".into(), "u2".into());
+    let _ = client.music_library_id().await.unwrap();
+
+    let get_count = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "GET" && r.url.path() == "/UserViews")
+        .count();
+    assert_eq!(
+        get_count, 2,
+        "set_session must invalidate cached library ids"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// remove_from_playlist — DELETE /Playlists/{id}/Items?entryIds=...
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn remove_from_playlist_sends_entry_ids_query_and_expects_204() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Playlists/pl-1/Items"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .remove_from_playlist("pl-1", &["entry-1".into(), "entry-2".into()])
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let del = requests
+        .iter()
+        .find(|r| r.method.as_str() == "DELETE" && r.url.path() == "/Playlists/pl-1/Items")
+        .expect("expected DELETE to /Playlists/pl-1/Items");
+    let entry_ids = del
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "entryIds")
+        .map(|(_, v)| v.into_owned())
+        .expect("expected entryIds query param");
+    assert_eq!(entry_ids, "entry-1,entry-2");
+}
+
+#[tokio::test]
+async fn remove_from_playlist_is_noop_on_empty_entry_ids() {
+    // No DELETE mock is registered — an accidental network hit would
+    // surface as an unmatched-route error rather than silently succeed.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.remove_from_playlist("pl-1", &[]).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r.method.as_str() == "DELETE" && r.url.path().starts_with("/Playlists/")),
+        "empty entry_ids must short-circuit before any HTTP request"
+    );
+}
+
+#[tokio::test]
+async fn remove_from_playlist_propagates_server_errors() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Playlists/pl-1/Items"))
+        .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client
+        .remove_from_playlist("pl-1", &["entry-1".into()])
+        .await
+        .unwrap_err();
+    match err {
+        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 403),
+        other => panic!("expected Server 403, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn remove_from_playlist_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .remove_from_playlist("pl-1", &["entry-1".into()])
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// DeviceProfile serde
+// ---------------------------------------------------------------------------
+
+#[test]
+fn default_macos_profile_serializes_to_pascal_case() {
+    use crate::models::DeviceProfile;
+
+    let profile = DeviceProfile::default_macos_profile();
+    let v = serde_json::to_value(&profile).unwrap();
+    let obj = v.as_object().expect("object profile");
+
+    // Top-level PascalCase keys Jellyfin expects.
+    for key in [
+        "Name",
+        "MaxStreamingBitrate",
+        "MaxStaticBitrate",
+        "MusicStreamingTranscodingBitrate",
+        "DirectPlayProfiles",
+        "TranscodingProfiles",
+    ] {
+        assert!(obj.contains_key(key), "missing top-level key {key}: {v}");
+    }
+    assert!(
+        obj.keys().all(|k| !k.contains('_')),
+        "expected PascalCase only, got {:?}",
+        obj.keys().collect::<Vec<_>>()
+    );
+
+    // Direct-play entries cover the AVFoundation set: flac/alac/mp3/aac/opus/ogg/wav.
+    let direct = obj
+        .get("DirectPlayProfiles")
+        .and_then(|v| v.as_array())
+        .unwrap();
+    let containers: std::collections::HashSet<&str> = direct
+        .iter()
+        .filter_map(|e| e.get("Container").and_then(|v| v.as_str()))
+        .collect();
+    for c in ["flac", "alac", "mp3", "aac", "opus", "ogg", "wav"] {
+        assert!(
+            containers.contains(c),
+            "direct-play must include {c}: {containers:?}"
+        );
+    }
+    // Entries opt into AudioCodec only when the container is ambiguous
+    // (e.g. m4a that can hold either ALAC or AAC). Entries without a codec
+    // should simply elide the key, not emit `"AudioCodec": null`.
+    for entry in direct {
+        let entry_obj = entry.as_object().unwrap();
+        assert_eq!(
+            entry_obj.get("Type").and_then(|v| v.as_str()),
+            Some("Audio")
+        );
+        if let Some(codec) = entry_obj.get("AudioCodec") {
+            assert!(codec.is_string(), "AudioCodec must be a string: {entry}");
+        }
+    }
+
+    // Transcoding fallback is MP3 @ 320 over HTTP.
+    let transcodes = obj
+        .get("TranscodingProfiles")
+        .and_then(|v| v.as_array())
+        .unwrap();
+    assert_eq!(transcodes.len(), 1, "expected one transcoding fallback");
+    let t = transcodes[0].as_object().unwrap();
+    assert_eq!(t.get("Container").and_then(|v| v.as_str()), Some("mp3"));
+    assert_eq!(t.get("AudioCodec").and_then(|v| v.as_str()), Some("mp3"));
+    assert_eq!(t.get("Protocol").and_then(|v| v.as_str()), Some("http"));
+
+    // Bitrate caps — the 320 transcode ceiling and ~100 Mbps direct-play
+    // cap the default profile advertises.
+    assert_eq!(
+        obj.get("MaxStreamingBitrate").and_then(|v| v.as_u64()),
+        Some(320_000)
+    );
+    assert_eq!(
+        obj.get("MusicStreamingTranscodingBitrate")
+            .and_then(|v| v.as_u64()),
+        Some(320_000)
+    );
+    assert_eq!(
+        obj.get("MaxStaticBitrate").and_then(|v| v.as_u64()),
+        Some(100_000_000)
+    );
+}
+
+#[test]
+fn default_macos_profile_round_trips_through_serde() {
+    use crate::models::DeviceProfile;
+
+    let profile = DeviceProfile::default_macos_profile();
+    let json = serde_json::to_string(&profile).expect("serialize");
+    let back: DeviceProfile = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back.name, profile.name);
+    assert_eq!(back.max_streaming_bitrate, profile.max_streaming_bitrate);
+    assert_eq!(
+        back.direct_play_profiles.len(),
+        profile.direct_play_profiles.len()
+    );
+    assert_eq!(
+        back.transcoding_profiles.len(),
+        profile.transcoding_profiles.len()
+    );
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =

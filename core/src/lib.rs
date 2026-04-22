@@ -596,6 +596,88 @@ impl JellifyCore {
         })
     }
 
+    /// Report that playback of an item has started — backed by
+    /// `POST /Sessions/Playing`. Jellyfin surfaces this session as a
+    /// "Now Playing on macOS" remote-control target in Jellyfin Web.
+    /// Callers send this once per track load.
+    pub fn report_playback_started(
+        &self,
+        info: PlaybackStartInfo,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.report_playback_started(info)))
+    }
+
+    /// Register this session as a playback target with the server —
+    /// backed by `POST /Sessions/Capabilities/Full`. Called once post-auth
+    /// (and whenever the device profile changes). Without this, Jellyfin
+    /// Web cannot offer "Play on macOS" for this session.
+    pub fn post_capabilities(
+        &self,
+        caps: ClientCapabilities,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.post_capabilities(caps)))
+    }
+
+    /// Resolve the playable media source and transcoding strategy for an
+    /// item. Backed by `POST /Items/{id}/PlaybackInfo`. Returns the
+    /// `PlaySessionId` the caller should echo on subsequent
+    /// `/Sessions/Playing*` reports.
+    pub fn playback_info(
+        &self,
+        item_id: String,
+        opts: PlaybackInfoOpts,
+    ) -> std::result::Result<PlaybackInfoResponse, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.playback_info(&item_id, opts)))
+    }
+
+    // ---------- Library resolution ----------
+
+    /// Every top-level library the current user can browse. Backed by
+    /// `GET /UserViews`. Callers typically filter by `collection_type`
+    /// (`"music"`, `"playlists"`) to find the library ids they need.
+    pub fn user_views(&self) -> std::result::Result<Vec<Library>, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.user_views()))
+    }
+
+    /// Resolve (and cache) the user's music library id. Every music-scoped
+    /// query below the top level (albums, artists, tracks, genres, years)
+    /// is parented to this id, so callers typically resolve it once at
+    /// sign-in and hand it to subsequent requests.
+    pub fn music_library_id(&self) -> std::result::Result<String, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.music_library_id()))
+    }
+
+    /// Resolve (and cache) the user's playlists library id. Used as the
+    /// `ParentId` for `user_playlists` / `public_playlists`.
+    pub fn playlist_library_id(&self) -> std::result::Result<String, JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.playlist_library_id()))
+    }
+
+    // ---------- Playlist mutation ----------
+
+    /// Remove entries from a playlist. `entry_ids` are `PlaylistItemId`
+    /// values — each playlist child carries its own `PlaylistItemId`,
+    /// which is distinct from the underlying `ItemId` because a single
+    /// item can appear in the same playlist multiple times.
+    pub fn remove_from_playlist(
+        &self,
+        playlist_id: String,
+        entry_ids: Vec<String>,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.remove_from_playlist(&playlist_id, &entry_ids))
+        })
+    }
+
+    /// A default macOS [`DeviceProfile`] advertising direct-play for
+    /// FLAC / ALAC / MP3 / AAC / Opus / OGG / WAV with an MP3 320
+    /// transcode fallback. Intended as a one-liner for UIs that don't
+    /// need custom codec policies.
+    pub fn default_macos_device_profile(&self) -> DeviceProfile {
+        DeviceProfile::default_macos_profile()
+    }
+
     pub fn mark_state(&self, state: PlaybackState) {
         self.player.mark_state(state);
     }
