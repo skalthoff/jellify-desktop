@@ -251,6 +251,50 @@ impl JellyfinClient {
         Ok(items.into_iter().map(Album::from).collect())
     }
 
+    /// Recently played audio tracks for the current user, sorted by
+    /// `DatePlayed` descending. Jellyfin implicitly omits tracks with a null
+    /// `UserData.LastPlayedDate` from this sort, so the result is the user's
+    /// listening history.
+    ///
+    /// `music_library_id` is the `MusicLibrary` CollectionFolder id; when
+    /// provided it scopes the query via `ParentId`. When `None`, Jellyfin
+    /// searches across all libraries the user can access.
+    pub async fn recently_played(
+        &self,
+        music_library_id: Option<&str>,
+        paging: Paging,
+    ) -> Result<Vec<Track>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            if let Some(parent) = music_library_id {
+                q.append_pair("ParentId", parent);
+            }
+            q.append_pair("Recursive", "true");
+            q.append_pair("IncludeItemTypes", "Audio");
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
+            q.append_pair("SortBy", "DatePlayed");
+            q.append_pair("SortOrder", "Descending");
+            q.append_pair(
+                "Fields",
+                "ParentId,MediaSources,UserData,ProductionYear,PrimaryImageAspectRatio",
+            );
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Track::from).collect())
+    }
+
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
         let user_id = self
             .user_id
