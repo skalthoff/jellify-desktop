@@ -174,7 +174,29 @@ struct LibraryView: View {
                     }
                 }
             }
-        case .tracks, .playlists, .downloaded:
+        case .tracks:
+            // Tracks read naturally as a list, not a grid, so `viewMode`
+            // is intentionally ignored here — the All Tracks tab always
+            // renders a dense list. Near-end pagination mirrors the
+            // albums branch.
+            if model.tracks.isEmpty {
+                EmptyLibraryState(serverUrl: serverWebURL)
+            } else {
+                VStack(alignment: .leading, spacing: 18) {
+                    LazyVStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(model.tracks.enumerated()), id: \.element.id) { idx, track in
+                            TrackListRow(track: track, tracks: model.tracks, index: idx)
+                                .onAppear {
+                                    triggerLoadMoreTracksIfNeeded(atIndex: idx)
+                                }
+                        }
+                    }
+                    if model.isLoadingMoreTracks {
+                        paginationSpinner
+                    }
+                }
+            }
+        case .playlists, .downloaded:
             // Placeholder until the per-tab surfaces land. The chip row, header,
             // and count subline remain live so navigation feels responsive.
             EmptyLibraryState(serverUrl: serverWebURL)
@@ -221,13 +243,27 @@ struct LibraryView: View {
         Task { await model.loadMoreArtists() }
     }
 
-    /// Count for a given tab. Albums and artists have real counts; the rest
-    /// are stubs pending their respective FFI/storage work.
+    /// Fire `loadMoreTracks` when the user scrolls into the last
+    /// `paginationTriggerDistance` cells and there are more tracks on the
+    /// server than currently loaded. Mirror of
+    /// `triggerLoadMoreAlbumsIfNeeded`.
+    private func triggerLoadMoreTracksIfNeeded(atIndex idx: Int) {
+        let loaded = model.tracks.count
+        let total = Int(model.tracksTotal)
+        guard total > loaded else { return }
+        let threshold = max(loaded - paginationTriggerDistance, 0)
+        guard idx >= threshold else { return }
+        Task { await model.loadMoreTracks() }
+    }
+
+    /// Count for a given tab. Albums, artists, and tracks have real counts;
+    /// the rest are stubs pending their respective FFI/storage work.
     private func tabCount(for tab: LibraryTab) -> Int {
         switch tab {
         case .albums: return model.albums.count
         case .artists: return model.artists.count
-        case .tracks, .playlists, .downloaded: return 0
+        case .tracks: return model.tracks.count
+        case .playlists, .downloaded: return 0
         }
     }
 
@@ -237,7 +273,8 @@ struct LibraryView: View {
         switch tab {
         case .albums: return Int(model.albumsTotal)
         case .artists: return Int(model.artistsTotal)
-        case .tracks, .playlists, .downloaded: return 0
+        case .tracks: return Int(model.tracksTotal)
+        case .playlists, .downloaded: return 0
         }
     }
 

@@ -207,6 +207,26 @@ impl JellifyCore {
         })
     }
 
+    /// Every audio track in the user's library, paginated and sorted by
+    /// `SortName` ascending. Pass `music_library_id` to scope to a single
+    /// `MusicLibrary` CollectionFolder; pass `None` to span every library
+    /// the user can access.
+    ///
+    /// Returns a [`PaginatedTracks`] whose `total_count` is the server's
+    /// `TotalRecordCount` so callers can drive "N of M" sublines and
+    /// near-end load-more triggers without issuing a separate count query.
+    pub fn list_tracks(
+        &self,
+        music_library_id: Option<String>,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<PaginatedTracks, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.list_tracks(music_library_id.as_deref(), Paging::new(offset, limit)))
+        })
+    }
+
     /// Recently played tracks for the current user, sorted by server-side
     /// `DatePlayed` descending. Pass `music_library_id` to scope to a single
     /// `MusicLibrary` CollectionFolder.
