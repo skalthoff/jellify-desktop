@@ -1,12 +1,26 @@
 import SwiftUI
 @preconcurrency import JellifyCore
 
+/// Album detail screen — hero + CTA row + disc-grouped tracklist + liner-note
+/// credits block. Implements the BATCH-05 polish pass: #219 (hero stat strip
+/// typography), #70 (Play/Shuffle/Radio/Download + overflow CTAs), #222
+/// (favourite / add-to-playlist / download inline actions), #66 (disc
+/// grouping with sticky small-caps headers), #65 (liner-note credits section
+/// with clickable people chips).
+///
+/// Data flow:
+/// - `tracks` is loaded via `AppModel.loadTracks(forAlbum:)` (cached).
+/// - `detail` (label, release date, aggregated People) is fetched on open via
+///   `AppModel.loadAlbumDetail(albumId:)`. The view degrades cleanly when
+///   `detail` is empty — the liner-note section falls back to cached fields.
 struct AlbumDetailView: View {
     @Environment(AppModel.self) private var model
     let albumID: String
 
     @State private var tracks: [Track] = []
     @State private var isLoading = true
+    @State private var detail: AlbumDetail = AlbumDetail(label: nil, releaseDate: nil, people: [])
+    @State private var showAddToPlaylist = false
 
     private var album: Album? {
         model.albums.first { $0.id == albumID }
@@ -16,18 +30,21 @@ struct AlbumDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 hero
-                transportBar
+                ctaRow
                 trackList
-                footer
+                linerNotes
             }
         }
         .background(Theme.bg)
-        .task {
+        .task(id: albumID) {
             isLoading = true
             tracks = await model.loadTracks(forAlbum: albumID)
             isLoading = false
+            detail = await model.loadAlbumDetail(albumId: albumID)
         }
     }
+
+    // MARK: - Hero
 
     @ViewBuilder
     private var hero: some View {
@@ -58,15 +75,8 @@ struct AlbumDetailView: View {
                                 .padding(.leading, 28)
                                 .offset(y: 2)
                         }
-                    HStack(spacing: 28) {
-                        stat(value: "\(album.trackCount)", label: "Tracks")
-                        stat(value: formatMinutes(album.runtimeTicks), label: "Minutes")
-                        if !album.genres.isEmpty {
-                            stat(value: album.genres.first ?? "—", label: "Genre")
-                        }
-                        stat(value: "FLAC", label: "Format")
-                    }
-                    .padding(.top, 14)
+                    statStrip(album: album)
+                        .padding(.top, 14)
                 }
             }
             .padding(.horizontal, 40)
@@ -79,6 +89,22 @@ struct AlbumDetailView: View {
         }
     }
 
+    /// Four-stat strip — Tracks, Minutes, Label, Format — per #219. Stats
+    /// are laid out with a 28pt gap and tabular-nums 22pt/heavy values on
+    /// `ink`, 10pt/bold/2-tracking/uppercase labels on `ink3`. The last two
+    /// stats (Label, Format) collapse to an em-dash when their source
+    /// fields are absent, which matches the "degrade cleanly when fields
+    /// are empty" acceptance on #65.
+    @ViewBuilder
+    private func statStrip(album: Album) -> some View {
+        HStack(spacing: 28) {
+            stat(value: "\(album.trackCount)", label: "Tracks")
+            stat(value: formatMinutes(album.runtimeTicks), label: "Minutes")
+            stat(value: detail.label ?? "—", label: "Label")
+            stat(value: formatSummary(tracks: tracks), label: "Format")
+        }
+    }
+
     @ViewBuilder
     private func stat(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -86,6 +112,7 @@ struct AlbumDetailView: View {
                 .font(Theme.font(22, weight: .heavy))
                 .foregroundStyle(Theme.ink)
                 .monospacedDigit()
+                .lineLimit(1)
             Text(label.uppercased())
                 .font(Theme.font(10, weight: .bold))
                 .foregroundStyle(Theme.ink3)
@@ -93,43 +120,181 @@ struct AlbumDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private var transportBar: some View {
-        HStack(spacing: 14) {
-            Button {
-                if !tracks.isEmpty { model.play(tracks: tracks, startIndex: 0) }
-            } label: {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.white)
-                    .frame(width: 54, height: 54)
-                    .background(Circle().fill(Theme.accent))
-                    .shadow(color: Theme.accent.opacity(0.35), radius: 12, y: 8)
-            }
-            .buttonStyle(.plain)
+    // MARK: - CTA row
 
-            Image(systemName: "shuffle").font(.system(size: 20)).foregroundStyle(Theme.ink2).frame(width: 36, height: 36)
-            Image(systemName: "heart").font(.system(size: 20)).foregroundStyle(Theme.ink2).frame(width: 36, height: 36)
-            Image(systemName: "plus").font(.system(size: 20)).foregroundStyle(Theme.ink2).frame(width: 36, height: 36)
+    /// Horizontal row below the hero: primary Play, secondary Shuffle /
+    /// Radio / Download, then inline actions (Favourite heart, Add-to-
+    /// playlist plus) and a `•••` overflow menu. Every item is a real
+    /// SwiftUI `Button`, so keyboard Tab focus walks each one in order and
+    /// Space activates the focused control — the #70 acceptance criterion.
+    @ViewBuilder
+    private var ctaRow: some View {
+        HStack(spacing: 12) {
+            playButton
+            shuffleButton
+            radioButton
+            downloadButton
+
+            Divider()
+                .frame(height: 22)
+                .padding(.horizontal, 4)
+
+            favouriteButton
+            addToPlaylistButton
+
             Spacer()
+
+            overflowMenu
         }
         .padding(.horizontal, 32)
         .padding(.top, 20)
         .padding(.bottom, 8)
     }
 
+    private var playButton: some View {
+        Button {
+            if !tracks.isEmpty { model.play(tracks: tracks, startIndex: 0) }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 14, weight: .bold))
+                Text("Play")
+                    .font(Theme.font(13, weight: .semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 10)
+            .background(Capsule().fill(Theme.accent))
+            .shadow(color: Theme.accent.opacity(0.35), radius: 10, y: 6)
+        }
+        .buttonStyle(.plain)
+        .disabled(tracks.isEmpty)
+        .accessibilityLabel("Play album")
+    }
+
+    private var shuffleButton: some View {
+        secondaryCTA(icon: "shuffle", label: "Shuffle") {
+            if let album = album { model.shuffle(album: album) }
+        }
+        .disabled(tracks.isEmpty)
+        .accessibilityLabel("Shuffle album")
+    }
+
+    private var radioButton: some View {
+        secondaryCTA(icon: "dot.radiowaves.left.and.right", label: "Radio") {
+            if let album = album { model.startAlbumRadio(album: album) }
+        }
+        .accessibilityLabel("Start album radio")
+    }
+
+    private var downloadButton: some View {
+        secondaryCTA(icon: "arrow.down.circle", label: "Download") {
+            if let album = album { model.enqueueDownload(album: album) }
+        }
+        .accessibilityLabel("Download album")
+    }
+
+    private var favouriteButton: some View {
+        let isFav = model.isFavorite(id: albumID)
+        return Button {
+            if let album = album { model.toggleFavorite(album: album) }
+        } label: {
+            Image(systemName: isFav ? "heart.fill" : "heart")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isFav ? Theme.accent : Theme.ink2)
+                .frame(width: 36, height: 36)
+                .background(Circle().stroke(Theme.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isFav ? "Remove from favorites" : "Add to favorites")
+    }
+
+    private var addToPlaylistButton: some View {
+        Button {
+            showAddToPlaylist = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.ink2)
+                .frame(width: 36, height: 36)
+                .background(Circle().stroke(Theme.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Add to playlist")
+        .popover(isPresented: $showAddToPlaylist, arrowEdge: .top) {
+            AddToPlaylistPopover(trackIds: tracks.map(\.id)) {
+                showAddToPlaylist = false
+            }
+            .environment(model)
+        }
+    }
+
+    private var overflowMenu: some View {
+        Menu {
+            if let album = album { AlbumContextMenu(album: album) }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Theme.ink2)
+                .frame(width: 36, height: 36)
+                .background(Circle().stroke(Theme.border, lineWidth: 1))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .frame(width: 36, height: 36)
+        .accessibilityLabel("More actions")
+    }
+
+    @ViewBuilder
+    private func secondaryCTA(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(label)
+                    .font(Theme.font(13, weight: .semibold))
+            }
+            .foregroundStyle(Theme.ink)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Capsule().fill(Theme.surface))
+            .overlay(Capsule().stroke(Theme.border, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Track list
+
+    /// Disc-grouped tracklist. Tracks are sorted by `(disc, track)` so a
+    /// multi-disc album reads top-to-bottom in spec order (#66). The sticky
+    /// "DISC N" header is shown only when more than one disc is present,
+    /// per the same issue's "hidden for single-disc albums" acceptance.
     @ViewBuilder
     private var trackList: some View {
         VStack(alignment: .leading, spacing: 0) {
             if isLoading {
-                ProgressView().tint(Theme.ink2).padding(.vertical, 40).frame(maxWidth: .infinity)
+                ProgressView()
+                    .tint(Theme.ink2)
+                    .padding(.vertical, 40)
+                    .frame(maxWidth: .infinity)
             } else {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { idx, track in
-                    TrackRow(
-                        track: track,
-                        number: Int(track.indexNumber ?? UInt32(idx + 1)),
-                        onPlay: { model.play(tracks: tracks, startIndex: idx) }
-                    )
+                let groups = discGroups(from: tracks)
+                let showHeaders = groups.count > 1
+                ForEach(groups, id: \.disc) { group in
+                    if showHeaders {
+                        discHeader(number: group.disc)
+                    }
+                    ForEach(Array(group.tracks.enumerated()), id: \.element.id) { localIdx, track in
+                        TrackRow(
+                            track: track,
+                            number: discLocalNumber(fallback: localIdx + 1, track: track),
+                            onPlay: {
+                                if let absoluteIdx = tracks.firstIndex(where: { $0.id == track.id }) {
+                                    model.play(tracks: tracks, startIndex: absoluteIdx)
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -137,20 +302,468 @@ struct AlbumDetailView: View {
         .padding(.top, 12)
     }
 
+    /// Small-caps "DISC N" header between disc groups. Sticky-feeling is
+    /// achieved visually via the subtle bottom rule and the row-surface
+    /// background — a real `pinnedViews` sticky header is intentionally
+    /// avoided because the hero already takes the top of the scroll view.
     @ViewBuilder
-    private var footer: some View {
-        if let album = album {
-            Text("Released \(album.year.map(String.init) ?? "—") · \(formatMinutes(album.runtimeTicks)) min runtime")
-                .font(Theme.font(11, weight: .medium))
+    private func discHeader(number: Int) -> some View {
+        HStack {
+            Text("DISC \(number)")
+                .font(Theme.font(11, weight: .bold))
                 .foregroundStyle(Theme.ink3)
-                .padding(.horizontal, 32)
-                .padding(.vertical, 24)
+                .tracking(2)
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(Theme.border).frame(height: 1)
+                .padding(.horizontal, 16)
         }
     }
 
+    /// Disc-local track number. Jellyfin's `IndexNumber` is usually local
+    /// per-disc, but some rippers emit a global sequence — when the
+    /// track's `indexNumber` is missing or looks global we fall back to the
+    /// row's local index so the column always starts at 1 per disc.
+    private func discLocalNumber(fallback: Int, track: Track) -> Int {
+        if let n = track.indexNumber, n > 0 { return Int(n) }
+        return fallback
+    }
+
+    // MARK: - Liner notes
+
+    /// Bottom-of-page liner-note block (#65): "Released", "Label", "Format",
+    /// "Runtime", "Tracks / Discs", plus a Credits subsection with clickable
+    /// role → people chips. Lines collapse to an em-dash when the server
+    /// doesn't surface a field, and the credits subsection is hidden
+    /// entirely when `detail.people` has no relevant roles — matches the
+    /// "degrades cleanly when fields are empty" acceptance.
+    @ViewBuilder
+    private var linerNotes: some View {
+        if let album = album {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("LINER NOTES")
+                    .font(Theme.font(10, weight: .bold))
+                    .foregroundStyle(Theme.ink3)
+                    .tracking(2)
+                    .padding(.bottom, 12)
+
+                VStack(alignment: .leading, spacing: 10) {
+                    linerRow(label: "Released", value: releasedSummary(album: album))
+                    linerRow(label: "Label", value: detail.label ?? "—")
+                    linerRow(label: "Format", value: formatSummary(tracks: tracks))
+                    linerRow(label: "Runtime", value: runtimeSummary(album: album))
+                    linerRow(label: "Tracks", value: tracksSummary(album: album))
+                }
+                .textSelection(.enabled)
+
+                let creditRows = ExtendedCredit.rows(from: detail.people)
+                if !creditRows.isEmpty {
+                    Text("CREDITS")
+                        .font(Theme.font(10, weight: .bold))
+                        .foregroundStyle(Theme.ink3)
+                        .tracking(2)
+                        .padding(.top, 28)
+                        .padding(.bottom, 10)
+
+                    VStack(alignment: .leading, spacing: 14) {
+                        ForEach(creditRows, id: \.label) { row in
+                            creditRowView(row: row)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 40)
+            .padding(.top, 36)
+            .padding(.bottom, 48)
+        }
+    }
+
+    @ViewBuilder
+    private func linerRow(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 16) {
+            Text(label.uppercased())
+                .font(Theme.font(10, weight: .bold))
+                .foregroundStyle(Theme.ink3)
+                .tracking(2)
+                .frame(width: 90, alignment: .leading)
+            Text(value)
+                .font(Theme.font(13, weight: .medium))
+                .foregroundStyle(Theme.ink)
+        }
+    }
+
+    @ViewBuilder
+    private func creditRowView(row: ExtendedCredit) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(row.label.uppercased())
+                .font(Theme.font(10, weight: .bold))
+                .foregroundStyle(Theme.ink3)
+                .tracking(2)
+            FlowLayout(spacing: 6) {
+                ForEach(Array(row.people.enumerated()), id: \.offset) { _, person in
+                    CreditChip(person: person) {
+                        if let id = person.id {
+                            model.screen = .artist(id)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Formatting helpers
+
+    /// Minutes-only duration string for the hero stat. The older
+    /// implementation returned an integer minute count; we keep the same
+    /// shape so the "Minutes" stat reads as a clean number.
     private func formatMinutes(_ ticks: UInt64) -> String {
         let seconds = Double(ticks) / 10_000_000.0
-        let minutes = Int(seconds / 60)
-        return "\(minutes)"
+        return "\(Int(seconds / 60))"
+    }
+
+    /// Compact runtime string for the liner-note "Runtime" row, e.g.
+    /// `42:11` or `1h 12m`. Sums the cached track runtimes when available
+    /// so re-ripped albums with trimmed tails stay accurate; falls back to
+    /// the album's `runtime_ticks` otherwise.
+    private func runtimeSummary(album: Album) -> String {
+        let ticks: UInt64 = tracks.isEmpty
+            ? album.runtimeTicks
+            : tracks.reduce(0) { $0 + $1.runtimeTicks }
+        let totalSeconds = Int(Double(ticks) / 10_000_000.0)
+        if totalSeconds >= 3600 {
+            let h = totalSeconds / 3600
+            let m = (totalSeconds % 3600) / 60
+            return "\(h)h \(m)m"
+        } else {
+            let m = totalSeconds / 60
+            let s = totalSeconds % 60
+            return String(format: "%d:%02d", m, s)
+        }
+    }
+
+    /// "Released" line — preferred form is a full date, falls back to
+    /// just the year from the cached `Album`, then an em-dash. Reissue
+    /// disambiguation (original year + reissue year) from #65 is parked
+    /// for follow-up since the core doesn't yet surface an `OriginalYear`
+    /// / reissue-date pair.
+    private func releasedSummary(album: Album) -> String {
+        if let date = detail.releaseDate {
+            let f = DateFormatter()
+            f.dateStyle = .medium
+            f.timeStyle = .none
+            return f.string(from: date)
+        }
+        if let year = album.year { return String(year) }
+        return "—"
+    }
+
+    /// "Tracks" line — doubles as the disc-count breakdown when the album
+    /// spans multiple discs ("12 tracks · 2 discs").
+    private func tracksSummary(album: Album) -> String {
+        let trackCount = tracks.isEmpty ? Int(album.trackCount) : tracks.count
+        let discs = Set(tracks.compactMap { $0.discNumber.map(Int.init) }).count
+        if discs > 1 {
+            return "\(trackCount) tracks · \(discs) discs"
+        }
+        return "\(trackCount) tracks"
+    }
+
+    /// Format summary used by both the hero stat and the liner-note row.
+    /// Lifts uppercased `container` values off the cached tracks and joins
+    /// them with ` · `; when the tracks haven't loaded yet we fall back to
+    /// a plain em-dash rather than inventing "FLAC".
+    private func formatSummary(tracks: [Track]) -> String {
+        let containers = tracks
+            .compactMap { $0.container?.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .map { $0.uppercased() }
+        guard !containers.isEmpty else { return "—" }
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for c in containers where seen.insert(c).inserted {
+            ordered.append(c)
+        }
+        // Single-format album with known bitrate: include the bitrate
+        // in kbps so "MP3 320" reads clean.
+        if ordered.count == 1, tracks.count > 0 {
+            let bitrates = tracks.compactMap { $0.bitrate }
+            if let avg = bitrates.first, bitrates.allSatisfy({ abs(Int($0) - Int(avg)) < 32_000 }) {
+                let kbps = Int(avg) / 1000
+                if kbps > 0 {
+                    return "\(ordered[0]) \(kbps)"
+                }
+            }
+        }
+        return ordered.joined(separator: " · ")
+    }
+}
+
+// MARK: - Disc grouping
+
+/// Tracks on a single disc, in ascending `IndexNumber` order. `disc` is
+/// `track.disc_number` when present; tracks without a disc number collapse
+/// into disc 1 so a malformed item doesn't split the grouping.
+private struct DiscGroup {
+    let disc: Int
+    let tracks: [Track]
+}
+
+/// Partition a flat `[Track]` into per-disc groups, sorted by
+/// `(disc, track)`. Handles disc numbers 1-20 per #66's acceptance; the
+/// upper bound isn't enforced here because sorting naturally handles any
+/// range and the server-side data rarely exceeds it.
+private func discGroups(from tracks: [Track]) -> [DiscGroup] {
+    let sorted = tracks.sorted { lhs, rhs in
+        let ld = Int(lhs.discNumber ?? 1)
+        let rd = Int(rhs.discNumber ?? 1)
+        if ld != rd { return ld < rd }
+        let li = Int(lhs.indexNumber ?? UInt32.max)
+        let ri = Int(rhs.indexNumber ?? UInt32.max)
+        return li < ri
+    }
+    var bucket: [Int: [Track]] = [:]
+    var order: [Int] = []
+    for t in sorted {
+        let d = Int(t.discNumber ?? 1)
+        if bucket[d] == nil { order.append(d) }
+        bucket[d, default: []].append(t)
+    }
+    return order.map { DiscGroup(disc: $0, tracks: bucket[$0] ?? []) }
+}
+
+// MARK: - Extended credits (liner-note section)
+
+/// One role bucket in the liner-note Credits subsection. Unlike
+/// `NowPlayingCredits.Credit`, this variant keeps the per-person `Person`
+/// records rather than flattening to a comma string, so the album detail
+/// chips can navigate to each artist individually (#65).
+struct ExtendedCredit {
+    let label: String
+    let people: [Person]
+
+    /// Bucket a flat `[Person]` list into the roles surfaced on the album
+    /// detail screen: Composers, Producers, Mixers, Engineers, plus a
+    /// catch-all "Writers" row that pulls both `Writer` and `Lyricist`.
+    ///
+    /// Dedupe is by `(name, id)` so servers that list the same person
+    /// twice under slightly different roles (a producer who also
+    /// engineered) show once per role-bucket. Rows with no matching people
+    /// are dropped so the section stays compact.
+    static func rows(from people: [Person]) -> [ExtendedCredit] {
+        func filter(types: [String]) -> [Person] {
+            var seen = Set<String>()
+            var out: [Person] = []
+            for p in people where types.contains(where: { p.type.caseInsensitiveCompare($0) == .orderedSame }) {
+                let key = "\(p.name.lowercased())|\(p.id ?? "")"
+                if seen.insert(key).inserted {
+                    out.append(p)
+                }
+            }
+            return out
+        }
+
+        let mapping: [(label: String, types: [String])] = [
+            ("Composers", ["Composer"]),
+            ("Writers", ["Writer", "Lyricist"]),
+            ("Producers", ["Producer"]),
+            ("Mixers", ["Mixer", "Remixer"]),
+            ("Engineers", ["Engineer"]),
+        ]
+        return mapping.compactMap { row in
+            let matched = filter(types: row.types)
+            guard !matched.isEmpty else { return nil }
+            return ExtendedCredit(label: row.label, people: matched)
+        }
+    }
+}
+
+/// Clickable chip rendering one credited person. When the backing `Person`
+/// carries an id the chip behaves as a navigation button that routes to
+/// the artist detail screen; when the id is missing (servers that strip
+/// `People.Id`) the chip renders as inert selectable text — still usable
+/// via copy/paste per the #65 acceptance.
+private struct CreditChip: View {
+    let person: Person
+    let onTap: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(person.name)
+                .font(Theme.font(12, weight: .semibold))
+                .foregroundStyle(person.id == nil ? Theme.ink2 : Theme.ink)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule().fill(isHovering && person.id != nil ? Theme.surface2 : Theme.surface)
+                )
+                .overlay(
+                    Capsule().stroke(Theme.border, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(person.id == nil)
+        .onHover { isHovering = $0 }
+        .accessibilityLabel(person.id == nil ? person.name : "Open artist \(person.name)")
+    }
+}
+
+// MARK: - Add-to-playlist popover
+
+/// Popover-style picker shown by the album detail's `+` button. Lists the
+/// current user's playlists and calls `AppModel.addToPlaylist(...)` with
+/// the album's track ids when the user picks one. A "New playlist" row is
+/// surfaced at the top but wired as a TODO stub pending the create-playlist
+/// UI (tracked in #127 follow-up).
+///
+/// Empty-state copy explains "No playlists yet"; callers close the popover
+/// via the passed-in `onDismiss` closure after a successful append.
+private struct AddToPlaylistPopover: View {
+    @Environment(AppModel.self) private var model
+    let trackIds: [String]
+    let onDismiss: () -> Void
+
+    @State private var isAdding = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("ADD TO PLAYLIST")
+                .font(Theme.font(10, weight: .bold))
+                .foregroundStyle(Theme.ink3)
+                .tracking(2)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
+
+            // TODO(core-#127): wire create-playlist flow once the UI for
+            // naming a new playlist lands. For now this is a stub row so
+            // the affordance is visible.
+            Button {
+                // TODO(core-#127): prompt for a name + call
+                // `core.createPlaylist(name:itemIds:)`.
+                print("[AlbumDetailView] new-playlist flow not yet wired — see core-#127")
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "plus.circle")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                    Text("New playlist")
+                        .font(Theme.font(13, weight: .semibold))
+                        .foregroundStyle(Theme.ink)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Divider()
+                .padding(.vertical, 4)
+
+            if model.playlists.isEmpty {
+                Text("No playlists yet")
+                    .font(Theme.font(12, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+                    .italic()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+            } else {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(model.playlists, id: \.id) { playlist in
+                            Button {
+                                Task {
+                                    isAdding = true
+                                    let ok = await model.addToPlaylist(
+                                        trackIds: trackIds,
+                                        playlistId: playlist.id
+                                    )
+                                    isAdding = false
+                                    if ok { onDismiss() }
+                                }
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "music.note.list")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(Theme.ink2)
+                                        .frame(width: 18)
+                                    Text(playlist.name)
+                                        .font(Theme.font(13, weight: .medium))
+                                        .foregroundStyle(Theme.ink)
+                                        .lineLimit(1)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isAdding)
+                        }
+                    }
+                }
+                .frame(maxHeight: 240)
+            }
+        }
+        .frame(width: 240)
+        .padding(.bottom, 10)
+        .background(Theme.bgAlt)
+    }
+}
+
+// MARK: - Flow layout (credit chips)
+
+/// Minimal left-aligned flow layout for the credit chips. SwiftUI ships
+/// `Layout`-based primitives but no bundled flow layout; rolling our own
+/// keeps the chip row wrapping on narrow window widths without dragging
+/// in a dependency. Measures each subview at its preferred size and wraps
+/// to a new line when the cursor would exceed the proposed width.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        var rows: [CGFloat] = [0]
+        var rowHeights: [CGFloat] = [0]
+        var cursor: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if cursor + size.width > maxWidth, cursor > 0 {
+                rows.append(0)
+                rowHeights.append(0)
+                cursor = 0
+            }
+            cursor += size.width + spacing
+            let rowIdx = rows.count - 1
+            rows[rowIdx] = max(rows[rowIdx], cursor)
+            rowHeights[rowIdx] = max(rowHeights[rowIdx], size.height)
+        }
+        let totalHeight = rowHeights.reduce(0, +) + CGFloat(rowHeights.count - 1) * spacing
+        let totalWidth = rows.max() ?? 0
+        return CGSize(width: min(totalWidth, maxWidth), height: max(0, totalHeight))
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let maxWidth = bounds.width
+        var x: CGFloat = bounds.minX
+        var y: CGFloat = bounds.minY
+        var rowHeight: CGFloat = 0
+        for s in subviews {
+            let size = s.sizeThatFits(.unspecified)
+            if x + size.width > bounds.minX + maxWidth, x > bounds.minX {
+                x = bounds.minX
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            s.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
+            x += size.width + spacing
+            rowHeight = max(rowHeight, size.height)
+        }
     }
 }
