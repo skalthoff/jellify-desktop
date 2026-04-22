@@ -803,6 +803,19 @@ final class AppModel {
         requestSearchFocus = true
     }
 
+    /// Programmatic navigation entry point. Views that want to push a screen
+    /// should prefer this over assigning `model.screen` directly so there's
+    /// a single seam to add side effects (analytics, breadcrumb history, nav
+    /// animations) later. Today it's a thin setter — matches the direct
+    /// `model.screen = ...` pattern used elsewhere.
+    ///
+    /// Wired by the Artist detail page's Similar Artists tiles (BATCH-04)
+    /// and available to future surfaces that want a less brittle navigation
+    /// handle.
+    func navigate(to screen: Screen) {
+        self.screen = screen
+    }
+
     /// Navigate to the Discover screen. See #248.
     func goToDiscover() {
         screen = .discover
