@@ -710,6 +710,34 @@ final class AppModel {
         print("[AppModel] startInstantMix() not yet wired — see #144 / #327")
     }
 
+    /// Shuffle the entire library — loads tracks from a handful of random
+    /// albums, interleaves them into one queue, shuffles, and plays.
+    ///
+    /// Powers the "Shuffle All" CTA on the Home greeting header (#204). The
+    /// core doesn't expose a "list every track" primitive yet (see #465), so
+    /// we draw from the albums already loaded on the Home screen and assemble
+    /// a queue of up to ~200 tracks. Good enough as a "play my library"
+    /// affordance until a server-side random-songs endpoint lands.
+    func shuffleLibrary() {
+        guard !albums.isEmpty else { return }
+        Task {
+            // Draw from a random sample of albums so repeat presses don't
+            // always yield the same seed set. Cap the sample so we don't
+            // fan-out hundreds of `albumTracks` calls in a single tap.
+            let sampleSize = min(albums.count, 25)
+            let sampled = Array(albums.shuffled().prefix(sampleSize))
+            var collected: [Track] = []
+            for album in sampled {
+                let tracks = await loadTracks(forAlbum: album.id)
+                collected.append(contentsOf: tracks)
+                // Cap total queue length — mirrors other "play a lot" flows.
+                if collected.count >= 200 { break }
+            }
+            guard !collected.isEmpty else { return }
+            play(tracks: collected.shuffled(), startIndex: 0)
+        }
+    }
+
     func search(_ query: String) async {
         searchQuery = query
         guard !query.isEmpty else {
