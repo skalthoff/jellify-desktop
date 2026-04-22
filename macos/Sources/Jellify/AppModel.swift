@@ -278,6 +278,7 @@ final class AppModel {
         albumTracks = [:]
         artistTopTracks = [:]
         recentlyPlayed = []
+        forYou = []
         searchResults = nil
         searchQuery = ""
         currentTrackPeople = []
@@ -308,6 +309,7 @@ final class AppModel {
         albumTracks = [:]
         artistTopTracks = [:]
         recentlyPlayed = []
+        forYou = []
         searchResults = nil
         searchQuery = ""
         currentTrackPeople = []
@@ -407,6 +409,7 @@ final class AppModel {
         }
         _ = await playlistsResult
         await refreshRecentlyPlayed()
+        await refreshForYou()
     }
 
     /// Fetch the next page of albums and append to `albums`. No-op when a
@@ -656,6 +659,24 @@ final class AppModel {
             errorMessage = "Playlist load failed: \(error.localizedDescription)"
         }
         return all
+    }
+
+    /// Refresh the Discover "For You" carousel (#249). Until the core exposes
+    /// a real recommendations endpoint (e.g. Jellyfin Items/Suggestions or a
+    /// client-side "artists similar to top-3 played, minus already-played"
+    /// algorithm per research/06-screen-specs.md), this is a best-effort
+    /// stub that mirrors the first 20 recently played tracks so the shelf is
+    /// never empty for an active listener. If `recentlyPlayed` is empty the
+    /// carousel hides itself rather than showing nothing-of-interest.
+    ///
+    /// TODO: replace this stub with a real `core.recommendations(limit: 20)`
+    /// FFI call once it lands. At that point the view layer stays unchanged —
+    /// only the body of this method needs swapping.
+    func refreshForYou() async {
+        // Best-effort fallback: reuse the recently played tracks we already
+        // fetched. Capped at 20 so the carousel stays tight even if the core
+        // later starts returning a longer list.
+        self.forYou = Array(recentlyPlayed.prefix(20))
     }
 
     func loadTracks(forAlbum albumID: String) async -> [Track] {
