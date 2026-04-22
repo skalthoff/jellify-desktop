@@ -234,6 +234,21 @@ impl JellifyCore {
         })
     }
 
+    /// Tracks on a playlist, in the server's playlist order. Pass `offset`
+    /// and `limit` for paging; the underlying `/Items` request does NOT sort
+    /// server-side so the playlist's stored order is preserved.
+    pub fn playlist_tracks(
+        &self,
+        playlist_id: String,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<Vec<Track>, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.playlist_tracks(&playlist_id, Paging::new(offset, limit)))
+        })
+    }
+
     pub fn search(&self, query: String) -> std::result::Result<SearchResults, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.search(&query)))
     }

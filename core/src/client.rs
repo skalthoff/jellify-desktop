@@ -368,6 +368,41 @@ impl JellyfinClient {
         Ok(raw.items)
     }
 
+    /// Fetch the audio tracks on a playlist, preserving the server's playlist
+    /// order. Backed by `GET /Items?ParentId={playlistId}&IncludeItemTypes=Audio`.
+    ///
+    /// Order is load-bearing: playlists are ordered collections, so this
+    /// endpoint intentionally does NOT pass `SortBy`/`SortOrder` — Jellyfin
+    /// returns items in the playlist's stored order when no sort is specified.
+    /// Callers that need a different sort can do it client-side.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    pub async fn playlist_tracks(&self, playlist_id: &str, paging: Paging) -> Result<Vec<Track>> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint("Items")?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("ParentId", playlist_id);
+            q.append_pair("UserId", user_id);
+            q.append_pair("IncludeItemTypes", "Audio");
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
+            q.append_pair("Fields", "MediaSources,ParentId,Path,SortName");
+        }
+        let resp = self
+            .http
+            .get(url)
+            .headers(self.build_headers()?)
+            .send()
+            .await?;
+        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        Ok(raw.items.into_iter().map(Track::from).collect())
+    }
+
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
         let user_id = self
             .user_id
