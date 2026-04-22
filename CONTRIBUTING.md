@@ -44,9 +44,14 @@ it will download a copy into `linux/flatpak/.cache/` on first run if the
 generator isn't already on `PATH` or pointed at by `$FLATPAK_CARGO_GENERATOR`.
 Requires `python3` with `aiohttp` and `toml` installed.
 
-The generated `linux/flatpak/cargo-sources.json` is checked in so CI and
-packagers don't need network access to rebuild. Commit the regenerated file
-alongside the `Cargo.lock` change that invalidated it.
+The generator is pinned to a specific upstream commit (see the `GENERATOR_PIN`
+variable in `linux/flatpak/gen-sources.sh`) for reproducibility and
+supply-chain safety. Bump the pin manually during dependency updates.
+
+The generated `linux/flatpak/cargo-sources.json` should be regenerated and
+committed alongside dependency changes so CI and packagers don't need network
+access to rebuild. Run the script whenever `Cargo.lock` changes and commit the
+regenerated file in the same PR.
 
 ## Commit style
 
