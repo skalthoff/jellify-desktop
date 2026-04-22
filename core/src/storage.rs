@@ -175,3 +175,33 @@ impl CredentialStore {
         }
     }
 }
+
+/// Silent re-auth helper used by the HTTP client's 401 interceptor.
+///
+/// Re-reads `(last_server_id, last_username)` from `db`, then asks the OS
+/// credential store for the token that pair currently maps to. Returns the
+/// token string when one is present.
+///
+/// The design is a "pull latest from the keyring" pattern: when Jellyfin
+/// rejects a request with `401`, the in-memory token on the client may be
+/// stale relative to what's in the keychain (e.g. another Jellify instance
+/// refreshed it on this machine, or the user re-authenticated in a parallel
+/// window). Re-reading the keyring is the cheap first step — callers that
+/// want to force a full `POST /Users/AuthenticateByName` round trip drive
+/// that from the UI layer, where the password is still in scope.
+///
+/// Returns `Ok(None)` when the persisted identifiers are missing or the
+/// keyring has no entry for that `(server_id, username)` pair. Callers treat
+/// that the same as "user must re-authenticate" and typically raise
+/// [`crate::JellifyError::AuthExpired`].
+pub fn refresh_token_from_keyring(db: &Database) -> Result<Option<String>> {
+    let server_id = match db.get_setting("last_server_id")? {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    let username = match db.get_setting("last_username")? {
+        Some(v) => v,
+        None => return Ok(None),
+    };
+    CredentialStore::load_token(&server_id, &username)
+}

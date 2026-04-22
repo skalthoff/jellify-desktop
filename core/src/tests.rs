@@ -1,4 +1,5 @@
 use crate::client::JellyfinClient;
+use crate::error::JellifyError;
 use crate::models::{ImageType, Paging};
 use crate::storage::{CredentialStore, Database};
 use crate::{CoreConfig, JellifyCore};
@@ -3926,4 +3927,306 @@ async fn forget_token_preserves_server_url_and_username() {
     })
     .await
     .expect("join forget task");
+}
+
+// ============================================================================
+// Retry + backoff + silent re-auth (issues #438, #440)
+// ============================================================================
+//
+// These tests exercise the transport layer directly via `JellyfinClient` rather
+// than the UniFFI wrapper, because the harness needs to inject 5xx / 401 /
+// transient failures from wiremock. `MockServer::up_to_n_times` lets us chain
+// multiple `Mock`s against the same path — it consumes them in insertion
+// order, so the first two `respond_with` bodies land on the first two
+// attempts and the last one services the eventual success.
+
+/// `503` on the first two attempts, then `200`. The retry layer should
+/// swallow the early failures and return the eventual success payload —
+/// callers never see a `JellifyError::Server { 503, .. }`.
+#[tokio::test]
+async fn retry_recovers_from_transient_5xx() {
+    let server = MockServer::start().await;
+    // Mount three responses against `/System/Info/Public`: 503, 503, 200.
+    // `wiremock` consumes them in insertion order.
+    Mock::given(method("GET"))
+        .and(path("/System/Info/Public"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/System/Info/Public"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/System/Info/Public"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ServerName": "After Retry",
+            "Version": "10.10.0",
+            "Id": "abc"
+        })))
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server.uri());
+    let info = client.public_info().await.expect("retry must recover");
+    assert_eq!(info.server_name.as_deref(), Some("After Retry"));
+
+    // The server saw 3 attempts total — 2 failures + the final success.
+    let requests = server.received_requests().await.unwrap();
+    let hits = requests
+        .iter()
+        .filter(|r| r.url.path() == "/System/Info/Public")
+        .count();
+    assert_eq!(hits, 3, "expected 3 attempts (2 retries); got {hits}");
+}
+
+/// `501 Not Implemented` is NOT retriable — it's a semantic rejection the
+/// server will keep returning. One attempt, one error.
+#[tokio::test]
+async fn retry_does_not_loop_on_501_not_implemented() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/System/Info/Public"))
+        .respond_with(ResponseTemplate::new(501))
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server.uri());
+    let err = client.public_info().await.unwrap_err();
+    match err {
+        JellifyError::Server { status, .. } => assert_eq!(status, 501),
+        other => panic!("expected Server {{ 501 }}, got {other:?}"),
+    }
+    let hits = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/System/Info/Public")
+        .count();
+    assert_eq!(hits, 1, "501 must not be retried");
+}
+
+/// Exhausting the retry budget (three 5xx in a row) surfaces the last
+/// server error as `JellifyError::Server`, not as `Network(_)`.
+#[tokio::test]
+async fn retry_surfaces_last_server_error_when_budget_exhausted() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/System/Info/Public"))
+        .respond_with(ResponseTemplate::new(502))
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server.uri());
+    let err = client.public_info().await.unwrap_err();
+    match err {
+        JellifyError::Server { status, .. } => assert_eq!(status, 502),
+        other => panic!("expected Server {{ 502 }}, got {other:?}"),
+    }
+    let hits = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/System/Info/Public")
+        .count();
+    // MAX_ATTEMPTS = 3 (initial + 2 retries).
+    assert_eq!(hits, 3, "expected 3 attempts total, got {hits}");
+}
+
+/// `401` with no refresh callback wired surfaces `AuthExpired` so the UI
+/// can drive the re-auth sheet. No retry beyond the single 401.
+#[tokio::test]
+async fn auth_401_without_callback_returns_auth_expired() {
+    let server = MockServer::start().await;
+    // Have to authenticate first so the library call runs with a token.
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client
+        .albums(Paging::new(0, 10))
+        .await
+        .expect_err("401 without refresh must fail");
+    assert!(
+        matches!(err, JellifyError::AuthExpired),
+        "expected AuthExpired, got {err:?}"
+    );
+}
+
+/// `401` with a wired callback that hands back a *new* token triggers a
+/// silent retry with the fresh token. Verifies both that the retry fires
+/// and that the subsequent request carries the refreshed bearer.
+#[tokio::test]
+async fn auth_401_with_callback_retries_with_new_token() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "old-token", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // First library hit: 401 (stale token).
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(401))
+        .up_to_n_times(1)
+        .mount(&server)
+        .await;
+    // Second hit: 200 with a single album so the caller gets a real result.
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [{ "Id": "a1", "Name": "Album", "Type": "MusicAlbum" }],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+
+    // Hand back a *different* token on refresh — if the callback returned
+    // the same string the retry layer would bail with AuthExpired rather
+    // than loop.
+    client.set_refresh_callback(std::sync::Arc::new(|| Ok(Some("fresh-token".to_string()))));
+
+    let page = client
+        .albums(Paging::new(0, 10))
+        .await
+        .expect("refresh + retry should succeed");
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].id, "a1");
+
+    // Inspect the retry: second `GET /Users/u1/Items` must have carried the
+    // fresh token in its Authorization header.
+    let requests = server.received_requests().await.unwrap();
+    let gets: Vec<_> = requests
+        .iter()
+        .filter(|r| r.method.as_str() == "GET" && r.url.path() == "/Users/u1/Items")
+        .collect();
+    assert_eq!(gets.len(), 2, "expected 2 GETs (initial + retry)");
+    let retry_auth = gets[1]
+        .headers
+        .get("authorization")
+        .expect("retry must carry Authorization");
+    let retry_auth_str = retry_auth.to_str().unwrap();
+    assert!(
+        retry_auth_str.contains("fresh-token"),
+        "retry should use new token, saw: {retry_auth_str}"
+    );
+}
+
+/// A refresh callback that returns `Ok(None)` (e.g. keyring wiped) surfaces
+/// `AuthExpired` — no retry, caller drives the re-auth sheet.
+#[tokio::test]
+async fn auth_401_with_callback_returning_none_surfaces_expired() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.set_refresh_callback(std::sync::Arc::new(|| Ok(None)));
+
+    let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
+    assert!(matches!(err, JellifyError::AuthExpired));
+}
+
+/// When the callback hands back the *same* token the client already has,
+/// the retry layer treats it as a dead token — no pointless loop, just
+/// `AuthExpired`.
+#[tokio::test]
+async fn auth_401_with_same_token_does_not_loop() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "same-token", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(401))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.set_refresh_callback(std::sync::Arc::new(|| Ok(Some("same-token".to_string()))));
+
+    let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
+    assert!(matches!(err, JellifyError::AuthExpired));
+
+    // Crucial: only the initial 401 hit, no loop.
+    let hits = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.method.as_str() == "GET" && r.url.path() == "/Users/u1/Items")
+        .count();
+    assert_eq!(hits, 1, "expected exactly one GET — no retry loop");
+}
+
+/// `storage::refresh_token_from_keyring` is the bridge between the HTTP
+/// client's 401 interceptor and the OS credential store. Smoke-test the
+/// three scenarios the wrapping callback relies on: missing persisted
+/// ids (Ok(None)), ids-but-no-keychain-entry (Ok(None)), and a present
+/// keychain entry (Ok(Some)).
+#[test]
+fn refresh_token_from_keyring_returns_token_when_present() {
+    install_mock_keyring();
+    let db = Database::in_memory().expect("in-memory db");
+
+    // Missing ids → None.
+    let missing = crate::storage::refresh_token_from_keyring(&db).unwrap();
+    assert!(missing.is_none(), "no settings → None");
+
+    // Ids present but no keychain entry → None.
+    db.set_setting("last_server_id", "srv-refresh-test")
+        .unwrap();
+    db.set_setting("last_username", "refresh-user").unwrap();
+    // Make sure there's no stale entry from another test run.
+    CredentialStore::delete_token("srv-refresh-test", "refresh-user").unwrap();
+    let absent = crate::storage::refresh_token_from_keyring(&db).unwrap();
+    assert!(absent.is_none(), "no keychain entry → None");
+
+    // Save a token — now refresh should hand it back.
+    CredentialStore::save_token("srv-refresh-test", "refresh-user", "refreshed-token").unwrap();
+    let got = crate::storage::refresh_token_from_keyring(&db)
+        .unwrap()
+        .expect("token should be present");
+    assert_eq!(got, "refreshed-token");
 }

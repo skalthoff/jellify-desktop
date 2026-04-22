@@ -39,7 +39,11 @@ pub struct JellifyCore {
 
 struct Inner {
     client: Option<JellyfinClient>,
-    db: Database,
+    /// Wrapped in `Arc` so the HTTP client's 401 interceptor can close over
+    /// a standalone handle (see [`JellyfinClient::set_refresh_callback`])
+    /// without needing to re-lock `inner` — which it can't, since retry
+    /// callbacks fire while `with_client` already holds that lock.
+    db: Arc<Database>,
     device_id: String,
     device_name: String,
 }
@@ -60,7 +64,7 @@ impl JellifyCore {
             PathBuf::from(&config.data_dir)
         };
         let db_path = data_dir.join("jellify.db");
-        let db = Database::open(&db_path)?;
+        let db = Arc::new(Database::open(&db_path)?);
 
         let device_id = match db.get_setting("device_id")? {
             Some(id) => id,
@@ -113,9 +117,13 @@ impl JellifyCore {
         username: String,
         password: String,
     ) -> std::result::Result<models::Session, JellifyError> {
-        let (device_id, device_name) = {
+        let (device_id, device_name, db) = {
             let inner = self.inner.lock();
-            (inner.device_id.clone(), inner.device_name.clone())
+            (
+                inner.device_id.clone(),
+                inner.device_name.clone(),
+                inner.db.clone(),
+            )
         };
         let mut client = JellyfinClient::new(&url, device_id, device_name)?;
         let session = self
@@ -137,6 +145,7 @@ impl JellifyCore {
             }
             inner.db.set_setting("last_user_id", &session.user.id)?;
         }
+        Self::install_refresh_callback(&client, &db);
         self.inner.lock().client = Some(client);
         Ok(session)
     }
@@ -152,7 +161,7 @@ impl JellifyCore {
     /// block this call on network availability so users launching offline
     /// still see their cached library instantly.
     pub fn resume_session(&self) -> std::result::Result<Option<Session>, JellifyError> {
-        let (device_id, device_name, server_url, username, server_id, user_id) = {
+        let (device_id, device_name, db, server_url, username, server_id, user_id) = {
             let inner = self.inner.lock();
             let server_url = match inner.db.get_setting("last_server_url")? {
                 Some(v) => v,
@@ -173,6 +182,7 @@ impl JellifyCore {
             (
                 inner.device_id.clone(),
                 inner.device_name.clone(),
+                inner.db.clone(),
                 server_url,
                 username,
                 server_id,
@@ -187,6 +197,7 @@ impl JellifyCore {
 
         let mut client = JellyfinClient::new(&server_url, device_id, device_name)?;
         client.set_session(token.clone(), user_id.clone());
+        Self::install_refresh_callback(&client, &db);
         let resolved_url = client.base_url().to_string();
         self.inner.lock().client = Some(client);
 
@@ -832,6 +843,20 @@ impl JellifyCore {
         let inner = self.inner.lock();
         let client = inner.client.as_ref().ok_or(JellifyError::NoSession)?;
         f(client)
+    }
+
+    /// Wire the HTTP client's 401 interceptor so it can silently pull a
+    /// fresh token out of the OS credential store without round-tripping
+    /// through the UI.
+    ///
+    /// The callback only holds an `Arc` to [`Database`] — never to `Inner`
+    /// — because it fires from inside an in-flight request, and by that
+    /// point `with_client` is already holding the `parking_lot::Mutex` on
+    /// `Inner`. Re-locking it here would deadlock (parking_lot mutexes are
+    /// non-reentrant).
+    fn install_refresh_callback(client: &JellyfinClient, db: &Arc<Database>) {
+        let db = db.clone();
+        client.set_refresh_callback(Arc::new(move || storage::refresh_token_from_keyring(&db)));
     }
 }
 

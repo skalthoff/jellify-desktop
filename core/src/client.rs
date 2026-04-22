@@ -2,12 +2,40 @@ use crate::error::{JellifyError, Result};
 use crate::models::*;
 use parking_lot::Mutex;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
-use reqwest::{Client as HttpClient, Response};
+use reqwest::{Client as HttpClient, RequestBuilder, Response, StatusCode};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::time::Duration;
 use url::Url;
 
 const CLIENT_NAME: &str = "Jellify Desktop";
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Maximum number of HTTP attempts per logical request, inclusive of the
+/// initial try. With the backoff ladder below this caps a single request at
+/// ~3.5s of added latency in the worst case.
+const MAX_ATTEMPTS: u32 = 3;
+
+/// Exponential backoff schedule between retries, in milliseconds. The entry
+/// at index `N` is the delay *before* attempt `N+1`. `±15%` jitter is
+/// applied on top of each base delay at send time. Tuned to be fast enough
+/// to mask a transient blip on home Wi-Fi without making the UI feel
+/// stuck on a legit server outage.
+const BACKOFF_BASE_MS: [u64; 3] = [200, 400, 800];
+
+/// Upper bound on the delay granted by a server-side `Retry-After` header.
+/// Any value larger than this is clamped — we'd rather surface the error to
+/// the user than hang for the duration the server suggested.
+const RETRY_AFTER_CAP: Duration = Duration::from_secs(5);
+
+/// Pluggable silent re-auth callback. Invoked by [`JellyfinClient`]'s 401
+/// interceptor; see [`JellyfinClient::set_refresh_callback`].
+///
+/// Implementations return the new access token on success, or a concrete
+/// [`JellifyError`] on failure. A `None` return means "credentials are
+/// still valid but the keyring has no fresher token" — callers treat that
+/// the same as a failure and surface [`JellifyError::AuthExpired`].
+pub type RefreshTokenFn = dyn Fn() -> Result<Option<String>> + Send + Sync;
 
 /// Per-client memoization of the library-resolution lookups behind
 /// [`JellyfinClient::music_library_id`] and
@@ -27,9 +55,16 @@ pub struct JellyfinClient {
     base_url: Url,
     device_id: String,
     device_name: String,
-    token: Option<String>,
+    /// Current access token. Stored behind a `Mutex` so the 401 interceptor
+    /// can swap in a freshly-fetched token under `&self` without fighting
+    /// the rest of the client's borrow graph.
+    token: Mutex<Option<String>>,
     user_id: Option<String>,
     library_cache: Mutex<LibraryCache>,
+    /// Optional silent re-auth hook invoked on the first 401 per request.
+    /// Wired by [`crate::JellifyCore`] at login / resume time; tests may
+    /// leave it unset to exercise the "no refresh available" fallback.
+    refresh_cb: Mutex<Option<Arc<RefreshTokenFn>>>,
 }
 
 impl JellyfinClient {
@@ -49,9 +84,10 @@ impl JellyfinClient {
             base_url: url,
             device_id,
             device_name,
-            token: None,
+            token: Mutex::new(None),
             user_id: None,
             library_cache: Mutex::new(LibraryCache::default()),
+            refresh_cb: Mutex::new(None),
         })
     }
 
@@ -67,21 +103,33 @@ impl JellyfinClient {
         self.user_id.as_deref()
     }
 
-    pub fn token(&self) -> Option<&str> {
-        self.token.as_deref()
+    pub fn token(&self) -> Option<String> {
+        self.token.lock().clone()
     }
 
     pub fn set_session(&mut self, token: String, user_id: String) {
-        self.token = Some(token);
+        *self.token.lock() = Some(token);
         self.user_id = Some(user_id);
         // Library ids are tied to `(server, user)`, so re-auth must drop
         // the memoized lookups before the new session resumes traffic.
         *self.library_cache.lock() = LibraryCache::default();
     }
 
+    /// Register a silent re-auth callback invoked on 401 responses.
+    ///
+    /// The callback is called at most once per logical request — if it
+    /// surfaces a new token the request is retried with it, otherwise the
+    /// client returns [`JellifyError::AuthExpired`] so the UI can drive the
+    /// re-auth sheet. Wired by [`crate::JellifyCore`] at login/resume so the
+    /// callback can re-read the OS credential store without the client
+    /// having to know about the [`crate::storage::Database`].
+    pub fn set_refresh_callback(&self, cb: Arc<RefreshTokenFn>) {
+        *self.refresh_cb.lock() = Some(cb);
+    }
+
     fn auth_header(&self) -> String {
-        let token_part = self
-            .token
+        let token_guard = self.token.lock();
+        let token_part = token_guard
             .as_deref()
             .map(|t| format!(", Token=\"{t}\""))
             .unwrap_or_default();
@@ -110,6 +158,17 @@ impl JellyfinClient {
         self.base_url.join(trimmed).map_err(Into::into)
     }
 
+    /// Bail out with [`JellifyError::NotAuthenticated`] when no access token
+    /// is present. Mirrors the old inline `self.token.as_ref().ok_or(...)?`
+    /// idiom now that the field lives behind a `Mutex`.
+    fn require_token(&self) -> Result<()> {
+        if self.token.lock().is_some() {
+            Ok(())
+        } else {
+            Err(JellifyError::NotAuthenticated)
+        }
+    }
+
     async fn check(resp: Response) -> Result<Response> {
         let status = resp.status();
         if status.is_success() {
@@ -123,12 +182,217 @@ impl JellyfinClient {
         }
     }
 
+    /// Is the HTTP status worth retrying?
+    ///
+    /// Retriable:
+    ///   * `408 Request Timeout` — the server gave up before we did.
+    ///   * `429 Too Many Requests` — caller will honour `Retry-After`.
+    ///   * `5xx` except `501 Not Implemented`, which is a semantic "we
+    ///     don't do that" and will never succeed on retry.
+    fn is_retriable_status(status: StatusCode) -> bool {
+        if status == StatusCode::REQUEST_TIMEOUT || status == StatusCode::TOO_MANY_REQUESTS {
+            return true;
+        }
+        if status.is_server_error() && status != StatusCode::NOT_IMPLEMENTED {
+            return true;
+        }
+        false
+    }
+
+    /// Is the transport-layer error worth retrying?
+    ///
+    /// Heuristic: we retry on timeouts, connect-phase failures (resolve,
+    /// refused, reset), and reqwest's built-in `is_request()` which covers
+    /// things like early TLS handshake failures. Body-decode errors after a
+    /// `2xx` are non-retriable — the server already committed to the
+    /// response.
+    fn is_retriable_transport_error(err: &reqwest::Error) -> bool {
+        if err.is_timeout() || err.is_connect() {
+            return true;
+        }
+        if err.is_request() {
+            // `is_request()` covers a grab-bag of early failures including
+            // failed TLS negotiation and cancelled sends — all worth a
+            // second chance.
+            return true;
+        }
+        false
+    }
+
+    /// Parse a `Retry-After` header as a delay. Accepts both the integer
+    /// seconds form and the HTTP-date form (best effort — falls back to
+    /// `None` on parse failure rather than fighting the server). Clamped by
+    /// [`RETRY_AFTER_CAP`].
+    fn parse_retry_after(headers: &HeaderMap) -> Option<Duration> {
+        let value = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?;
+        if let Ok(secs) = value.parse::<u64>() {
+            return Some(Duration::from_secs(secs).min(RETRY_AFTER_CAP));
+        }
+        // Jellyfin doesn't emit HTTP-date-form Retry-After, so we don't pull
+        // in an `httpdate` crate just for this — callers that run into such
+        // a header fall back to the exponential backoff schedule below.
+        None
+    }
+
+    /// Backoff for attempt `n` (1-indexed: attempt 1 is the first *retry*,
+    /// i.e. the backoff *after* the initial send failed). Applies ±15%
+    /// symmetric jitter seeded from the system clock.
+    fn backoff_for(attempt: u32) -> Duration {
+        let idx = (attempt.saturating_sub(1) as usize).min(BACKOFF_BASE_MS.len() - 1);
+        let base = BACKOFF_BASE_MS[idx] as f64;
+        // Cheap `±15%` jitter: the high bits of the system clock's
+        // subsecond nanos are plenty random for breaking up synchronized
+        // retries. Pulling in `rand` for this would be overkill.
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos())
+            .unwrap_or(0);
+        // Map nanos [0, 1e9) onto jitter factor [0.85, 1.15].
+        let jitter = 0.85 + (seed as f64 / 1_000_000_000.0) * 0.30;
+        Duration::from_millis((base * jitter).round() as u64)
+    }
+
+    /// Issue a request with retry + backoff + silent re-auth, returning the
+    /// raw [`Response`] for callers that need status inspection (e.g.
+    /// `lyrics()` turning `404` into `Ok(None)`, or the favorite endpoints
+    /// falling back from the preferred path to a legacy path on `404/405`).
+    ///
+    /// The caller passes a closure that returns a fresh
+    /// [`RequestBuilder`] per attempt. Rebuilding (rather than cloning) is
+    /// important for two reasons:
+    ///   1. The `Authorization` header must reflect the *current* token,
+    ///      not the one that was in place before a 401 refresh.
+    ///   2. `RequestBuilder::try_clone` returns `None` for streaming bodies
+    ///      — for uniformity we always rebuild, even when the body is a
+    ///      cheap JSON blob we could have cloned.
+    ///
+    /// Retry rules live in [`Self::is_retriable_status`] /
+    /// [`Self::is_retriable_transport_error`]; backoff ladder lives in
+    /// [`BACKOFF_BASE_MS`]. `401` is handled specially: if a refresh
+    /// callback is wired and returns a new token, the request is retried
+    /// once; otherwise this returns [`JellifyError::AuthExpired`].
+    async fn send_with_retry_raw<F>(&self, mut build: F) -> Result<Response>
+    where
+        F: FnMut() -> Result<RequestBuilder>,
+    {
+        let mut attempt: u32 = 0;
+        let mut reauth_attempted = false;
+        loop {
+            attempt += 1;
+            let builder = build()?;
+            let outcome = builder.send().await;
+
+            match outcome {
+                Ok(resp) => {
+                    let status = resp.status();
+
+                    // Silent re-auth on the first 401. If we've already
+                    // tried a refresh on this request, don't loop — the
+                    // credentials are truly stale and the UI needs to
+                    // prompt.
+                    if status == StatusCode::UNAUTHORIZED && !reauth_attempted {
+                        reauth_attempted = true;
+                        match self.try_refresh_token() {
+                            Ok(true) => {
+                                tracing::warn!(
+                                    "jellyfin 401 — refreshed token from keyring, retrying"
+                                );
+                                continue;
+                            }
+                            Ok(false) => return Err(JellifyError::AuthExpired),
+                            Err(e) => {
+                                tracing::warn!(error = %e, "token refresh failed");
+                                return Err(JellifyError::AuthExpired);
+                            }
+                        }
+                    }
+
+                    if Self::is_retriable_status(status) && attempt < MAX_ATTEMPTS {
+                        let delay = Self::parse_retry_after(resp.headers())
+                            .unwrap_or_else(|| Self::backoff_for(attempt));
+                        tracing::warn!(
+                            attempt,
+                            status = status.as_u16(),
+                            delay_ms = delay.as_millis() as u64,
+                            "jellyfin request retriable, backing off"
+                        );
+                        drop(resp);
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+
+                    return Ok(resp);
+                }
+                Err(err) => {
+                    if Self::is_retriable_transport_error(&err) && attempt < MAX_ATTEMPTS {
+                        let delay = Self::backoff_for(attempt);
+                        tracing::warn!(
+                            attempt,
+                            error = %err,
+                            delay_ms = delay.as_millis() as u64,
+                            "jellyfin transport error, backing off"
+                        );
+                        tokio::time::sleep(delay).await;
+                        continue;
+                    }
+                    return Err(JellifyError::Network(err.to_string()));
+                }
+            }
+        }
+    }
+
+    /// Convenience wrapper that runs [`Self::send_with_retry_raw`] and
+    /// additionally runs the response through [`Self::check`] — the path
+    /// almost every caller takes. Use [`Self::send_with_retry_raw`] when a
+    /// caller needs to inspect non-success status codes (e.g. 404 → Ok(None))
+    /// or dispatch to a fallback endpoint.
+    async fn send_with_retry<F>(&self, build: F) -> Result<Response>
+    where
+        F: FnMut() -> Result<RequestBuilder>,
+    {
+        let resp = self.send_with_retry_raw(build).await?;
+        Self::check(resp).await
+    }
+
+    /// Silent re-auth hook. Invokes the registered [`RefreshTokenFn`] (if
+    /// any) and, on success, swaps the client's in-memory token so the
+    /// next attempt picks it up via [`Self::auth_header`].
+    ///
+    /// Returns `Ok(true)` when a usable new token was installed,
+    /// `Ok(false)` when either no callback is wired or the callback
+    /// returned `None`, and `Err(_)` when the callback itself errored.
+    fn try_refresh_token(&self) -> Result<bool> {
+        let cb = match self.refresh_cb.lock().clone() {
+            Some(cb) => cb,
+            None => return Ok(false),
+        };
+        match cb()? {
+            Some(new_token) => {
+                // Only swap if the new token actually differs — otherwise
+                // the keyring handed back the same stale token and another
+                // retry would just loop.
+                let changed = {
+                    let mut guard = self.token.lock();
+                    let differs = guard.as_deref() != Some(new_token.as_str());
+                    if differs {
+                        *guard = Some(new_token);
+                    }
+                    differs
+                };
+                Ok(changed)
+            }
+            None => Ok(false),
+        }
+    }
+
     // ----- Public info / ping -----
 
     pub async fn public_info(&self) -> Result<PublicSystemInfo> {
         let url = self.endpoint("System/Info/Public")?;
-        let resp = self.http.get(url).send().await?;
-        Self::check(resp).await?.json().await.map_err(Into::into)
+        let resp = self
+            .send_with_retry(|| Ok(self.http.get(url.clone())))
+            .await?;
+        resp.json().await.map_err(Into::into)
     }
 
     // ----- Auth -----
@@ -144,15 +408,16 @@ impl JellyfinClient {
             pw: password.to_string(),
         };
         let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .json(&body)
-            .send()
+            .send_with_retry(|| {
+                Ok(self
+                    .http
+                    .post(url.clone())
+                    .headers(self.build_headers()?)
+                    .json(&body))
+            })
             .await?;
-        let resp = Self::check(resp).await?;
         let auth: AuthResult = resp.json().await?;
-        self.token = Some(auth.access_token.clone());
+        *self.token.lock() = Some(auth.access_token.clone());
         self.user_id = Some(auth.user.id.clone());
         Ok(Session {
             server: Server {
@@ -192,12 +457,9 @@ impl JellyfinClient {
             q.append_pair("Fields", "Genres,PrimaryImageAspectRatio");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(PaginatedArtists {
             items: raw.items.into_iter().map(Artist::from).collect(),
             total_count: raw.total_record_count,
@@ -224,12 +486,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(PaginatedAlbums {
             items: raw.items.into_iter().map(Album::from).collect(),
             total_count: raw.total_record_count,
@@ -286,12 +545,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let items: Vec<RawItem> = Self::check(resp).await?.json().await?;
+        let items: Vec<RawItem> = resp.json().await?;
         let total_count = items.len() as u32;
         let sliced: Vec<Album> = items
             .into_iter()
@@ -345,12 +601,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(PaginatedTracks {
             items: raw.items.into_iter().map(Track::from).collect(),
             total_count: raw.total_record_count,
@@ -392,12 +645,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(PaginatedTracks {
             items: raw.items.into_iter().map(Track::from).collect(),
             total_count: raw.total_record_count,
@@ -487,12 +737,9 @@ impl JellyfinClient {
             q.append_pair("Fields", "ChildCount,Path");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw)
     }
 
@@ -526,12 +773,9 @@ impl JellyfinClient {
             q.append_pair("Fields", "MediaSources,ParentId,Path,SortName");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(PaginatedTracks {
             items: raw.items.into_iter().map(Track::from).collect(),
             total_count: raw.total_record_count,
@@ -562,13 +806,8 @@ impl JellyfinClient {
             q.append_pair("Ids", &item_ids.join(","));
             q.append_pair("UserId", user_id);
         }
-        let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .send()
+        self.send_with_retry(|| Ok(self.http.post(url.clone()).headers(self.build_headers()?)))
             .await?;
-        Self::check(resp).await?;
         Ok(())
     }
 
@@ -589,12 +828,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
@@ -631,12 +867,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
@@ -669,12 +902,9 @@ impl JellyfinClient {
             q.append_pair("EnableUserData", "true");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
@@ -703,12 +933,9 @@ impl JellyfinClient {
             q.append_pair("EnableUserData", "true");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
@@ -729,12 +956,9 @@ impl JellyfinClient {
             q.append_pair("Fields", "Genres,PrimaryImageAspectRatio");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(Artist::from).collect())
     }
 
@@ -756,12 +980,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(Album::from).collect())
     }
 
@@ -781,12 +1002,9 @@ impl JellyfinClient {
             q.append_pair("Limit", &limit.max(1).to_string());
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(ItemRef::from).collect())
     }
 
@@ -818,12 +1036,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(raw.items.into_iter().map(Track::from).collect())
     }
 
@@ -847,12 +1062,9 @@ impl JellyfinClient {
             q.append_pair("Fields", "ItemCounts,PrimaryImageAspectRatio");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawGenre> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawGenre> = resp.json().await?;
         Ok(PaginatedGenres {
             items: raw.items.into_iter().map(Genre::from).collect(),
             total_count: raw.total_record_count,
@@ -887,12 +1099,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
         Ok(PaginatedAlbums {
             items: raw.items.into_iter().map(Album::from).collect(),
             total_count: raw.total_record_count,
@@ -922,12 +1131,9 @@ impl JellyfinClient {
             );
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawArtistDetail> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawArtistDetail> = resp.json().await?;
         let first = raw
             .items
             .into_iter()
@@ -950,15 +1156,12 @@ impl JellyfinClient {
     /// Jellyfin's 100-ns tick units so UIs can compare directly against
     /// the audio engine's playback position.
     pub async fn lyrics(&self, track_id: &str) -> Result<Option<Lyrics>> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
         let url = self.endpoint(&format!("Audio/{track_id}/Lyrics"))?;
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry_raw(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+        if resp.status() == StatusCode::NOT_FOUND {
             return Ok(None);
         }
         let raw: RawLyrics = Self::check(resp).await?.json().await?;
@@ -993,12 +1196,9 @@ impl JellyfinClient {
             q.append_pair("userId", user_id);
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let mut body: serde_json::Value = Self::check(resp).await?.json().await?;
+        let mut body: serde_json::Value = resp.json().await?;
         let items = body
             .get_mut("Items")
             .and_then(|v| v.as_array_mut())
@@ -1028,14 +1228,11 @@ impl JellyfinClient {
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no token is set.
     pub async fn set_favorite(&self, item_id: &str) -> Result<FavoriteState> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
 
         let url = self.endpoint(&format!("UserFavoriteItems/{item_id}"))?;
         let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry_raw(|| Ok(self.http.post(url.clone()).headers(self.build_headers()?)))
             .await?;
 
         if resp.status().is_success() {
@@ -1044,22 +1241,20 @@ impl JellyfinClient {
 
         if matches!(
             resp.status(),
-            reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::METHOD_NOT_ALLOWED
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
         ) {
             if let Some(user_id) = self.user_id.as_ref() {
                 let legacy_url =
                     self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
                 let legacy_resp = self
-                    .http
-                    .post(legacy_url)
-                    .headers(self.build_headers()?)
-                    .send()
+                    .send_with_retry(|| {
+                        Ok(self
+                            .http
+                            .post(legacy_url.clone())
+                            .headers(self.build_headers()?))
+                    })
                     .await?;
-                return Self::check(legacy_resp)
-                    .await?
-                    .json()
-                    .await
-                    .map_err(Into::into);
+                return legacy_resp.json().await.map_err(Into::into);
             }
         }
 
@@ -1080,14 +1275,13 @@ impl JellyfinClient {
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no token is set.
     pub async fn unset_favorite(&self, item_id: &str) -> Result<FavoriteState> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
 
         let url = self.endpoint(&format!("UserFavoriteItems/{item_id}"))?;
         let resp = self
-            .http
-            .delete(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry_raw(|| {
+                Ok(self.http.delete(url.clone()).headers(self.build_headers()?))
+            })
             .await?;
 
         if resp.status().is_success() {
@@ -1096,22 +1290,20 @@ impl JellyfinClient {
 
         if matches!(
             resp.status(),
-            reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::METHOD_NOT_ALLOWED
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED
         ) {
             if let Some(user_id) = self.user_id.as_ref() {
                 let legacy_url =
                     self.endpoint(&format!("Users/{user_id}/FavoriteItems/{item_id}"))?;
                 let legacy_resp = self
-                    .http
-                    .delete(legacy_url)
-                    .headers(self.build_headers()?)
-                    .send()
+                    .send_with_retry(|| {
+                        Ok(self
+                            .http
+                            .delete(legacy_url.clone())
+                            .headers(self.build_headers()?))
+                    })
                     .await?;
-                return Self::check(legacy_resp)
-                    .await?
-                    .json()
-                    .await
-                    .map_err(Into::into);
+                return legacy_resp.json().await.map_err(Into::into);
             }
         }
 
@@ -1142,13 +1334,15 @@ impl JellyfinClient {
             media_type: "Audio".to_string(),
         };
         let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .json(&body)
-            .send()
+            .send_with_retry(|| {
+                Ok(self
+                    .http
+                    .post(url.clone())
+                    .headers(self.build_headers()?)
+                    .json(&body))
+            })
             .await?;
-        let result: CreatePlaylistResult = Self::check(resp).await?.json().await?;
+        let result: CreatePlaylistResult = resp.json().await?;
         Ok(result.id)
     }
 
@@ -1169,7 +1363,7 @@ impl JellyfinClient {
         position_ticks: i64,
         is_paused: bool,
     ) -> Result<()> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
 
         let url = self.endpoint("Sessions/Playing/Progress")?;
         let body = PlaybackProgressBody {
@@ -1177,14 +1371,14 @@ impl JellyfinClient {
             position_ticks,
             is_paused,
         };
-        let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .json(&body)
-            .send()
-            .await?;
-        Self::check(resp).await?;
+        self.send_with_retry(|| {
+            Ok(self
+                .http
+                .post(url.clone())
+                .headers(self.build_headers()?)
+                .json(&body))
+        })
+        .await?;
         Ok(())
     }
 
@@ -1216,12 +1410,9 @@ impl JellyfinClient {
             q.append_pair("Fields", "Genres,ProductionYear,PrimaryImageAspectRatio");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawItem> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
 
         let mut artists = Vec::new();
         let mut albums = Vec::new();
@@ -1277,12 +1468,9 @@ impl JellyfinClient {
             q.append_pair("startIndex", &paging.offset.to_string());
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawSearchHintResults = Self::check(resp).await?.json().await?;
+        let raw: RawSearchHintResults = resp.json().await?;
         Ok(SearchHintResults {
             search_hints: raw.search_hints.into_iter().map(SearchHint::from).collect(),
             total_record_count: raw.total_record_count,
@@ -1305,20 +1493,20 @@ impl JellyfinClient {
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no token is set.
     pub async fn report_playback_stopped(&self, item_id: &str, position_ticks: i64) -> Result<()> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
         let url = self.endpoint("Sessions/Playing/Stopped")?;
         let body = PlaybackStoppedBody {
             item_id: item_id.to_string(),
             position_ticks,
         };
-        let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .json(&body)
-            .send()
-            .await?;
-        Self::check(resp).await?;
+        self.send_with_retry(|| {
+            Ok(self
+                .http
+                .post(url.clone())
+                .headers(self.build_headers()?)
+                .json(&body))
+        })
+        .await?;
         Ok(())
     }
 
@@ -1337,16 +1525,16 @@ impl JellyfinClient {
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no token is set.
     pub async fn report_playback_started(&self, info: PlaybackStartInfo) -> Result<()> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
         let url = self.endpoint("Sessions/Playing")?;
-        let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .json(&info)
-            .send()
-            .await?;
-        Self::check(resp).await?;
+        self.send_with_retry(|| {
+            Ok(self
+                .http
+                .post(url.clone())
+                .headers(self.build_headers()?)
+                .json(&info))
+        })
+        .await?;
         Ok(())
     }
 
@@ -1362,16 +1550,16 @@ impl JellyfinClient {
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no token is set.
     pub async fn post_capabilities(&self, caps: ClientCapabilities) -> Result<()> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
         let url = self.endpoint("Sessions/Capabilities/Full")?;
-        let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .json(&caps)
-            .send()
-            .await?;
-        Self::check(resp).await?;
+        self.send_with_retry(|| {
+            Ok(self
+                .http
+                .post(url.clone())
+                .headers(self.build_headers()?)
+                .json(&caps)) // ClientCapabilities is Clone so the body can be rebuilt each attempt via serde
+        })
+        .await?;
         Ok(())
     }
 
@@ -1408,13 +1596,15 @@ impl JellyfinClient {
         }
         let url = self.endpoint(&format!("Items/{item_id}/PlaybackInfo"))?;
         let resp = self
-            .http
-            .post(url)
-            .headers(self.build_headers()?)
-            .json(&body)
-            .send()
+            .send_with_retry(|| {
+                Ok(self
+                    .http
+                    .post(url.clone())
+                    .headers(self.build_headers()?)
+                    .json(&body))
+            })
             .await?;
-        Self::check(resp).await?.json().await.map_err(Into::into)
+        resp.json().await.map_err(Into::into)
     }
 
     // ----- Library resolution -----
@@ -1436,12 +1626,9 @@ impl JellyfinClient {
         let mut url = self.endpoint("UserViews")?;
         url.query_pairs_mut().append_pair("userId", user_id);
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawLibrary> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawLibrary> = resp.json().await?;
         Ok(raw.items.into_iter().map(Library::from).collect())
     }
 
@@ -1496,12 +1683,9 @@ impl JellyfinClient {
             q.append_pair("excludeItemTypes", "CollectionFolder");
         }
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let raw: RawItems<RawLibrary> = Self::check(resp).await?.json().await?;
+        let raw: RawItems<RawLibrary> = resp.json().await?;
         let id = raw
             .items
             .into_iter()
@@ -1542,20 +1726,15 @@ impl JellyfinClient {
         playlist_id: &str,
         entry_ids: &[String],
     ) -> Result<()> {
-        self.token.as_ref().ok_or(JellifyError::NotAuthenticated)?;
+        self.require_token()?;
         if entry_ids.is_empty() {
             return Ok(());
         }
         let mut url = self.endpoint(&format!("Playlists/{playlist_id}/Items"))?;
         url.query_pairs_mut()
             .append_pair("entryIds", &entry_ids.join(","));
-        let resp = self
-            .http
-            .delete(url)
-            .headers(self.build_headers()?)
-            .send()
+        self.send_with_retry(|| Ok(self.http.delete(url.clone()).headers(self.build_headers()?)))
             .await?;
-        Self::check(resp).await?;
         Ok(())
     }
 
@@ -1566,12 +1745,8 @@ impl JellyfinClient {
     pub async fn stream_bytes(&self, track_id: &str) -> Result<(Vec<u8>, Option<String>)> {
         let url = self.stream_url(track_id)?;
         let resp = self
-            .http
-            .get(url)
-            .headers(self.build_headers()?)
-            .send()
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
-        let resp = Self::check(resp).await?;
         let content_type = resp
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
@@ -1597,7 +1772,7 @@ impl JellyfinClient {
             q.append_pair("AudioCodec", "mp3,aac,flac,alac,pcm,vorbis,opus");
             q.append_pair("TranscodingContainer", "mp3");
             q.append_pair("TranscodingProtocol", "http");
-            if let Some(token) = &self.token {
+            if let Some(token) = self.token.lock().as_deref() {
                 q.append_pair("api_key", token);
             }
         }
