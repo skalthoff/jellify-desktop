@@ -232,9 +232,9 @@ async fn fetch_item_builds_expected_query_and_extracts_first() {
         .await;
     Mock::given(method("GET"))
         .and(path("/Items"))
-        .and(wiremock::matchers::query_param("ids", "item-xyz"))
+        .and(wiremock::matchers::query_param("Ids", "item-xyz"))
         .and(wiremock::matchers::query_param(
-            "fields",
+            "Fields",
             "Overview,Genres,Tags,ProductionYear",
         ))
         .and(wiremock::matchers::query_param("userId", "u1"))
@@ -278,6 +278,14 @@ async fn fetch_item_builds_expected_query_and_extracts_first() {
 #[tokio::test]
 async fn fetch_item_empty_items_returns_not_found() {
     let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
     Mock::given(method("GET"))
         .and(path("/Items"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
@@ -287,12 +295,28 @@ async fn fetch_item_empty_items_returns_not_found() {
         .mount(&server)
         .await;
 
-    let client = mock_client(&server.uri());
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.fetch_item("missing-id", &[]).await.unwrap_err();
     match err {
         crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 404),
         other => panic!("expected Server 404, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn fetch_item_without_session_returns_not_authenticated() {
+    // No MockServer endpoints registered for /Items: the guard must short-circuit
+    // before any network call. We still point at a live MockServer so that if
+    // the guard regresses, the request would surface as an unmatched-route error
+    // rather than silently hitting an unrelated host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.fetch_item("anything", &[]).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
 }
 
 #[test]

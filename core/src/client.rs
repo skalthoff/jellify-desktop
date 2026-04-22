@@ -279,25 +279,30 @@ impl JellyfinClient {
 
     /// Fetch a single item by id with a caller-selected set of `Fields`.
     ///
-    /// Uses `GET /Items?ids={id}&fields=...` as a workaround for the
+    /// Uses `GET /Items?Ids={id}&Fields=...` as a workaround for the
     /// deprecated `/Users/{userId}/Items/{itemId}` endpoint. Returns the
     /// first element of the `Items` array as raw JSON so callers can pick
     /// whichever fields they asked for without this layer pre-projecting.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
     ///
     /// Returns [`JellifyError::Server`] with status `404` when the server
     /// responds successfully but the `Items` array is empty (item not
     /// found or not visible to the current user).
     pub async fn fetch_item(&self, item_id: &str, fields: &[&str]) -> Result<serde_json::Value> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
         let mut url = self.endpoint("Items")?;
         {
             let mut q = url.query_pairs_mut();
-            q.append_pair("ids", item_id);
+            q.append_pair("Ids", item_id);
             if !fields.is_empty() {
-                q.append_pair("fields", &fields.join(","));
+                q.append_pair("Fields", &fields.join(","));
             }
-            if let Some(user_id) = self.user_id.as_deref() {
-                q.append_pair("userId", user_id);
-            }
+            q.append_pair("userId", user_id);
         }
         let resp = self
             .http
