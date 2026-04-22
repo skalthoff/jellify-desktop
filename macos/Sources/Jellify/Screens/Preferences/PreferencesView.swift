@@ -60,7 +60,6 @@ struct PreferencesView: View {
             .background(Theme.bg)
         }
         .frame(width: 780, height: 520)
-        .preferredColorScheme(.dark)
     }
 
     @ViewBuilder
@@ -172,15 +171,6 @@ private struct GeneralPane: View {
         PlaceholderPane(
             title: "General",
             subtitle: "Launch-at-login, menubar, and default window behavior."
-        )
-    }
-}
-
-private struct AppearancePane: View {
-    var body: some View {
-        PlaceholderPane(
-            title: "Appearance",
-            subtitle: "Theme, mode, density, and sidebar visibility."
         )
     }
 }
