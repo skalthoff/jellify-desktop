@@ -22,8 +22,17 @@ final class AppModel {
     var username: String = ""
 
     // MARK: - Navigation
-    enum Screen: Hashable { case home, discover, library, search, settings, album(String), artist(String), playlist(String) }
+    enum Screen: Hashable { case home, discover, library, search, settings, album(String), artist(String), playlist(String), nowPlaying }
     var screen: Screen = .library
+
+    /// Screen the app was on before the user opened the full Now Playing
+    /// view. `NowPlayingView` offers a "Back" affordance that pops to this
+    /// value rather than unconditionally routing to `.library`, so a user
+    /// who opened the full player from the Album detail page lands back
+    /// there on exit. `nil` when we've never been anywhere interesting
+    /// (first launch lands on `.library`, which is already the fallback).
+    /// See #89.
+    var previousScreen: Screen?
 
     /// Toggled by the ⌘F menu command to request that `SearchView` move
     /// keyboard focus into its text field. `SearchView` observes changes and
@@ -157,6 +166,19 @@ final class AppModel {
     /// skip redundant network calls when the status poll fires with the
     /// same track still playing.
     private var currentTrackPeopleForId: String?
+
+    /// Parsed lyrics for the currently-playing track, if any. Populated by
+    /// `fetchCurrentTrackLyrics()` on track changes and cleared when the
+    /// track stops. `nil` while a fetch is pending or when no lyrics have
+    /// been requested yet; empty array when the server answered but had no
+    /// lyrics. The Lyrics tab of the Now Playing view uses the
+    /// `nil` / empty distinction to render a loading state vs. a "No
+    /// lyrics available" placeholder. See #91, #273, #287, #288.
+    var currentLyrics: [LyricLine]?
+    /// Track id that `currentLyrics` was fetched for, to skip redundant
+    /// network calls while the same track keeps playing. Mirrors
+    /// `currentTrackPeopleForId`.
+    private var currentLyricsForId: String?
 
     // MARK: - Loading / errors
     var isLoggingIn = false
@@ -303,6 +325,8 @@ final class AppModel {
         searchQuery = ""
         currentTrackPeople = []
         currentTrackPeopleForId = nil
+        currentLyrics = nil
+        currentLyricsForId = nil
         resetPaginationState()
         stopPolling()
     }
@@ -336,6 +360,8 @@ final class AppModel {
         searchQuery = ""
         currentTrackPeople = []
         currentTrackPeopleForId = nil
+        currentLyrics = nil
+        currentLyricsForId = nil
         resetPaginationState()
         stopPolling()
     }
@@ -1563,6 +1589,43 @@ final class AppModel {
         }
     }
 
+    /// Load lyrics for the currently-playing track and publish them on
+    /// `currentLyrics`. Supports both LRC (timestamped) and plain-text
+    /// bodies — the parser detects the shape and `LyricsView` renders the
+    /// right layout. See #91, #273, #287, #288.
+    ///
+    /// TODO(core-#162): wire to `core.track_lyrics(track_id)` once the FFI
+    /// lands. Jellyfin exposes lyrics at `GET /Audio/{id}/Lyrics` (and as
+    /// a `Lyrics` field on the item JSON when requested); the core is the
+    /// right place to decide between the two and return a normalized
+    /// string. Until that ships this method is a stub that clears any
+    /// stale data and returns an empty result so the view renders its
+    /// "No lyrics available" empty state.
+    ///
+    /// Safe to call repeatedly — short-circuits when the current track
+    /// id already matches the last successful fetch. Cleared on track
+    /// change by the polling loop (see `startPolling`).
+    func fetchCurrentTrackLyrics() async {
+        guard let track = status.currentTrack else {
+            currentLyrics = nil
+            currentLyricsForId = nil
+            return
+        }
+        if currentLyricsForId == track.id { return }
+        let id = track.id
+
+        // TODO(core-#162): replace the stub with
+        //   let raw = try core.trackLyrics(itemId: id)
+        //   currentLyrics = LyricLine.parseLRC(raw)
+        // For now we publish an empty array so the Lyrics tab renders
+        // the "No lyrics available" empty state rather than a perpetual
+        // loading spinner — unlocks the surrounding Now Playing UI
+        // without blocking on the core FFI.
+        guard status.currentTrack?.id == id else { return }
+        currentLyrics = []
+        currentLyricsForId = id
+    }
+
     // MARK: - Status polling
 
     private func startPolling() {
@@ -1581,8 +1644,11 @@ final class AppModel {
                     if after == nil {
                         self.currentTrackPeople = []
                         self.currentTrackPeopleForId = nil
+                        self.currentLyrics = nil
+                        self.currentLyricsForId = nil
                     } else {
                         Task { await self.fetchCurrentTrackDetails() }
+                        Task { await self.fetchCurrentTrackLyrics() }
                     }
                 }
             }

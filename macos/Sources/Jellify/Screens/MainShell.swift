@@ -73,6 +73,8 @@ struct MainShell: View {
             ArtistDetailView(artistID: id)
         case .playlist(let id):
             PlaylistView(playlistID: id)
+        case .nowPlaying:
+            NowPlayingView()
         default:
             LibraryView()
         }
@@ -132,6 +134,8 @@ struct MainShell: View {
             } else {
                 segments.append("Playlist")
             }
+        case .nowPlaying:
+            segments.append("Now Playing")
         case .settings:
             segments.append("Settings")
         }
@@ -152,7 +156,7 @@ struct MainShell: View {
         }
 
         switch model.screen {
-        case .home, .discover, .library, .search, .settings:
+        case .home, .discover, .library, .search, .settings, .nowPlaying:
             // Shape: ["Jellify", <current>] — only the final index, which is
             // the current location and non-navigable. Nothing to do.
             break
