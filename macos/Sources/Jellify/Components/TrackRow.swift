@@ -68,20 +68,38 @@ struct TrackRow: View {
 }
 
 /// Tiny three-bar equalizer visual for the "now playing" row.
+/// Respects Reduce Motion: swaps to a static three-bar glyph when on.
 struct EqualizerIcon: View {
-    @State private var phase: Double = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Static heights used when Reduce Motion is enabled — chosen to read as
+    /// a recognizable EQ glyph without implying motion.
+    private let staticHeights: [CGFloat] = [9, 12, 7]
+
     var body: some View {
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
+        if reduceMotion {
             HStack(alignment: .bottom, spacing: 2) {
                 ForEach(0..<3, id: \.self) { i in
-                    let height = 4 + CGFloat(abs(sin(t * 3 + Double(i) * 0.7))) * 10
                     Rectangle()
-                        .frame(width: 3, height: height)
-                        .animation(.linear(duration: 0.1), value: height)
+                        .frame(width: 3, height: staticHeights[i])
                 }
             }
             .frame(height: 14)
+            .accessibilityLabel("Now playing")
+        } else {
+            TimelineView(.animation) { timeline in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                HStack(alignment: .bottom, spacing: 2) {
+                    ForEach(0..<3, id: \.self) { i in
+                        let height = 4 + CGFloat(abs(sin(t * 3 + Double(i) * 0.7))) * 10
+                        Rectangle()
+                            .frame(width: 3, height: height)
+                            .animation(.linear(duration: 0.1), value: height)
+                    }
+                }
+                .frame(height: 14)
+            }
+            .accessibilityLabel("Now playing")
         }
     }
 }

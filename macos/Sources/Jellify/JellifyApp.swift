@@ -27,6 +27,7 @@ struct JellifyApp: App {
 
 struct RootView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -37,5 +38,7 @@ struct RootView: View {
             }
         }
         .background(Theme.bg)
+        // Login <-> main shell swap is instant under Reduce Motion.
+        .animation(reduceMotion ? nil : .default, value: model.session != nil)
     }
 }
