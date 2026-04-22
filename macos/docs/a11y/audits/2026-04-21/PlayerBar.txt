@@ -1,0 +1,23 @@
+Accessibility Inspector Audit Report
+App:     Jellify
+Screen:  PlayerBar (track playing)
+Build:   e44fbda / 2026-04-21 21:25:44 -0700
+Runner:  skalthoff (manual, Xcode Accessibility Inspector)
+
+Findings
+--------
+[Element]   PlayerBar/shuffle icon button
+[Warning]   Button has no accessibility label (VoiceOver reads as "button")
+[Tracking]  #331
+
+[Element]   PlayerBar/repeat icon button
+[Warning]   Button has no accessibility label (VoiceOver reads as "button")
+[Tracking]  #331
+
+[Element]   PlayerBar/progress bar
+[Warning]   Not exposed as an accessible slider; no min/max/current value
+[Tracking]  #332
+
+(Full scan pending — populate with output from `Audit` panel for each screen
+ listed in README.md. This file is the baseline-format stub; replace its
+ body with real Inspector output when an audit run lands.)
