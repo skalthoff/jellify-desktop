@@ -4,6 +4,7 @@ import SwiftUI
 struct SearchView: View {
     @Environment(AppModel.self) private var model
     @State private var query: String = ""
+    @FocusState private var searchFieldFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -57,6 +58,23 @@ struct SearchView: View {
             .padding(.bottom, 32)
         }
         .background(Theme.bg)
+        .onAppear {
+            // Focus the search field immediately whenever the Search screen
+            // appears so ⌘F (which sets screen = .search) lands focus here.
+            if model.requestSearchFocus {
+                searchFieldFocused = true
+                model.requestSearchFocus = false
+            }
+        }
+        .onChange(of: model.requestSearchFocus) { _, newValue in
+            // Handles the case where the Search screen is already visible
+            // when ⌘F is pressed — `onAppear` won't fire again, but
+            // `focusSearch()` toggles this flag so we can refocus here.
+            if newValue {
+                searchFieldFocused = true
+                model.requestSearchFocus = false
+            }
+        }
     }
 
     private var searchField: some View {
@@ -68,6 +86,7 @@ struct SearchView: View {
                 .textFieldStyle(.plain)
                 .font(Theme.font(18, weight: .medium))
                 .foregroundStyle(Theme.ink)
+                .focused($searchFieldFocused)
                 .onSubmit {
                     Task { await model.search(query) }
                 }

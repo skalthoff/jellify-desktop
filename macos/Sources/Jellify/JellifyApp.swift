@@ -127,11 +127,10 @@ struct JellifyCommands: Commands {
             .keyboardShortcut("l", modifiers: .command)
             .disabled(model.session == nil)
 
-            // ⌘F focuses search. The dedicated command palette (⌘K) tracked
-            // in issue #305 does not exist yet, so both bindings currently
-            // route to the Search screen.
+            // ⌘F focuses search. Uses focusSearch() so the search TextField
+            // actually receives keyboard focus — not just a screen switch.
             Button("Find…") {
-                model.screen = .search
+                model.focusSearch()
             }
             .keyboardShortcut("f", modifiers: .command)
             .disabled(model.session == nil)
@@ -139,7 +138,7 @@ struct JellifyCommands: Commands {
             // TODO(#305): Replace with a dedicated command palette once the
             // palette UI lands. For now ⌘K mirrors ⌘F.
             Button("Command Palette") {
-                model.screen = .search
+                model.focusSearch()
             }
             .keyboardShortcut("k", modifiers: .command)
             .disabled(model.session == nil)
