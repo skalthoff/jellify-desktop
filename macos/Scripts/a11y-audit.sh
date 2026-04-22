@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Launch a debug build of Jellify.app in a known state for Accessibility
-# Inspector audits. Accessibility Inspector itself cannot be driven from the
-# command line, so the manual steps are:
+# Build and launch the current Jellify.app for Accessibility Inspector
+# audits. Accessibility Inspector itself cannot be driven from the command
+# line, so the manual steps are:
 #
 #   1. Run this script.
 #   2. Open Xcode -> Open Developer Tool -> Accessibility Inspector.
@@ -13,13 +13,56 @@
 #      ../docs/a11y/audits/<YYYY-MM-DD>/<screen>.txt.
 #   6. Ctrl-C this script (or `kill $PID`) when done.
 #
-# Usage:  ./macos/Scripts/a11y-audit.sh
+# By default this script only rebuilds the app and launches it; it does not
+# touch any per-user state. Pass --fresh to wipe Jellify's saved preferences
+# and Application Support data before launch so repeated audits run against
+# a comparable empty state.
+#
+# Usage:
+#   ./macos/Scripts/a11y-audit.sh           # build + launch current app
+#   ./macos/Scripts/a11y-audit.sh --fresh   # also clear per-user state first
 set -euo pipefail
+
+BUNDLE_ID="org.jellify.desktop"
+FRESH=0
+for arg in "$@"; do
+  case "$arg" in
+    --fresh)
+      FRESH=1
+      ;;
+    -h | --help)
+      sed -n '2,20p' "${BASH_SOURCE[0]}"
+      exit 0
+      ;;
+    *)
+      echo "error: unknown argument: $arg" >&2
+      echo "usage: $0 [--fresh]" >&2
+      exit 2
+      ;;
+  esac
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MACOS="$ROOT/macos"
 
 cd "$MACOS"
+
+if [[ "$FRESH" -eq 1 ]]; then
+  echo "==> Clearing per-user state for $BUNDLE_ID"
+  PREFS="$HOME/Library/Preferences/${BUNDLE_ID}.plist"
+  APP_SUPPORT="$HOME/Library/Application Support/Jellify"
+  if [[ -e "$PREFS" ]]; then
+    rm -f "$PREFS"
+    echo "   removed $PREFS"
+  fi
+  if [[ -d "$APP_SUPPORT" ]]; then
+    rm -rf "$APP_SUPPORT"
+    echo "   removed $APP_SUPPORT"
+  fi
+  # `defaults` caches preferences per-process; flush so the next launch
+  # sees the deletion.
+  defaults delete "$BUNDLE_ID" 2>/dev/null || true
+fi
 
 echo "==> Building jellify_core (xcframework)"
 ./Scripts/build-core.sh
