@@ -32,6 +32,10 @@ pub struct Artist {
     pub song_count: u32,
     pub genres: Vec<String>,
     pub image_tag: Option<String>,
+    /// The server's `UserData` projection for this artist — carries the
+    /// favorite flag, play count, last-played date, etc. `None` when the
+    /// caller did not request `Fields=UserData` or the server omitted it.
+    pub user_data: Option<UserItemData>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
@@ -45,6 +49,10 @@ pub struct Album {
     pub runtime_ticks: u64,
     pub genres: Vec<String>,
     pub image_tag: Option<String>,
+    /// The server's `UserData` projection for this album — carries the
+    /// favorite flag, play count, last-played date, etc. `None` when the
+    /// caller did not request `Fields=UserData` or the server omitted it.
+    pub user_data: Option<UserItemData>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
@@ -59,11 +67,21 @@ pub struct Track {
     pub disc_number: Option<u32>,
     pub year: Option<i32>,
     pub runtime_ticks: u64,
+    /// Convenience mirror of `user_data.as_ref().map(|u| u.is_favorite)`
+    /// for call sites that only need the favorite flag. Kept for backwards
+    /// compatibility with pre-[`UserItemData`] code; new code should read
+    /// `user_data.is_favorite` so the full payload is available.
     pub is_favorite: bool,
+    /// Convenience mirror of `user_data.as_ref().map(|u| u.play_count)`.
+    /// See [`Self::is_favorite`].
     pub play_count: u32,
     pub container: Option<String>,
     pub bitrate: Option<u32>,
     pub image_tag: Option<String>,
+    /// The server's `UserData` projection for this track — carries the
+    /// favorite flag, play count, playback position, etc. `None` when the
+    /// caller did not request `Fields=UserData` or the server omitted it.
+    pub user_data: Option<UserItemData>,
 }
 
 impl Track {
@@ -270,6 +288,30 @@ pub struct FavoriteState {
     pub play_count: Option<u32>,
     #[serde(rename = "LastPlayedDate", default)]
     pub last_played: Option<String>,
+}
+
+/// Full `UserItemData` projection as returned by Jellyfin for each user /
+/// item pair. When callers request `Fields=UserData` on a library endpoint,
+/// the server embeds this struct on every returned item; [`Album`],
+/// [`Artist`], and [`Track`] surface it via their optional `user_data` field.
+///
+/// `playback_position_ticks` is in Jellyfin's 100-ns tick units
+/// (`seconds * 10_000_000`). `last_played_at` is the raw ISO-8601 string the
+/// server returns, or `None` when the item has never been played.
+///
+/// `likes` / `rating` are Jellyfin's optional thumbs / numeric-rating fields;
+/// the Jellyfin Web UI surfaces them independently from the star-based
+/// `CommunityRating` and they round-trip here so a future ratings UI can
+/// read them without another round-trip.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, uniffi::Record)]
+pub struct UserItemData {
+    pub is_favorite: bool,
+    pub played: bool,
+    pub play_count: u32,
+    pub playback_position_ticks: i64,
+    pub last_played_at: Option<String>,
+    pub likes: Option<bool>,
+    pub rating: Option<f64>,
 }
 
 #[derive(Clone, Copy, Debug, Default, uniffi::Record)]
@@ -560,32 +602,6 @@ pub struct PlaybackStartInfo {
     pub is_muted: bool,
 }
 
-/// Jellyfin image variants served from `GET /Items/{id}/Images/{type}`.
-/// Mirrors the `ImageType` routes defined by the Jellyfin `ImageController`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
-pub enum ImageType {
-    Primary,
-    Backdrop,
-    Thumb,
-    Disc,
-    Logo,
-    Banner,
-    Art,
-    Box,
-}
-
-impl ImageType {
-    /// Path segment as Jellyfin expects it in the URL.
-    pub fn as_path(&self) -> &'static str {
-        match self {
-            ImageType::Primary => "Primary",
-            ImageType::Backdrop => "Backdrop",
-            ImageType::Thumb => "Thumb",
-            ImageType::Disc => "Disc",
-            ImageType::Logo => "Logo",
-            ImageType::Banner => "Banner",
-            ImageType::Art => "Art",
-            ImageType::Box => "Box",
-        }
-    }
-}
+// `ImageType` now lives in `crate::enums` alongside the other typed query
+// enums (`ItemKind`, `ItemSortBy`, `SortOrder`, `ItemField`). It is
+// re-exported from the crate root for backwards-compatible imports.

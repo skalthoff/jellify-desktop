@@ -1,5 +1,6 @@
 use crate::client::JellyfinClient;
-use crate::models::{ImageType, Paging};
+use crate::enums::ImageType;
+use crate::models::Paging;
 use crate::storage::{CredentialStore, Database};
 use crate::{CoreConfig, JellifyCore};
 use serde_json::json;
@@ -1045,9 +1046,11 @@ async fn artist_detail_returns_server_404_on_empty_items() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.artist_detail("missing").await.unwrap_err();
+    // Post-refactor: the 404 local-miss case uses the dedicated
+    // `NotFound` variant rather than the coarse `Server { status: 404 }`.
     assert!(
-        matches!(err, crate::error::JellifyError::Server { status: 404, .. }),
-        "expected 404 Server error, got {err:?}"
+        matches!(err, crate::error::JellifyError::NotFound(_)),
+        "expected NotFound, got {err:?}"
     );
 }
 
@@ -1826,10 +1829,12 @@ async fn fetch_item_empty_items_returns_not_found() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.fetch_item("missing-id", &[]).await.unwrap_err();
-    match err {
-        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 404),
-        other => panic!("expected Server 404, got {other:?}"),
-    }
+    // Post-refactor: the local empty-items miss raises `NotFound` rather
+    // than the coarse `Server { status: 404 }`.
+    assert!(
+        matches!(err, crate::error::JellifyError::NotFound(_)),
+        "expected NotFound, got {err:?}"
+    );
 }
 
 #[tokio::test]
@@ -3129,10 +3134,12 @@ async fn music_library_id_returns_404_when_no_music_view() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.music_library_id().await.unwrap_err();
-    match err {
-        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 404),
-        other => panic!("expected Server 404, got {other:?}"),
-    }
+    // Post-refactor: a missing "music" collection view surfaces as
+    // `NotFound` rather than the coarse `Server { status: 404 }`.
+    assert!(
+        matches!(err, crate::error::JellifyError::NotFound(_)),
+        "expected NotFound, got {err:?}"
+    );
 }
 
 #[tokio::test]
@@ -3337,10 +3344,12 @@ async fn remove_from_playlist_propagates_server_errors() {
         .remove_from_playlist("pl-1", &["entry-1".into()])
         .await
         .unwrap_err();
-    match err {
-        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 403),
-        other => panic!("expected Server 403, got {other:?}"),
-    }
+    // Post-refactor: 403 responses surface as the dedicated `Forbidden`
+    // variant rather than the coarse `Server { status: 403 }`.
+    assert!(
+        matches!(err, crate::error::JellifyError::Forbidden(_)),
+        "expected Forbidden, got {err:?}"
+    );
 }
 
 #[tokio::test]
@@ -3926,4 +3935,397 @@ async fn forget_token_preserves_server_url_and_username() {
     })
     .await
     .expect("join forget task");
+}
+
+// ---------------------------------------------------------------------------
+// BATCH-24: typed enums / ItemsQuery / structured errors / UserItemData
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn items_query_builder_round_trips_through_server() {
+    // End-to-end: a hand-built `ItemsQuery` should produce the same
+    // server-facing request as the legacy per-endpoint methods. We check
+    // for the critical query params and confirm the response maps to the
+    // expected `PaginatedAlbums`.
+    use crate::enums::{ItemField, ItemKind, ItemSortBy, SortOrder};
+    use crate::query::ItemsQuery;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "a1", "Name": "Test Album", "Type": "MusicAlbum",
+                    "AlbumArtist": "Test Artist",
+                    "ProductionYear": 2024, "ChildCount": 10,
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = ItemsQuery::new()
+        .recursive()
+        .item_types(vec![ItemKind::MusicAlbum])
+        .sort(ItemSortBy::SortName, SortOrder::Ascending)
+        .limit(50)
+        .offset(0)
+        .fields(vec![ItemField::Genres, ItemField::ProductionYear])
+        .fetch_albums(&client)
+        .await
+        .unwrap();
+
+    assert_eq!(page.total_count, 1);
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].name, "Test Album");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("IncludeItemTypes=MusicAlbum"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("SortBy=SortName"), "query: {q}");
+    assert!(q.contains("SortOrder=Ascending"), "query: {q}");
+    assert!(q.contains("Limit=50"), "query: {q}");
+    assert!(q.contains("StartIndex=0"), "query: {q}");
+}
+
+#[tokio::test]
+async fn items_query_builder_clamps_zero_limit_to_one() {
+    use crate::query::ItemsQuery;
+
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = ItemsQuery::new().limit(0).execute(&client).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("query");
+    assert!(q.contains("Limit=1"), "expected clamped limit: {q}");
+}
+
+#[tokio::test]
+async fn items_query_builder_requires_user_id() {
+    // With no session AND no explicit `user_id`, `execute` must short-circuit
+    // before any HTTP call with `NotAuthenticated`.
+    use crate::query::ItemsQuery;
+
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = ItemsQuery::new().execute(&client).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn structured_error_auth_maps_401() {
+    // A 401 from the server should surface as `JellifyError::Auth`, not
+    // the coarse `Server { status, message }`.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(401).set_body_string("unauthorized"))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::Auth(_)),
+        "expected Auth for 401, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn structured_error_forbidden_maps_403() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::Forbidden(_)),
+        "expected Forbidden for 403, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn structured_error_rate_limit_parses_retry_after() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(
+            ResponseTemplate::new(429)
+                .insert_header("Retry-After", "42")
+                .set_body_string("slow down"),
+        )
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
+    match err {
+        crate::error::JellifyError::RateLimit { retry_after } => {
+            assert_eq!(retry_after, Some(42));
+        }
+        other => panic!("expected RateLimit, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn structured_error_server_5xx_is_retryable() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(503).set_body_string("unavailable"))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
+    match &err {
+        crate::error::JellifyError::Server { status, .. } => assert_eq!(*status, 503),
+        other => panic!("expected Server, got {other:?}"),
+    }
+    assert!(err.is_retryable(), "5xx must be retryable");
+}
+
+#[test]
+fn structured_error_is_retryable_classification() {
+    use crate::error::JellifyError;
+
+    // Retryable: RateLimit, Network, Server 5xx.
+    assert!(JellifyError::RateLimit { retry_after: None }.is_retryable());
+    assert!(JellifyError::Network("boom".into()).is_retryable());
+    assert!(JellifyError::Server {
+        status: 500,
+        body: "".into(),
+    }
+    .is_retryable());
+    assert!(JellifyError::Server {
+        status: 599,
+        body: "".into(),
+    }
+    .is_retryable());
+
+    // Not retryable: Auth, Forbidden, NotFound, Decode, InvalidInput,
+    // NotAuthenticated, NoSession.
+    assert!(!JellifyError::Auth("".into()).is_retryable());
+    assert!(!JellifyError::Forbidden("".into()).is_retryable());
+    assert!(!JellifyError::NotFound("".into()).is_retryable());
+    assert!(!JellifyError::Decode("".into()).is_retryable());
+    assert!(!JellifyError::InvalidInput("".into()).is_retryable());
+    assert!(!JellifyError::NotAuthenticated.is_retryable());
+    assert!(!JellifyError::NoSession.is_retryable());
+    // A 4xx `Server` (unclassified) is NOT retryable — only 5xx is.
+    assert!(!JellifyError::Server {
+        status: 418,
+        body: "".into(),
+    }
+    .is_retryable());
+}
+
+#[test]
+fn structured_error_from_status_dispatches_variants() {
+    use crate::error::JellifyError;
+    assert!(matches!(
+        JellifyError::from_status(401, "".into(), None),
+        JellifyError::Auth(_)
+    ));
+    assert!(matches!(
+        JellifyError::from_status(403, "".into(), None),
+        JellifyError::Forbidden(_)
+    ));
+    assert!(matches!(
+        JellifyError::from_status(404, "".into(), None),
+        JellifyError::NotFound(_)
+    ));
+    assert!(matches!(
+        JellifyError::from_status(429, "".into(), Some(5)),
+        JellifyError::RateLimit {
+            retry_after: Some(5)
+        }
+    ));
+    assert!(matches!(
+        JellifyError::from_status(500, "".into(), None),
+        JellifyError::Server { status: 500, .. }
+    ));
+    assert!(matches!(
+        JellifyError::from_status(418, "".into(), None),
+        JellifyError::Server { status: 418, .. }
+    ));
+}
+
+#[tokio::test]
+async fn user_item_data_round_trips_on_track() {
+    // `Fields=UserData` on a `/Items` query should populate every field of
+    // `Track::user_data` — this is the end-to-end path that feeds the Home
+    // "Play It Again" row and the player's "resume from position" UI.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Track", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Alb",
+                    "AlbumArtist": "Ar", "Artists": ["Ar"],
+                    "RunTimeTicks": 3000000000u64,
+                    "UserData": {
+                        "IsFavorite": true,
+                        "Played": true,
+                        "PlayCount": 9,
+                        "PlaybackPositionTicks": 500000000i64,
+                        "LastPlayedDate": "2025-02-03T04:05:06Z",
+                        "Likes": true,
+                        "Rating": 4.5
+                    },
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client.album_tracks("a1").await.unwrap();
+    assert_eq!(tracks.len(), 1);
+    let t = &tracks[0];
+    let ud = t.user_data.as_ref().expect("user_data must be populated");
+    assert!(ud.is_favorite);
+    assert!(ud.played);
+    assert_eq!(ud.play_count, 9);
+    assert_eq!(ud.playback_position_ticks, 500_000_000);
+    assert_eq!(ud.last_played_at.as_deref(), Some("2025-02-03T04:05:06Z"));
+    assert_eq!(ud.likes, Some(true));
+    assert_eq!(ud.rating, Some(4.5));
+
+    // Legacy convenience fields on `Track` mirror the payload.
+    assert!(t.is_favorite);
+    assert_eq!(t.play_count, 9);
+}
+
+#[tokio::test]
+async fn user_item_data_is_none_when_server_omits_it() {
+    // When the server does not include `UserData` on the payload, the
+    // track's `user_data` field should be `None` (not `Some(default)`).
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Track", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Alb",
+                    "RunTimeTicks": 1000000000u64,
+                    "ImageTags": { "Primary": "img" }
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let tracks = client.album_tracks("a1").await.unwrap();
+    assert!(tracks[0].user_data.is_none(), "no UserData => no user_data");
+    assert!(!tracks[0].is_favorite);
+    assert_eq!(tracks[0].play_count, 0);
 }
