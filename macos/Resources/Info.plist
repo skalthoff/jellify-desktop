@@ -47,6 +47,14 @@
 
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <!--
+        Classifies the app as a music player. macOS uses this for App Store
+        categorization and (more relevantly here) to mark the app as a media
+        producer, which is what MPNowPlayingInfoCenter / Control Center
+        expect. AVAudioSession is iOS-only — background playback on macOS is
+        automatic for a regular GUI app as long as it doesn't set
+        LSBackgroundOnly or LSUIElement. See issue #47.
+    -->
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.music</string>
 
@@ -76,5 +84,33 @@
             </array>
         </dict>
     </array>
+
+    <!--
+        Sparkle 2 auto-update configuration. SUFeedURL points at the
+        appcast.xml hosted on GitHub Pages (docs/ → gh-pages). SUPublicEDKey
+        is the base64-encoded Ed25519 public half of the signing keypair;
+        the private half lives in the SPARKLE_ED25519_PRIVATE GitHub secret
+        and only touches the release runner. Rotating either value is a
+        release-breaking change — bump the feed URL with a new filename so
+        older installs keep talking to the old URL until they update.
+
+        SUPublicEDKey below is the placeholder that make-bundle.sh / the
+        release workflow replaces with the real key at build time. Never
+        commit the real key here: Info.plist is world-readable but the
+        check-in history is what matters for key rotation hygiene.
+    -->
+    <key>SUFeedURL</key>
+    <string>https://skalthoff.github.io/jellify-desktop/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>@@SPARKLE_PUBLIC_ED_KEY@@</string>
+    <!--
+        Enforce Sparkle's strict Ed25519 verification. Without this, Sparkle
+        will accept either a DSA-signed or Ed25519-signed feed; we only
+        ever publish Ed25519 so locking it down rejects downgrade attacks.
+    -->
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
 </dict>
 </plist>

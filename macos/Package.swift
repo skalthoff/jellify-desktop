@@ -17,6 +17,11 @@ let package = Package(
         // decoding, decode-time downscaling). Replaces SwiftUI.AsyncImage which had
         // no caching and decoded at source resolution — #426 / #427.
         .package(url: "https://github.com/kean/Nuke.git", from: "13.0.0"),
+        // Sparkle 2 handles the self-update feed (Ed25519-signed appcast,
+        // in-app "Check for Updates…", scheduled background checks).
+        // Feed URL + public key live in Info.plist; the release workflow
+        // substitutes the public key at build time. See #183/#184/#188.
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.6.0"),
     ],
     targets: [
         .binaryTarget(
@@ -46,6 +51,7 @@ let package = Package(
                 "JellifyAudio",
                 .product(name: "Nuke", package: "Nuke"),
                 .product(name: "NukeUI", package: "Nuke"),
+                .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/Jellify",
             resources: [

@@ -117,6 +117,20 @@ if [[ -f "$RESOURCES/AppIcon.icns" ]]; then
     cp "$RESOURCES/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
 
+# Sparkle 2 ships as a .framework bundle via SwiftPM. swift-build materializes
+# it into BUILD_DIR; copy it next to the binary under Contents/Frameworks so
+# the @rpath/Sparkle.framework reference resolves at runtime.
+SPARKLE_SRC="$BUILD_DIR/Sparkle.framework"
+if [[ -d "$SPARKLE_SRC" ]]; then
+    mkdir -p "$APP/Contents/Frameworks"
+    cp -R "$SPARKLE_SRC" "$APP/Contents/Frameworks/Sparkle.framework"
+    # The Swift binary is linked with a single @executable_path rpath (pointing
+    # at Contents/MacOS/). Add @executable_path/../Frameworks so dyld can find
+    # Sparkle.framework after we drop it under Contents/Frameworks.
+    install_name_tool -add_rpath "@executable_path/../Frameworks" \
+        "$APP/Contents/MacOS/Jellify" 2>/dev/null || true
+fi
+
 # Drop the template into the bundle, then patch $VERSION / $BUILD in place.
 TMP_PLIST="$APP/Contents/Info.plist"
 cp "$INFO_TEMPLATE" "$TMP_PLIST"
