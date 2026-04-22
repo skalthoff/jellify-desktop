@@ -59,7 +59,9 @@ struct MainShell: View {
     @ViewBuilder
     private var mainContent: some View {
         switch model.screen {
-        case .home, .library:
+        case .home:
+            HomeView()
+        case .library:
             LibraryView()
         case .search:
             SearchView()
