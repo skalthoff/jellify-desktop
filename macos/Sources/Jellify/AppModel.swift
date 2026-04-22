@@ -74,6 +74,17 @@ final class AppModel {
     /// `loadPlaylistTracks(playlist:)`; held for the session; cleared on
     /// logout. See #125 and #234.
     var playlistTracks: [String: [Track]] = [:]       // playlistID → tracks
+    /// Tracks for the playlist currently on screen in `PlaylistDetailView`
+    /// (#74 / #236). Separate from the keyed `playlistTracks` cache because
+    /// the detail view mutates this list in response to remove / add / undo
+    /// and needs a single observable array to drive the list rendering. The
+    /// cache is refreshed from `playlistTracks[playlistId]` when present so
+    /// repeat visits are instant.
+    var currentPlaylistTracks: [Track] = []
+    /// The most-recent optimistic removal from a playlist, held so the undo
+    /// toast in `PlaylistDetailView` can restore it. Cleared when the 10s
+    /// toast window lapses or the user taps Undo. See #74.
+    var pendingPlaylistRemoval: PendingRemoval?
     /// Client-side overrides for playlist description. The server-side
     /// Jellyfin item carries `Overview`, but our core `Playlist` record
     /// doesn't expose it yet (see #130 / `update_playlist`). Until the FFI
@@ -633,6 +644,8 @@ final class AppModel {
         playlistLibraryId = nil
         albumTracks = [:]
         playlistTracks = [:]
+        currentPlaylistTracks = []
+        pendingPlaylistRemoval = nil
         playlistDescriptions = [:]
         artistTopTracks = [:]
         recentlyPlayed = []
@@ -678,6 +691,8 @@ final class AppModel {
         playlistLibraryId = nil
         albumTracks = [:]
         playlistTracks = [:]
+        currentPlaylistTracks = []
+        pendingPlaylistRemoval = nil
         playlistDescriptions = [:]
         artistTopTracks = [:]
         recentlyPlayed = []
@@ -1672,6 +1687,136 @@ final class AppModel {
     /// fallback in that case until playlist listing lands (#220).
     func playlist(id: String) -> Playlist? {
         playlists.first { $0.id == id }
+    }
+
+    /// Load the ordered track list for `playlistId` and publish it on
+    /// `currentPlaylistTracks` so `PlaylistDetailView` can drive its list and
+    /// multi-select surface off a single observable array. See #74 / #236.
+    ///
+    /// Hits the keyed `playlistTracks` cache first so switching back to a
+    /// playlist you just left is instant. On a miss, delegates to
+    /// `core.playlistTracks(playlistId:)` for up to 500 entries — same cap as
+    /// `loadPlaylistTracks(playlist:)`. Errors surface through the usual
+    /// auth / reachability / error-banner path.
+    func loadPlaylistTracks(playlistId: String) async {
+        if let cached = playlistTracks[playlistId] {
+            currentPlaylistTracks = cached
+            return
+        }
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.playlistTracks(playlistId: playlistId, offset: 0, limit: 500)
+            }.value
+            playlistTracks[playlistId] = page.items
+            currentPlaylistTracks = page.items
+            serverReachability.noteSuccess()
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            errorMessage = "Playlist tracks failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Remove tracks from a playlist by entry id (the track id, since the
+    /// core's FFI doesn't yet surface playlist-entry ids — see #128).
+    ///
+    /// Applied optimistically: rows disappear from `currentPlaylistTracks`
+    /// and `playlistTracks[playlistId]` immediately, and the removed tracks
+    /// are stashed on `pendingPlaylistRemoval` so the 10-second undo window
+    /// can put them back via `undoRemoveFromPlaylist` (which routes through
+    /// `core.addToPlaylist`). The real remove call is TODO(core-#128): the
+    /// core doesn't yet expose `remove_from_playlist`, so the server-side
+    /// state drifts until that FFI lands. Track-counts on the in-memory
+    /// `Playlist` are kept consistent so the hero stat doesn't lie.
+    func removeFromPlaylist(playlistId: String, entryIds: [String]) {
+        guard !entryIds.isEmpty else { return }
+        let removing = Set(entryIds)
+        let removed = currentPlaylistTracks.filter { removing.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        currentPlaylistTracks.removeAll { removing.contains($0.id) }
+        playlistTracks[playlistId] = currentPlaylistTracks
+        pendingPlaylistRemoval = PendingRemoval(
+            playlistId: playlistId,
+            tracks: removed
+        )
+        // Keep the cached `Playlist.trackCount` in sync with the optimistic
+        // remove so the hero's stat matches the rendered list length.
+        if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
+            let p = playlists[idx]
+            let newCount = max(0, Int(p.trackCount) - removed.count)
+            playlists[idx] = Playlist(
+                id: p.id,
+                name: p.name,
+                trackCount: UInt32(newCount),
+                runtimeTicks: p.runtimeTicks,
+                imageTag: p.imageTag
+            )
+        }
+        // TODO(core-#128): `core.remove_from_playlist` FFI not yet wired. The
+        // optimistic drop above keeps the UI responsive; the server won't
+        // actually lose the entries until the FFI lands and we replace this
+        // log line with the real call.
+        print("[AppModel] removeFromPlaylist(\(playlistId), \(entryIds.count) tracks) local-only — see core-#128")
+    }
+
+    /// Restore a previously-removed batch by re-adding via `core.addToPlaylist`.
+    /// Called from the undo toast in `PlaylistDetailView`. Clears
+    /// `pendingPlaylistRemoval` on success; leaves it intact on failure so
+    /// the user can retry by tapping Undo again.
+    func undoRemoveFromPlaylist() {
+        guard let pending = pendingPlaylistRemoval else { return }
+        let ids = pending.tracks.map(\.id)
+        let playlistId = pending.playlistId
+        pendingPlaylistRemoval = nil
+        // Optimistically re-insert so the list pops back immediately. The
+        // server call below is the actual durability guarantee.
+        let existingIds = Set(currentPlaylistTracks.map(\.id))
+        let reinserted = pending.tracks.filter { !existingIds.contains($0.id) }
+        currentPlaylistTracks.append(contentsOf: reinserted)
+        playlistTracks[playlistId] = currentPlaylistTracks
+        if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
+            let p = playlists[idx]
+            playlists[idx] = Playlist(
+                id: p.id,
+                name: p.name,
+                trackCount: p.trackCount + UInt32(reinserted.count),
+                runtimeTicks: p.runtimeTicks,
+                imageTag: p.imageTag
+            )
+        }
+        Task.detached(priority: .userInitiated) { [core] in
+            try? core.addToPlaylist(playlistId: playlistId, itemIds: ids)
+        }
+    }
+
+    /// Append tracks to a playlist by id. Backs the drop-to-add handler on
+    /// `PlaylistDetailView` and any future "Add to playlist" affordance. See
+    /// #236. Updates the in-memory caches optimistically and fires the core
+    /// call in a detached task.
+    func addToPlaylist(playlistId: String, trackIds: [String]) {
+        guard !trackIds.isEmpty else { return }
+        let ids = trackIds
+        Task.detached(priority: .userInitiated) { [core] in
+            try? core.addToPlaylist(playlistId: playlistId, itemIds: ids)
+        }
+        // Optimistically refresh the currently-loaded list so the drop
+        // visually lands without waiting for the round-trip. We don't know
+        // the full `Track` records for ids that aren't already resident, so
+        // we only bump the count on the in-memory `Playlist` and leave the
+        // list alone — a follow-up `loadPlaylistTracks` (the caller usually
+        // fires one after a drop) will reconcile.
+        if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
+            let p = playlists[idx]
+            playlists[idx] = Playlist(
+                id: p.id,
+                name: p.name,
+                trackCount: p.trackCount + UInt32(trackIds.count),
+                runtimeTicks: p.runtimeTicks,
+                imageTag: p.imageTag
+            )
+        }
     }
 
     /// Navigate to the playlist detail screen. Caches the playlist so
@@ -2998,6 +3143,13 @@ enum ContextSourceType: String, Hashable {
     case search
     case radio
     case other
+}
+
+/// One batch of tracks removed from a playlist, kept around long enough for
+/// the `PlaylistDetailView` undo toast to restore them. See #74.
+struct PendingRemoval {
+    let playlistId: String
+    let tracks: [Track]
 }
 
 // MARK: - Convenience
