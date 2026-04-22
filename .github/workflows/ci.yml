@@ -27,10 +27,13 @@ jobs:
 
   macos:
     name: macOS build
-    runs-on: macos-14
+    runs-on: macos-15   # Xcode 16 / Swift 6 — our Package.swift declares tools 6.0
     needs: core
     steps:
       - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
