@@ -80,19 +80,43 @@ regenerated file in the same PR.
 
 ## Media keys (macOS)
 
-macOS 10.12.2+ routes F7/F8/F9 and Touch Bar transport button presses through `MPRemoteCommandCenter`. The OS delivers each press to the "most recently active" media app — the app that most recently wrote to `MPNowPlayingInfoCenter.default().nowPlayingInfo`. There is no foreground-app requirement and no accessibility permission to grant; whichever media app last announced itself is the target.
+macOS 10.12.2+ routes F7/F8/F9 and Touch Bar transport button presses
+through `MPRemoteCommandCenter`. The OS delivers each press to the "most
+recently active" media app — the app that most recently wrote to
+`MPNowPlayingInfoCenter.default().nowPlayingInfo`. There is no
+foreground-app requirement and no accessibility permission to grant;
+whichever media app last announced itself is the target.
 
-Jellify wins that race by populating `MPNowPlayingInfoCenter` from its `MediaSession` on every track change and transport action. After any play/pause/skip in Jellify, the OS considers Jellify the most-recent media app until another player (Music.app, Spotify, a browser playing media, etc.) overwrites `nowPlayingInfo`. No separate `HIDManager` / private `MediaRemote` keylogger route is needed — that was the pre-Sierra workaround and is obsolete.
+Jellify wins that race by populating `MPNowPlayingInfoCenter` from its
+`MediaSession` on every track change and transport action. After any
+play/pause/skip in Jellify, the OS considers Jellify the most-recent
+media app until another player (Music.app, Spotify, a browser playing
+media, etc.) overwrites `nowPlayingInfo`. No separate `HIDManager` /
+private `MediaRemote` keylogger route is needed — that was the
+pre-Sierra workaround and is obsolete.
 
-A common user-facing symptom: "F8 stopped working in Jellify." Nine times out of ten this is because the user opened Music.app or another media app afterward and that app stole the most-recent slot. Playing anything in Jellify again reclaims it.
+A common user-facing symptom: "F8 stopped working in Jellify." Nine
+times out of ten this is because the user opened Music.app or another
+media app afterward and that app stole the most-recent slot. Playing
+anything in Jellify again reclaims it.
 
 To verify media keys work locally:
 
 1. Quit Music.app, Spotify, and any browser tab playing audio.
-2. Play a track in Jellify. This makes Jellify the most-recent media app.
-3. Press F7 / F8 / F9 (or `fn` + the equivalent if the function-key row is remapped to brightness/volume in System Settings). F8 toggles play/pause; F7 skips previous; F9 skips next.
-4. Touch Bar transport controls on supported hardware follow the same path.
+2. Play a track in Jellify. This makes Jellify the most-recent media
+   app.
+3. Press F7 / F8 / F9. On many Apple keyboards the function-key row
+   acts as media controls unless "Use F1, F2, etc. as standard function
+   keys" is enabled in System Settings → Keyboard → Keyboard Shortcuts
+   → Function Keys; if that setting is off, hold `fn` while pressing
+   the key. F8 toggles play/pause; F7 skips previous; F9 skips next.
+4. Touch Bar transport controls on supported hardware follow the same
+   path.
 
-Bluetooth / AirPods multifunction-button presses arrive through the same `MPRemoteCommandCenter` surface, so they're covered by the same handlers.
+Bluetooth / AirPods multifunction-button presses arrive through the
+same `MPRemoteCommandCenter` surface, so they're covered by the same
+handlers.
 
-Reference: [iina/iina#1110](https://github.com/iina/iina/issues/1110) discusses the history of the private `MediaRemote` framework era and why it's no longer necessary on macOS 10.12.2+.
+Reference: [iina/iina#1110](https://github.com/iina/iina/issues/1110)
+discusses the history of the private `MediaRemote` framework era and
+why it's no longer necessary on macOS 10.12.2+.
