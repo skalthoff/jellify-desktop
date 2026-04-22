@@ -1,0 +1,45 @@
+# Labels applied via Scripts/sync-labels.sh (uses `gh label create --force`).
+# Keep names short and stable; update colors/descriptions here.
+
+# -- Area (what part of the project) --
+- { name: "area:core",        color: "1D76DB", description: "Rust core (jellify_core) — API, queue, storage" }
+- { name: "area:macos",       color: "000000", description: "macOS app (SwiftUI + AVFoundation)" }
+- { name: "area:windows",     color: "0078D4", description: "Windows app (WinUI 3)" }
+- { name: "area:linux",       color: "E95420", description: "Linux app (GTK4 + libadwaita)" }
+- { name: "area:audio",       color: "B60205", description: "Audio playback engine" }
+- { name: "area:api",         color: "5319E7", description: "Jellyfin REST integration" }
+- { name: "area:ux",          color: "FBCA04", description: "Interaction patterns" }
+- { name: "area:design",      color: "C5DEF5", description: "Visual design, tokens, layout" }
+- { name: "area:a11y",        color: "0E8A16", description: "Accessibility (VoiceOver, keyboard, contrast)" }
+- { name: "area:i18n",        color: "0E8A16", description: "Localization, RTL, pluralization" }
+- { name: "area:perf",        color: "FF6F61", description: "Performance, memory, battery" }
+- { name: "area:reliability", color: "FF6F61", description: "Error handling, retries, stability" }
+- { name: "area:observability", color: "FF6F61", description: "Logging, metrics, crash reporting" }
+- { name: "area:dist",        color: "6F42C1", description: "Packaging, signing, releases" }
+- { name: "area:ci",          color: "6F42C1", description: "Continuous integration" }
+- { name: "area:docs",        color: "0075CA", description: "Documentation" }
+
+# -- Kind (what sort of work) --
+- { name: "kind:bug",         color: "D73A4A", description: "Something broken" }
+- { name: "kind:feat",        color: "A2EEEF", description: "New feature" }
+- { name: "kind:polish",      color: "B5E1FF", description: "Tightening existing surface" }
+- { name: "kind:chore",       color: "CFD3D7", description: "Infra / cleanup / dep bump" }
+- { name: "kind:security",    color: "B60205", description: "Security-sensitive" }
+- { name: "kind:question",    color: "D876E3", description: "Discussion or open question" }
+
+# -- Priority --
+- { name: "priority:p0",      color: "B60205", description: "Critical — blocking" }
+- { name: "priority:p1",      color: "D93F0B", description: "High — needed for M3/M4" }
+- { name: "priority:p2",      color: "FBCA04", description: "Normal — polish and nice-to-have" }
+- { name: "priority:p3",      color: "E4E669", description: "Someday / low" }
+
+# -- Effort (order-of-magnitude) --
+- { name: "effort:S",         color: "C2E0C6", description: "≤ half day" }
+- { name: "effort:M",         color: "7FDA87", description: "1-3 days" }
+- { name: "effort:L",         color: "2A9E35", description: "1 week" }
+- { name: "effort:XL",        color: "0E5F1F", description: "Multi-week" }
+
+# -- Meta --
+- { name: "good first issue", color: "7057FF", description: "Good entry point for new contributors" }
+- { name: "help wanted",      color: "008672", description: "Extra attention / outside expertise welcome" }
+- { name: "blocked",          color: "4A0E10", description: "Waiting on another issue or external dep" }

@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest a new capability or an enhancement to an existing one.
+labels: ["kind:feat"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the user need before the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Similar patterns in Apple Music, Spotify, Doppler, etc. Screenshots welcome.

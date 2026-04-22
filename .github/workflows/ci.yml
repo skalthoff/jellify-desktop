@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Rust core
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: cargo test
+        run: cargo test --workspace --all-features
+
+  macos:
+    name: macOS build
+    runs-on: macos-14
+    needs: core
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Build xcframework
+        working-directory: macos
+        run: ./Scripts/build-core.sh
+      - name: swift build
+        working-directory: macos
+        run: swift build
+      - name: Bundle .app
+        working-directory: macos
+        run: ./Scripts/make-bundle.sh
+      - name: Smoke-launch
+        working-directory: macos
+        # Launch the bundled app, confirm it stays up for a few seconds,
+        # terminate. No real server, just confirms the build boots.
+        run: |
+          ./build/Jellify.app/Contents/MacOS/Jellify > /tmp/jellify.log 2>&1 &
+          PID=$!
+          sleep 5
+          if ! kill -0 $PID 2>/dev/null; then
+            echo "Jellify exited early; log:"
+            cat /tmp/jellify.log
+            exit 1
+          fi
+          kill $PID

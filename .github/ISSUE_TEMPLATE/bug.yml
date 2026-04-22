@@ -1,0 +1,56 @@
+name: Bug report
+description: Something works wrong or crashes.
+labels: ["kind:bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Be specific. Stack traces or logs welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Steps to reproduce. Include exact actions, URL, credentials (if safe).
+      placeholder: |
+        1. Launch Jellify
+        2. Sign in to server ...
+        3. Click album ...
+        4. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Jellify version
+      placeholder: e.g., 0.1.0 (commit abc123)
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: platform-version
+    attributes:
+      label: OS version
+      placeholder: e.g., macOS 14.5 / Windows 11 23H2 / Ubuntu 24.04
+  - type: input
+    id: jellyfin-version
+    attributes:
+      label: Jellyfin server version
+      placeholder: e.g., 10.10.0

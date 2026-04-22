@@ -1,0 +1,23 @@
+name: Polish
+description: Tighten an existing surface — UX, visual, animation, wording.
+labels: ["kind:polish"]
+body:
+  - type: textarea
+    id: current
+    attributes:
+      label: Current state
+      description: What's there today, and why it feels off.
+    validations:
+      required: true
+  - type: textarea
+    id: target
+    attributes:
+      label: Target state
+      description: What the polished version looks / feels like.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: A checklist of objectively-verifiable changes.

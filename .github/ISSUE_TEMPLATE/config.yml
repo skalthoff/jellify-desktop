@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Jellyfin community
+    url: https://forum.jellyfin.org
+    about: General Jellyfin questions that aren't specific to this client.
