@@ -585,6 +585,221 @@ async fn fetch_item_without_session_returns_not_authenticated() {
     );
 }
 
+#[tokio::test]
+async fn set_favorite_uses_preferred_endpoint_and_returns_state() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // Preferred route: user inferred from token, body returns UserItemData.
+    Mock::given(method("POST"))
+        .and(path("/UserFavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": true,
+            "PlayCount": 0,
+            "LastPlayedDate": null
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let state = client.set_favorite("item-xyz").await.unwrap();
+    assert!(state.is_favorite);
+    assert_eq!(state.play_count, Some(0));
+    assert!(state.last_played.is_none());
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/UserFavoriteItems/item-xyz")
+        .expect("expected POST to preferred favorite endpoint");
+    // No body is sent for this endpoint.
+    assert!(
+        post.body.is_empty(),
+        "expected empty body, got {:?}",
+        post.body
+    );
+    // Client must not hit the legacy route when the preferred one succeeds.
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r.url.path().starts_with("/Users/u1/FavoriteItems/")),
+        "unexpected fallback to legacy route"
+    );
+}
+
+#[tokio::test]
+async fn unset_favorite_uses_preferred_endpoint_and_returns_state() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/UserFavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": false,
+            "PlayCount": 2,
+            "LastPlayedDate": "2025-01-02T03:04:05Z"
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let state = client.unset_favorite("item-xyz").await.unwrap();
+    assert!(!state.is_favorite);
+    assert_eq!(state.play_count, Some(2));
+    assert_eq!(state.last_played.as_deref(), Some("2025-01-02T03:04:05Z"));
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "DELETE"
+                && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        "expected DELETE to /UserFavoriteItems/item-xyz"
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r.url.path().starts_with("/Users/u1/FavoriteItems/")),
+        "unexpected fallback to legacy route"
+    );
+}
+
+#[tokio::test]
+async fn set_favorite_falls_back_to_legacy_route_on_404() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // Older servers respond 404 to /UserFavoriteItems/...
+    Mock::given(method("POST"))
+        .and(path("/UserFavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&server)
+        .await;
+    // ...so the client must retry the legacy route.
+    Mock::given(method("POST"))
+        .and(path("/Users/u1/FavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": true,
+            "PlayCount": 5,
+            "LastPlayedDate": null
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let state = client.set_favorite("item-xyz").await.unwrap();
+    assert!(state.is_favorite);
+    assert_eq!(state.play_count, Some(5));
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "POST" && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        "expected preferred route to be tried first"
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "POST"
+                && r.url.path() == "/Users/u1/FavoriteItems/item-xyz"),
+        "expected fallback to legacy route after 404"
+    );
+}
+
+#[tokio::test]
+async fn unset_favorite_falls_back_to_legacy_route_on_405() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/UserFavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(405))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Users/u1/FavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": false,
+            "PlayCount": 1,
+            "LastPlayedDate": null
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let state = client.unset_favorite("item-xyz").await.unwrap();
+    assert!(!state.is_favorite);
+    assert_eq!(state.play_count, Some(1));
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests.iter().any(|r| r.method.as_str() == "DELETE"
+            && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        "expected preferred route to be tried first"
+    );
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "DELETE"
+                && r.url.path() == "/Users/u1/FavoriteItems/item-xyz"),
+        "expected fallback to legacy route after 405"
+    );
+}
+
+#[tokio::test]
+async fn set_favorite_without_session_returns_not_authenticated() {
+    // No MockServer routes registered: the guard must short-circuit before any
+    // HTTP call. Pointing at a live MockServer means a regression would surface
+    // as an unmatched-route error instead of silently hitting a real host.
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.set_favorite("anything").await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn unset_favorite_without_session_returns_not_authenticated() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.unset_favorite("anything").await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
 #[test]
 fn stream_url_contains_api_key() {
     let mut client =
