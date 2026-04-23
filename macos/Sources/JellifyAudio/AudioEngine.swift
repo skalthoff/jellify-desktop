@@ -117,13 +117,48 @@ public final class AudioEngine: NSObject {
         }
     }
 
+    // MARK: - Private helpers
+
+    /// Resolve `(MediaSourceId, PlaySessionId)` via `POST /PlaybackInfo`
+    /// ahead of stream-URL construction. Both are `nil` on error so the
+    /// caller falls back to the server's default source and an
+    /// opportunistic (uncorrelated) session — the URL is still playable.
+    private func resolvePlaybackSource(for trackId: String) -> (mediaSourceId: String?, playSessionId: String?) {
+        let opts = PlaybackInfoOpts(
+            userId: nil,
+            startTimeTicks: nil,
+            mediaSourceId: nil,
+            maxStreamingBitrate: nil,
+            enableDirectPlay: nil,
+            enableDirectStream: nil,
+            enableTranscoding: nil,
+            autoOpenLiveStream: nil,
+            deviceProfile: nil
+        )
+        guard let info = try? core.playbackInfo(itemId: trackId, opts: opts) else {
+            return (nil, nil)
+        }
+        return (info.mediaSources.first?.id, info.playSessionId)
+    }
+
     // MARK: - Public
 
     public func play(track: Track) throws {
-        let urlString = try core.streamUrl(trackId: track.id, mediaSourceId: nil, playSessionId: nil)
+        // Resolve media source + play session id via PlaybackInfo so the
+        // server picks the right source for multi-version items and can
+        // correlate subsequent /Sessions/Playing* reports with the stream.
+        // Falling back to nil is harmless — the server just picks its
+        // default source and correlation stays opportunistic.
+        let (mediaSourceId, playSessionId) = resolvePlaybackSource(for: track.id)
+        let urlString = try core.streamUrl(
+            trackId: track.id,
+            mediaSourceId: mediaSourceId,
+            playSessionId: playSessionId
+        )
         guard let url = URL(string: urlString) else {
             throw AudioEngineError.invalidURL(urlString)
         }
+        core.setPlaySessionId(playSessionId: playSessionId)
         let authHeader = try core.authHeader()
         let asset = AVURLAsset(
             url: url,
@@ -241,7 +276,16 @@ public final class AudioEngine: NSObject {
     public func preloadNextTrack(_ track: Track) throws {
         guard let player else { return }
 
-        let urlString = try core.streamUrl(trackId: track.id, mediaSourceId: nil, playSessionId: nil)
+        // Preload uses the same PlaybackInfo resolution as play(track:)
+        // so the gapless transition doesn't swap to a different source
+        // mid-queue. The session id isn't installed yet — setPlaySessionId
+        // runs when the item actually becomes current (see play path).
+        let (mediaSourceId, playSessionId) = resolvePlaybackSource(for: track.id)
+        let urlString = try core.streamUrl(
+            trackId: track.id,
+            mediaSourceId: mediaSourceId,
+            playSessionId: playSessionId
+        )
         guard let url = URL(string: urlString) else {
             throw AudioEngineError.invalidURL(urlString)
         }
