@@ -702,11 +702,27 @@ impl JellifyCore {
 
     // ---------- Playback ----------
 
-    /// Returns the fully-authenticated stream URL for a track. The platform
-    /// audio engine (AVPlayer etc.) fetches from this, attaching the
-    /// `Authorization` header returned by [`Self::auth_header`].
-    pub fn stream_url(&self, track_id: String) -> std::result::Result<String, JellifyError> {
-        self.with_client(|c| Ok(c.stream_url(&track_id)?.to_string()))
+    /// Returns the fully-authenticated stream URL for a track.
+    ///
+    /// `media_source_id` should be `MediaSourceInfo::id` from the
+    /// `PlaybackInfo` response so Jellyfin streams the correct source when an
+    /// item has multiple audio versions (fixes #593). `play_session_id` should
+    /// be the `PlaySessionId` returned by `PlaybackInfo` and is embedded in the
+    /// URL so the server can correlate the stream with its transcode job.
+    pub fn stream_url(
+        &self,
+        track_id: String,
+        media_source_id: Option<String>,
+        play_session_id: Option<String>,
+    ) -> std::result::Result<String, JellifyError> {
+        self.with_client(|c| {
+            Ok(c.stream_url(
+                &track_id,
+                media_source_id.as_deref(),
+                play_session_id.as_deref(),
+            )?
+            .to_string())
+        })
     }
 
     /// The `Authorization` header value to attach to streaming requests.
@@ -733,6 +749,15 @@ impl JellifyCore {
         self.player.set_current(track.clone());
         let now = chrono::Utc::now().timestamp();
         let _ = self.inner.lock().db.record_play(&track.id, now);
+    }
+
+    /// Store the `PlaySessionId` returned by `PlaybackInfo` on the current
+    /// player state. Must be called at playback start; the id is then
+    /// available via `status().play_session_id` so platform layers can echo
+    /// it on every `PlaybackProgressInfo` / `PlaybackStopInfo` report.
+    /// See issue #569.
+    pub fn set_play_session_id(&self, play_session_id: Option<String>) {
+        self.player.set_play_session_id(play_session_id);
     }
 
     /// Report that playback has stopped for an item — backed by
