@@ -1905,7 +1905,7 @@ final class AppModel {
             )
         }
         Task.detached(priority: .userInitiated) { [core] in
-            try? core.addToPlaylist(playlistId: playlistId, itemIds: ids)
+            try? core.addToPlaylist(playlistId: playlistId, itemIds: ids, position: nil)
         }
     }
 
@@ -1917,7 +1917,7 @@ final class AppModel {
         guard !trackIds.isEmpty else { return }
         let ids = trackIds
         Task.detached(priority: .userInitiated) { [core] in
-            try? core.addToPlaylist(playlistId: playlistId, itemIds: ids)
+            try? core.addToPlaylist(playlistId: playlistId, itemIds: ids, position: nil)
         }
         // Optimistically refresh the currently-loaded list so the drop
         // visually lands without waiting for the round-trip. We don't know
@@ -2539,7 +2539,7 @@ final class AppModel {
         guard !trackIds.isEmpty else { return false }
         do {
             try await Task.detached(priority: .userInitiated) { [core] in
-                try core.addToPlaylist(playlistId: playlistId, itemIds: trackIds)
+                try core.addToPlaylist(playlistId: playlistId, itemIds: trackIds, position: nil)
             }.value
             serverReachability.noteSuccess()
             return true
@@ -3014,7 +3014,7 @@ final class AppModel {
         guard !trimmed.isEmpty else { return }
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: trimmed, itemIds: [])
+                try core.createPlaylist(name: trimmed, itemIds: [], position: nil)
             }.value
             // The core returns only the id; build a minimal `Playlist`
             // record client-side rather than refetching. An `imageTag` of
@@ -3076,7 +3076,7 @@ final class AppModel {
         let copyName = "\(source.name) Copy"
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: copyName, itemIds: trackIds)
+                try core.createPlaylist(name: copyName, itemIds: trackIds, position: nil)
             }.value
             // Core's `create_playlist` can accept seed items directly; the
             // `itemIds` path above covers the common case. We still build a
@@ -3655,7 +3655,7 @@ final class AppModel {
         guard !ids.isEmpty else { return }
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: trimmed, itemIds: ids)
+                try core.createPlaylist(name: trimmed, itemIds: ids, position: nil)
             }.value
             // Some older Jellyfin builds ignore the initial `ItemIds` on
             // `create_playlist` and return an empty playlist. Follow up
