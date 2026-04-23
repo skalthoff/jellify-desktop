@@ -29,16 +29,40 @@ use uuid::Uuid;
 
 uniffi::setup_scaffolding!();
 
+/// Handle for a running heartbeat task.  Dropping or calling [`stop`] cancels
+/// the background interval so there are no leaked timers after skip / logout.
+struct HeartbeatHandle {
+    abort: tokio::task::AbortHandle,
+}
+
+impl HeartbeatHandle {
+    fn stop(&self) {
+        self.abort.abort();
+    }
+}
+
+impl Drop for HeartbeatHandle {
+    fn drop(&mut self) {
+        self.abort.abort();
+    }
+}
+
 /// The main handle a UI holds.
 #[derive(uniffi::Object)]
 pub struct JellifyCore {
     inner: Arc<Mutex<Inner>>,
     player: Arc<Player>,
     runtime: tokio::runtime::Runtime,
+    /// Running heartbeat task, if one was started via [`Self::start_heartbeat`].
+    heartbeat: Mutex<Option<HeartbeatHandle>>,
 }
 
 struct Inner {
-    client: Option<JellyfinClient>,
+    /// Wrapped in `Arc` so the heartbeat scheduler and the 401 interceptor
+    /// can both hold a reference to the live client without going through
+    /// `inner`'s `Mutex` — necessary because those two paths run concurrently
+    /// while `with_client` holds the lock.
+    client: Option<Arc<JellyfinClient>>,
     /// Wrapped in `Arc` so the HTTP client's 401 interceptor can close over
     /// a standalone handle (see [`JellyfinClient::set_refresh_callback`])
     /// without needing to re-lock `inner` — which it can't, since retry
@@ -96,6 +120,7 @@ impl JellifyCore {
             })),
             player,
             runtime,
+            heartbeat: Mutex::new(None),
         }))
     }
 
@@ -160,6 +185,7 @@ impl JellifyCore {
             }
             inner.db.set_setting("last_user_id", &session.user.id)?;
         }
+        let client = Arc::new(client);
         Self::install_refresh_callback(&client, &db);
         self.inner.lock().client = Some(client);
         Ok(session)
@@ -218,6 +244,7 @@ impl JellifyCore {
 
         let mut client = JellyfinClient::new(&server_url, device_id, device_name)?;
         client.set_session(token.clone(), user_id.clone());
+        let client = Arc::new(client);
         Self::install_refresh_callback(&client, &db);
         let resolved_url = client.base_url().to_string();
         self.inner.lock().client = Some(client);
@@ -258,6 +285,7 @@ impl JellifyCore {
             let _ = inner.db.delete_setting("last_server_id");
             let _ = inner.db.delete_setting("last_user_id");
         }
+        self.stop_heartbeat();
         self.inner.lock().client = None;
         self.player.clear();
         Ok(())
@@ -278,6 +306,7 @@ impl JellifyCore {
             let _ = inner.db.delete_setting("last_server_id");
             let _ = inner.db.delete_setting("last_user_id");
         }
+        self.stop_heartbeat();
         self.inner.lock().client = None;
         self.player.clear();
         Ok(())
@@ -874,6 +903,90 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.report_playback_progress(info)))
     }
 
+    /// Start (or restart) the background heartbeat scheduler.
+    ///
+    /// Every `interval_secs` seconds (capped at 10 s — Jellyfin's server-side
+    /// playback-ended detection threshold) the scheduler builds a
+    /// [`PlaybackProgressInfo`] from the current [`Player`] state and POSTs it
+    /// to `/Sessions/Playing/Progress`. `play_session_id` is the value returned
+    /// by `playback_info` and must be echoed on every progress report.
+    ///
+    /// Calling this while a previous heartbeat is running silently cancels the
+    /// old task first. The returned handle is stored internally; call
+    /// [`Self::stop_heartbeat`] or just let the next `start_heartbeat` / logout
+    /// implicitly cancel it. See issue #594.
+    ///
+    /// # Note on `Arc<Self>`
+    ///
+    /// This method requires `Arc<Self>` so the spawned task can hold a
+    /// reference back to `JellifyCore` for the lifetime of the interval.
+    pub fn start_heartbeat(self: &Arc<Self>, interval_secs: u32, play_session_id: Option<String>) {
+        // Clamp to Jellyfin's detection threshold so the server never sees a
+        // gap that looks like a dead client.
+        let secs = interval_secs.clamp(1, 10) as u64;
+        let interval = std::time::Duration::from_secs(secs);
+
+        let core = Arc::clone(self);
+
+        let handle = self.runtime.spawn(async move {
+            let mut ticker = tokio::time::interval(interval);
+            // Consume the first tick so the first heartbeat fires after
+            // `interval`, not immediately on start.
+            ticker.tick().await;
+
+            loop {
+                ticker.tick().await;
+
+                let status = core.player.status();
+                // Only send a heartbeat when there is an active track —
+                // sending progress with an empty `item_id` would confuse
+                // the server.
+                let item_id = match status.current_track {
+                    Some(ref t) => t.id.clone(),
+                    None => continue,
+                };
+
+                let position_ticks = (status.position_seconds * 10_000_000.0) as i64;
+                let is_paused = matches!(status.state, crate::player::PlaybackState::Paused);
+
+                let info = PlaybackProgressInfo {
+                    item_id,
+                    failed: false,
+                    is_paused,
+                    is_muted: false,
+                    position_ticks,
+                    play_session_id: play_session_id.clone(),
+                    ..Default::default()
+                };
+
+                // Grab a clone of the Arc'd client so we can call the async
+                // method without holding `inner`'s Mutex across an await.
+                let client_arc = core.try_client_arc();
+                let Some(client) = client_arc else {
+                    // Session was logged out while the heartbeat was running.
+                    continue;
+                };
+                if let Err(ref e) = client.report_playback_progress(info).await {
+                    tracing::warn!(error = %e, "heartbeat progress report failed");
+                }
+            }
+        });
+
+        *self.heartbeat.lock() = Some(HeartbeatHandle {
+            abort: handle.abort_handle(),
+        });
+    }
+
+    /// Cancel the background heartbeat task started by [`Self::start_heartbeat`].
+    /// A no-op when no heartbeat is running. Called automatically on
+    /// `stop` / `logout` / track skip so there are no leaked interval timers.
+    /// See issue #594.
+    pub fn stop_heartbeat(&self) {
+        if let Some(handle) = self.heartbeat.lock().take() {
+            handle.stop();
+        }
+    }
+
     pub fn skip_next(&self) -> Option<Track> {
         self.player.skip_next()
     }
@@ -919,6 +1032,7 @@ impl JellifyCore {
     }
 
     pub fn stop(&self) {
+        self.stop_heartbeat();
         self.player.clear();
     }
 
@@ -935,6 +1049,12 @@ impl JellifyCore {
         let inner = self.inner.lock();
         let client = inner.client.as_ref().ok_or(JellifyError::NoSession)?;
         f(client)
+    }
+
+    /// Clone the live client handle (if one exists) so background tasks can
+    /// call async methods without holding `inner`'s lock across an await.
+    fn try_client_arc(&self) -> Option<Arc<JellyfinClient>> {
+        self.inner.lock().client.clone()
     }
 
     /// Wire the HTTP client's 401 interceptor so it can silently pull a

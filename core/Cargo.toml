@@ -17,6 +17,7 @@ path = "src/bin/uniffi-bindgen.rs"
 
 [dependencies]
 tokio.workspace = true
+tokio-util.workspace = true
 async-trait.workspace = true
 futures.workspace = true
 
