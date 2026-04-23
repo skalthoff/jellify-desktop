@@ -120,6 +120,39 @@ impl Database {
         Ok((shuffle, repeat))
     }
 
+    /// Clear all user-scoped data after a logout or server switch.
+    ///
+    /// Truncates `play_history`, `track_cache`, `album_cache`, and
+    /// `artist_cache`, and removes the session-identity settings
+    /// (`last_server_url`, `last_username`, `last_server_id`, `last_user_id`)
+    /// that would cause `resume_session` to succeed on next launch.
+    ///
+    /// Preserves: `device_id`, `device_name`, `shuffle_enabled`,
+    /// `repeat_mode`, and `schema_version` rows so the login screen
+    /// remembers the endpoint and playback preferences survive sign-out.
+    pub fn clear_user_data(&self) -> Result<()> {
+        let conn = self.conn.lock();
+        conn.execute_batch(
+            "DELETE FROM play_history;
+             DELETE FROM track_cache;
+             DELETE FROM album_cache;
+             DELETE FROM artist_cache;",
+        )?;
+        let session_keys = [
+            "last_server_url",
+            "last_username",
+            "last_server_id",
+            "last_user_id",
+        ];
+        for key in &session_keys {
+            conn.execute(
+                "DELETE FROM settings WHERE key = ?1",
+                rusqlite::params![key],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn record_play(&self, track_id: &str, played_at: i64) -> Result<()> {
         self.conn.lock().execute(
             "INSERT INTO play_history (track_id, played_at) VALUES (?1, ?2)",

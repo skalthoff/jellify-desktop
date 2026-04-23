@@ -241,23 +241,34 @@ impl JellifyCore {
     }
 
     pub fn logout(&self) -> std::result::Result<(), JellifyError> {
+        // 1. Invalidate the server session while the token is still valid.
+        //    Log but do not abort on any error — an unreachable server must
+        //    not prevent local cleanup (#592).
         {
             let inner = self.inner.lock();
-            if let (Ok(Some(server_id)), Ok(Some(username))) = (
-                inner.db.get_setting("last_server_id"),
-                inner.db.get_setting("last_username"),
-            ) {
-                let _ = CredentialStore::delete_token(&server_id, &username);
+            if let Some(ref client) = inner.client {
+                if let Err(e) = self.runtime.block_on(client.post_logout_session()) {
+                    tracing::warn!("POST /Sessions/Logout failed (continuing): {e}");
+                }
             }
-            // Clearing persisted session pointers on an explicit logout so the
-            // next launch doesn't try to auto-restore a session the user just
-            // signed out of. `forget_token` is the softer variant that keeps
-            // the server URL / username around for a quick re-auth.
-            let _ = inner.db.delete_setting("last_server_url");
-            let _ = inner.db.delete_setting("last_username");
-            let _ = inner.db.delete_setting("last_server_id");
-            let _ = inner.db.delete_setting("last_user_id");
         }
+
+        // 2. Wipe user-scoped DB rows (play history, caches, session keys).
+        //    Read the credentials out of the DB *before* clearing so we can
+        //    still delete the keyring entry after the table wipe (#568).
+        {
+            let inner = self.inner.lock();
+            let server_id = inner.db.get_setting("last_server_id").ok().flatten();
+            let username = inner.db.get_setting("last_username").ok().flatten();
+            if let Err(e) = inner.db.clear_user_data() {
+                tracing::warn!("clear_user_data failed (continuing): {e}");
+            }
+            if let (Some(sid), Some(uname)) = (server_id, username) {
+                let _ = CredentialStore::delete_token(&sid, &uname);
+            }
+        }
+
+        // 3. Drop the in-memory client and clear the in-process queue.
         self.inner.lock().client = None;
         self.player.clear();
         Ok(())

@@ -1605,6 +1605,29 @@ impl JellyfinClient {
         Ok(())
     }
 
+    /// Invalidate the current server session. Backed by `POST /Sessions/Logout`.
+    ///
+    /// Call this **before** clearing local credentials so the `Authorization`
+    /// header is still valid. On success the server marks the token revoked;
+    /// on any network or server error the caller should log and continue with
+    /// local cleanup — an unreachable server must not block a sign-out.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn post_logout_session(&self) -> Result<()> {
+        self.require_token()?;
+        let url = self.endpoint("Sessions/Logout")?;
+        self.send_with_retry(|| {
+            Ok(self
+                .http
+                .post(url.clone())
+                .headers(self.build_headers()?)
+                .header(reqwest::header::CONTENT_LENGTH, "0"))
+        })
+        .await?;
+        Ok(())
+    }
+
     /// Register this session's capabilities with the server. Backed by
     /// `POST /Sessions/Capabilities/Full` with a `ClientCapabilitiesDto`
     /// body.
