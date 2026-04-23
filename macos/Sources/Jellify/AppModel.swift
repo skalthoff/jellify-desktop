@@ -877,12 +877,16 @@ final class AppModel {
     /// only get the `thiserror` Display string. The variants we care about
     /// are:
     /// - `NotAuthenticated` → `"not logged in"`
+    /// - `AuthExpired` → `"authentication expired — please sign in again"`
+    /// - `Auth(...)` → `"authentication failed: ..."`
     /// - `Server { status: 401, .. }` → `"server returned an error: 401 ..."`
     private func handleAuthError(_ error: Error) -> Bool {
         let description = error.localizedDescription
         let isNotAuthenticated = description.contains("not logged in")
+        let isAuthExpired = description.contains("authentication expired")
+        let isAuthFailed = description.contains("authentication failed")
         let isServer401 = description.contains("server returned an error: 401")
-        guard isNotAuthenticated || isServer401 else { return false }
+        guard isNotAuthenticated || isAuthExpired || isAuthFailed || isServer401 else { return false }
         markAuthExpired()
         return true
     }
@@ -2111,11 +2115,42 @@ final class AppModel {
     }
 
     /// Kick off a library-seeded Instant Mix from the Discover screen's CTA.
-    /// TODO: #144 / #327 — Instant Mix (polymorphic) FFI + modal not yet
-    /// wired. This is a logging stub so the UI action has a landing pad.
+    /// Seeds off the currently-playing track if there is one; otherwise a
+    /// random recently-played track; otherwise a random album. Keeps the
+    /// action productive regardless of state.
     func startInstantMix() {
-        // TODO: #144 / #327 — Instant Mix FFI + modal not yet wired.
-        print("[AppModel] startInstantMix() not yet wired — see #144 / #327")
+        let seedId: String? = {
+            if let current = status.currentTrack { return current.id }
+            if let recent = recentlyPlayed.first { return recent.id }
+            return albums.first?.id
+        }()
+        guard let seedId else {
+            errorMessage = "Nothing to seed a mix from yet — play a track first."
+            return
+        }
+        playInstantMix(seedId: seedId)
+    }
+
+    /// Common driver for every "Start Radio" entry point. `core.instantMix`
+    /// is polymorphic — any item id (track, album, artist, genre, playlist)
+    /// works. Wraps the FFI hop in `Task.detached` so the main actor doesn't
+    /// block on a network round-trip.
+    private func playInstantMix(seedId: String, limit: UInt32 = 50) {
+        Task {
+            do {
+                let tracks = try await Task.detached(priority: .userInitiated) { [core] in
+                    try core.instantMix(itemId: seedId, limit: limit)
+                }.value
+                guard !tracks.isEmpty else { return }
+                play(tracks: tracks, startIndex: 0)
+            } catch {
+                if handleAuthError(error) { return }
+                if ServerReachability.shouldCount(error: error) {
+                    serverReachability.noteFailure()
+                }
+                errorMessage = "Couldn't start radio: \(error.localizedDescription)"
+            }
+        }
     }
 
     /// Shuffle the entire library — loads tracks from a handful of random
@@ -2795,10 +2830,8 @@ final class AppModel {
     }
 
     /// Kick off an Instant Mix ("album radio") seeded by this album.
-    /// TODO: #144, #327 — Instant Mix endpoint + modal not yet wired.
     func startAlbumRadio(album: Album) {
-        // TODO: #144 / #327 — Instant Mix FFI not yet wired.
-        print("[AppModel] startAlbumRadio(album:) not yet wired — see #144 / #327")
+        playInstantMix(seedId: album.id)
     }
 
     /// Mark every track on the album as played.
@@ -2815,11 +2848,15 @@ final class AppModel {
         print("[AppModel] requestEditAlbum(album:) not yet wired — see #96 / #222")
     }
 
-    /// Append every track on the album to a user-picked playlist.
-    /// TODO: #126 / #130 — `add_to_playlist` FFI not yet wired.
+    /// Append every track on the album to a user-picked playlist. Loads
+    /// the tracklist (cached) then routes through the async
+    /// `addToPlaylist(trackIds:playlistId:)` path.
     func addAlbumToPlaylist(album: Album, playlist: Playlist) {
-        // TODO(#126): add_to_playlist FFI not yet wired.
-        print("[AppModel] addAlbumToPlaylist(\(album.name) → \(playlist.name)) not yet wired — see #126")
+        Task {
+            let tracks = await loadTracks(forAlbum: album.id)
+            guard !tracks.isEmpty else { return }
+            await addToPlaylist(trackIds: tracks.map(\.id), playlistId: playlist.id)
+        }
     }
 
     // MARK: - Sharing
@@ -2874,11 +2911,11 @@ final class AppModel {
     }
 
     /// Toggle the favorite flag for an artist on the Jellyfin server.
-    /// TODO: #133, #64 — wire through `set_favorite` / `unset_favorite` on
-    /// the core once the FFI surface exists.
+    /// Jellyfin's `/Users/{id}/FavoriteItems/{id}` endpoint is polymorphic,
+    /// so the same `set_favorite` / `unset_favorite` FFI used for albums
+    /// and tracks works on artist ids too.
     func toggleFavorite(artist: Artist) {
-        // TODO: #133 / #64 — set_favorite FFI not yet wired.
-        print("[AppModel] toggleFavorite(artist:) not yet wired — see #133 / #64")
+        Task { await setFavorite(itemId: artist.id, enabled: !isFavorite(id: artist.id)) }
     }
 
     /// Toggle the follow flag for an artist.
@@ -2917,10 +2954,8 @@ final class AppModel {
     }
 
     /// Kick off an Instant Mix ("artist radio") seeded by this artist.
-    /// TODO: #144 — Instant Mix (polymorphic) FFI not yet wired.
     func startArtistRadio(artist: Artist) {
-        // TODO: #144 — Instant Mix FFI not yet wired.
-        print("[AppModel] startArtistRadio(artist:) not yet wired — see #144")
+        playInstantMix(seedId: artist.id)
     }
 
     /// Navigate to the artist detail screen, anchored on the discography.
@@ -3016,8 +3051,9 @@ final class AppModel {
     /// TODO: #133, #222 — wire through `set_favorite` / `unset_favorite` on
     /// the core once the FFI surface exists.
     func toggleFavorite(playlist: Playlist) {
-        // TODO: #133 / #222 — set_favorite FFI not yet wired.
-        print("[AppModel] toggleFavorite(playlist:) not yet wired — see #133 / #222")
+        // `/Users/{id}/FavoriteItems/{id}` is polymorphic, so the same
+        // set/unset-favorite FFI used for albums/tracks works on playlists.
+        Task { await setFavorite(itemId: playlist.id, enabled: !isFavorite(id: playlist.id)) }
     }
 
     /// Enqueue a download of every track in the playlist.
@@ -3420,17 +3456,18 @@ final class AppModel {
     }
 
     /// Kick off an Instant Mix ("song radio") seeded by a single track.
-    /// TODO(#144): Instant Mix (polymorphic) FFI not yet wired.
+    /// Kick off an Instant Mix ("song radio") seeded by this track.
     func startSongRadio(track: Track) {
-        // TODO(#144): Instant Mix FFI not yet wired.
-        print("[AppModel] startSongRadio(track:) not yet wired — see #144")
+        playInstantMix(seedId: track.id)
     }
 
     /// Append a selection of tracks to a user-picked playlist.
-    /// TODO(#126): `add_to_playlist` FFI not yet wired.
+    /// Route-through to the async `addToPlaylist(trackIds:playlistId:)`
+    /// so every context menu **Add to Playlist** entry actually hits the
+    /// server.
     func addTracksToPlaylist(tracks: [Track], playlist: Playlist) {
-        // TODO(#126): add_to_playlist FFI not yet wired.
-        print("[AppModel] addTracksToPlaylist(\(tracks.count) tracks → \(playlist.name)) not yet wired — see #126")
+        guard !tracks.isEmpty else { return }
+        Task { await addToPlaylist(trackIds: tracks.map(\.id), playlistId: playlist.id) }
     }
 
     /// Present a "new playlist" flow seeded with the given selection.
@@ -3472,11 +3509,17 @@ final class AppModel {
     /// Toggle favorite across every track in the selection. If every track
     /// is already favorited, this unfavorites them all; otherwise favorites
     /// the un-favorited subset.
-    /// TODO(#133): set_favorite / unset_favorite FFIs not yet wired.
     func toggleFavorite(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        // TODO(#133): set_favorite / unset_favorite FFIs not yet wired.
-        print("[AppModel] toggleFavorite(tracks: \(tracks.count)) not yet wired — see #133")
+        let allFavorited = tracks.allSatisfy { isFavorite(id: $0.id) }
+        let target = !allFavorited
+        // Fire each toggle on its own task so partial success is preserved —
+        // one rate-limit or 500 doesn't poison the rest of the selection.
+        for track in tracks {
+            // Skip tracks already in the target state so we don't retoggle.
+            guard isFavorite(id: track.id) != target else { continue }
+            Task { await setFavorite(itemId: track.id, enabled: target) }
+        }
     }
 
     /// Toggle the download state of every track in the selection.
@@ -3837,11 +3880,16 @@ final class AppModel {
         // Pause playback immediately so no phantom track continues (#567).
         // AVPlayer still has the current item loaded after the queue arrays
         // are cleared — pausing is the robust fix since stop() tears down
-        // the player item and would break resumption. We then zero out the
-        // core queue so auto-advance has nothing left to play; `try?`
-        // silences the throw in edge cases (e.g. no active session).
+        // the player item and would break resumption.
+        //
+        // We intentionally do *not* reach into the core's queue here: the
+        // only primitive available is `set_queue`, which rejects an empty
+        // vec with `InvalidIndex` (see `Player::set_queue` in player.rs).
+        // The earlier `try? core.setQueue(tracks: [], startIndex: 0)` was
+        // a silent no-op and is removed. Core-side queue truncation is
+        // tracked as TODO(core-#282); until then, any auto-advance is
+        // gated by the paused AVPlayer above.
         audio.pause()
-        try? core.setQueue(tracks: [], startIndex: 0)
     }
 
     /// Serialize the current queue (currently-playing + user-added + auto
