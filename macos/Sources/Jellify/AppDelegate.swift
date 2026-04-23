@@ -33,6 +33,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
 
+    /// Debounce token for wake-triggered reconnect probes. Cancelled and
+    /// replaced on each wake event so rapid lid-open/close cycles (which
+    /// fire multiple `didWakeNotification`s in quick succession) only
+    /// result in a single probe hitting the server.
+    private var wakeProbeTask: Task<Void, Never>?
+
+    /// How long to wait after a wake event before probing the server.
+    /// 2 s gives the NIC time to associate and the OS time to re-establish
+    /// a DHCP / Wi-Fi link before we attempt TCP to the Jellyfin endpoint.
+    private let wakeDebounceNanos: UInt64 = 2_000_000_000
+
     // MARK: - NSApplicationDelegate
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -66,6 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        wakeProbeTask?.cancel()
         if let observer = sleepObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -153,11 +165,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func handleWake() {
-        Task { @MainActor [weak self] in
-            // Guarded nudge — today this is effectively a no-op when no
-            // session exists, but it reserves the hook for #323's real
-            // reconnect logic so future work can drop implementation in
-            // without revisiting the AppKit side.
+        // Cancel any in-flight probe from a previous wake event so
+        // a rapid lid-open/close cycle doesn't pile up parallel requests.
+        wakeProbeTask?.cancel()
+        wakeProbeTask = Task { @MainActor [weak self] in
+            // Brief hold: give the NIC time to re-associate before probing.
+            try? await Task.sleep(nanoseconds: self?.wakeDebounceNanos ?? 2_000_000_000)
+            guard !Task.isCancelled else { return }
             self?.appModel?.reconnectIfNeeded()
         }
     }
@@ -196,21 +210,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 // MARK: - AppModel sleep/wake shim
 
 extension AppModel {
-    /// Stub so the AppDelegate's wake hook has a call target today — a
-    /// real reconnect implementation lands with the detailed network-health
-    /// work in #323. Using a method here (rather than touching a closure)
-    /// keeps the call site stable for that follow-up PR.
+    /// Called by the AppDelegate after the system wakes from sleep. Probes
+    /// `GET /System/Info/Public` (via `core.probeServer`) against the stored
+    /// server URL to verify the connection is still healthy:
     ///
-    /// Today this is a guarded no-op: if there's no session we have
-    /// nothing to reconnect, and if there is, the existing network and
-    /// reachability monitors will rediscover any broken route on their
-    /// own polling cadence within a few seconds. The wake hook calls this
-    /// anyway so the follow-up PR has a stable entry point to drop the
-    /// real behaviour into.
+    /// - **401 / not authenticated**: the token has been revoked or expired
+    ///   while the machine was asleep (VPN key rotation, server restart, etc.).
+    ///   `markAuthExpired()` surfaces the re-auth sheet.
+    /// - **Network / 5xx error**: the server is temporarily unreachable;
+    ///   `serverReachability.noteFailure()` updates the unreachable banner.
+    /// - **Success**: `serverReachability.noteSuccess()` clears any stale
+    ///   failure window and schedules a lightweight home refresh so the
+    ///   carousels are up-to-date after a long sleep.
+    ///
+    /// No-ops when there is no active session — nothing to reconnect.
+    @MainActor
     @objc func reconnectIfNeeded() {
-        guard session != nil else { return }
-        // TODO(#323): add an explicit post-sleep reconnect path — refresh
-        // home shelves, reopen the media-session socket, and nudge the
-        // core to re-validate the cached auth token against the server.
+        guard session != nil, !serverURL.isEmpty else { return }
+        let url = serverURL
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                // `probeServer` hits `/System/Info/Public` — lightweight,
+                // unauthenticated, sufficient to confirm TCP + HTTP health.
+                _ = try await Task.detached(priority: .utility) { [core] in
+                    try core.probeServer(url: url)
+                }.value
+                // Server answered — clear any stale failure window and
+                // refresh the home shelves so stale data doesn't sit on
+                // screen after a long sleep.
+                serverReachability.noteSuccess()
+                await refreshJumpBackIn()
+                await refreshRecentlyPlayed()
+                await refreshRecentlyAdded()
+            } catch {
+                let description = error.localizedDescription
+                let isAuthError = description.contains("not logged in")
+                    || description.contains("server returned an error: 401")
+                if isAuthError {
+                    markAuthExpired()
+                } else if ServerReachability.shouldCount(error: error) {
+                    serverReachability.noteFailure()
+                }
+            }
+        }
     }
 }
