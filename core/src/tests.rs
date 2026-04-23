@@ -5727,3 +5727,212 @@ async fn logout_tolerates_server_post_failure() {
     .await
     .expect("join task");
 }
+
+// ============================================================================
+// Playlist CRUD — rename / delete / reorder (#564)
+// ============================================================================
+
+/// `rename_playlist` must GET the current item body, overwrite `Name`, then
+/// POST back to `/Items/{id}`.
+#[tokio::test]
+async fn rename_playlist_fetches_then_posts() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // GET /Items?Ids=pl-1 — fetch_item uses the /Items?Ids= endpoint.
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("Ids", "pl-1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "pl-1", "Name": "Old Name", "Type": "Playlist" }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+    // POST /Items/pl-1 — server accepts the update.
+    Mock::given(method("POST"))
+        .and(path("/Items/pl-1"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.rename_playlist("pl-1", "New Name").await.unwrap();
+
+    // Verify the POST body has the updated Name.
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Items/pl-1")
+        .expect("expected POST to /Items/pl-1");
+    let body: serde_json::Value =
+        serde_json::from_slice(&post.body).expect("body should be valid JSON");
+    assert_eq!(
+        body["Name"].as_str(),
+        Some("New Name"),
+        "body Name must be updated, got: {body}"
+    );
+}
+
+/// `rename_playlist` must require an authenticated session.
+#[tokio::test]
+async fn rename_playlist_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .rename_playlist("pl-1", "Anything")
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+/// `delete_playlist` must send `DELETE /Items/{id}`.
+#[tokio::test]
+async fn delete_playlist_sends_delete_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/Items/pl-42"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.delete_playlist("pl-42").await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "DELETE" && r.url.path() == "/Items/pl-42"),
+        "expected DELETE /Items/pl-42"
+    );
+}
+
+/// `delete_playlist` must require an authenticated session.
+#[tokio::test]
+async fn delete_playlist_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client.delete_playlist("pl-1").await.unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+/// `reorder_playlist_track` must POST to
+/// `/Playlists/{playlistId}/Items/{playlistItemId}/Move/{newIndex}`.
+#[tokio::test]
+async fn reorder_playlist_track_sends_move_request() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl-7/Items/pi-99/Move/2"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .reorder_playlist_track("pl-7", "pi-99", 2)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests.iter().any(|r| {
+            r.method.as_str() == "POST" && r.url.path() == "/Playlists/pl-7/Items/pi-99/Move/2"
+        }),
+        "expected POST to /Playlists/pl-7/Items/pi-99/Move/2"
+    );
+}
+
+/// `reorder_playlist_track` must require an authenticated session.
+#[tokio::test]
+async fn reorder_playlist_track_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .reorder_playlist_track("pl-1", "pi-1", 0)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+/// `playlist_tracks` must populate `playlist_item_id` on each returned track.
+#[tokio::test]
+async fn playlist_tracks_populates_playlist_item_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // playlist_tracks uses GET /Items?ParentId=...&UserId=...
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("ParentId", "pl-1"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Track One", "Type": "Audio",
+                    "AlbumId": "a1", "Album": "Album A",
+                    "AlbumArtist": "Artist A", "Artists": ["Artist A"],
+                    "RunTimeTicks": 1000000000u64,
+                    "PlaylistItemId": "pi-alpha",
+                    "ImageTags": {}
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .playlist_tracks("pl-1", crate::models::Paging::new(0, 50))
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(
+        page.items[0].playlist_item_id.as_deref(),
+        Some("pi-alpha"),
+        "playlist_item_id must be populated from the server response"
+    );
+}
