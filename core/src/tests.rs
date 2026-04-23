@@ -2647,6 +2647,8 @@ async fn toggle_favorite_dispatches_to_unset_when_false() {
 
 #[tokio::test]
 async fn report_playback_progress_posts_pascal_case_body() {
+    use crate::models::PlaybackProgressInfo;
+
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/Users/AuthenticateByName"))
@@ -2666,7 +2668,18 @@ async fn report_playback_progress_posts_pascal_case_body() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     client
-        .report_playback_progress("track-xyz", 1_234_567_890, true)
+        .report_playback_progress(PlaybackProgressInfo {
+            item_id: "track-xyz".into(),
+            position_ticks: 1_234_567_890,
+            is_paused: true,
+            is_muted: false,
+            failed: false,
+            media_source_id: Some("src-1".into()),
+            play_session_id: Some("session-abc".into()),
+            play_method: Some("DirectPlay".into()),
+            playback_rate: Some(1.0),
+            ..Default::default()
+        })
         .await
         .unwrap();
 
@@ -2687,7 +2700,7 @@ async fn report_playback_progress_posts_pascal_case_body() {
         "unexpected content-type: {content_type}"
     );
 
-    // Body must use Jellyfin's PascalCase keys.
+    // Body must use Jellyfin's PascalCase keys and include all required fields.
     let body: serde_json::Value =
         serde_json::from_slice(&post.body).expect("body should be valid JSON");
     assert_eq!(
@@ -2705,6 +2718,37 @@ async fn report_playback_progress_posts_pascal_case_body() {
         Some(true),
         "body: {body}"
     );
+    assert_eq!(
+        body.get("IsMuted").and_then(|v| v.as_bool()),
+        Some(false),
+        "body: {body}"
+    );
+    // Failed is required by Jellyfin — must always be present.
+    assert_eq!(
+        body.get("Failed").and_then(|v| v.as_bool()),
+        Some(false),
+        "Failed must be present in progress body: {body}"
+    );
+    assert_eq!(
+        body.get("MediaSourceId").and_then(|v| v.as_str()),
+        Some("src-1"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("PlaySessionId").and_then(|v| v.as_str()),
+        Some("session-abc"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("PlayMethod").and_then(|v| v.as_str()),
+        Some("DirectPlay"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("PlaybackRate").and_then(|v| v.as_f64()),
+        Some(1.0),
+        "body: {body}"
+    );
 
     // Ensure keys are PascalCase only — no snake_case leakage.
     let obj = body.as_object().expect("body should be an object");
@@ -2717,6 +2761,8 @@ async fn report_playback_progress_posts_pascal_case_body() {
 
 #[tokio::test]
 async fn report_playback_progress_propagates_server_errors() {
+    use crate::models::PlaybackProgressInfo;
+
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/Users/AuthenticateByName"))
@@ -2735,7 +2781,10 @@ async fn report_playback_progress_propagates_server_errors() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client
-        .report_playback_progress("track-xyz", 0, false)
+        .report_playback_progress(PlaybackProgressInfo {
+            item_id: "track-xyz".into(),
+            ..Default::default()
+        })
         .await
         .unwrap_err();
     match err {
@@ -2746,6 +2795,8 @@ async fn report_playback_progress_propagates_server_errors() {
 
 #[tokio::test]
 async fn report_playback_progress_without_session_returns_not_authenticated() {
+    use crate::models::PlaybackProgressInfo;
+
     // No MockServer routes registered: the guard must short-circuit before
     // any network call. Pointing at a live MockServer means a regression
     // would surface as an unmatched-route error rather than silently hitting
@@ -2753,7 +2804,10 @@ async fn report_playback_progress_without_session_returns_not_authenticated() {
     let server = MockServer::start().await;
     let client = mock_client(&server.uri());
     let err = client
-        .report_playback_progress("track-xyz", 0, false)
+        .report_playback_progress(PlaybackProgressInfo {
+            item_id: "track-xyz".into(),
+            ..Default::default()
+        })
         .await
         .unwrap_err();
     assert!(
@@ -2764,6 +2818,8 @@ async fn report_playback_progress_without_session_returns_not_authenticated() {
 
 #[tokio::test]
 async fn report_playback_stopped_posts_expected_body() {
+    use crate::models::PlaybackStopInfo;
+
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/Users/AuthenticateByName"))
@@ -2782,7 +2838,14 @@ async fn report_playback_stopped_posts_expected_body() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     client
-        .report_playback_stopped("track-xyz", 2_220_000_000)
+        .report_playback_stopped(PlaybackStopInfo {
+            item_id: "track-xyz".into(),
+            position_ticks: 2_220_000_000,
+            failed: false,
+            media_source_id: Some("src-1".into()),
+            play_session_id: Some("session-abc".into()),
+            session_id: None,
+        })
         .await
         .unwrap();
 
@@ -2800,20 +2863,34 @@ async fn report_playback_stopped_posts_expected_body() {
         body.get("PositionTicks").and_then(|v| v.as_i64()),
         Some(2_220_000_000)
     );
-    // Only the minimum set of fields we send.
-    let keys: std::collections::HashSet<&str> = body
-        .as_object()
-        .expect("object body")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let expected: std::collections::HashSet<&str> =
-        ["ItemId", "PositionTicks"].into_iter().collect();
-    assert_eq!(keys, expected, "unexpected body keys: {keys:?}");
+    // Failed is required by Jellyfin — must always be present.
+    assert_eq!(
+        body.get("Failed").and_then(|v| v.as_bool()),
+        Some(false),
+        "Failed must be present in stop body: {body}"
+    );
+    // MediaSourceId lets the server clean up the transcode job.
+    assert_eq!(
+        body.get("MediaSourceId").and_then(|v| v.as_str()),
+        Some("src-1"),
+        "body: {body}"
+    );
+    assert_eq!(
+        body.get("PlaySessionId").and_then(|v| v.as_str()),
+        Some("session-abc"),
+        "body: {body}"
+    );
+    // Unset optional SessionId should be absent.
+    assert!(
+        !body.as_object().unwrap().contains_key("SessionId"),
+        "unset optional should not appear: {body}"
+    );
 }
 
 #[tokio::test]
 async fn report_playback_stopped_requires_authenticated_session() {
+    use crate::models::PlaybackStopInfo;
+
     // No MockServer endpoints registered for /Sessions/Playing/Stopped:
     // the auth guard must short-circuit before any HTTP call. We still
     // point at a live MockServer so that a regression would surface as
@@ -2821,7 +2898,10 @@ async fn report_playback_stopped_requires_authenticated_session() {
     let server = MockServer::start().await;
     let client = mock_client(&server.uri());
     let err = client
-        .report_playback_stopped("anything", 0)
+        .report_playback_stopped(PlaybackStopInfo {
+            item_id: "anything".into(),
+            ..Default::default()
+        })
         .await
         .unwrap_err();
     assert!(

@@ -1390,26 +1390,16 @@ impl JellyfinClient {
     ///
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] when no token is set.
-    pub async fn report_playback_progress(
-        &self,
-        item_id: &str,
-        position_ticks: i64,
-        is_paused: bool,
-    ) -> Result<()> {
+    pub async fn report_playback_progress(&self, info: PlaybackProgressInfo) -> Result<()> {
         self.require_token()?;
 
         let url = self.endpoint("Sessions/Playing/Progress")?;
-        let body = PlaybackProgressBody {
-            item_id: item_id.to_string(),
-            position_ticks,
-            is_paused,
-        };
         self.send_with_retry(|| {
             Ok(self
                 .http
                 .post(url.clone())
                 .headers(self.build_headers()?)
-                .json(&body))
+                .json(&info))
         })
         .await?;
         Ok(())
@@ -1514,30 +1504,25 @@ impl JellyfinClient {
 
     /// Report that playback of an item has stopped.
     ///
-    /// Backed by `POST /Sessions/Playing/Stopped` with body
-    /// `{ItemId, PositionTicks}`. Drives Jellyfin's server-side PlayCount
-    /// increment (for tracks) — the server treats a stop report with
-    /// `PositionTicks` near `RunTimeTicks` as a completed play.
+    /// Backed by `POST /Sessions/Playing/Stopped`. Drives Jellyfin's
+    /// server-side PlayCount increment for tracks — the server treats a
+    /// stop report with `PositionTicks` near `RunTimeTicks` as a completed
+    /// play. `MediaSourceId` must match the value from `/PlaybackInfo` so
+    /// the server can clean up any active transcode job.
     ///
     /// Callers invoke this on track end, user-driven skip, and app quit.
-    /// Pass the full `RunTimeTicks` as `position_ticks` when a song
-    /// completed normally.
     ///
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no token is set.
-    pub async fn report_playback_stopped(&self, item_id: &str, position_ticks: i64) -> Result<()> {
+    pub async fn report_playback_stopped(&self, info: PlaybackStopInfo) -> Result<()> {
         self.require_token()?;
         let url = self.endpoint("Sessions/Playing/Stopped")?;
-        let body = PlaybackStoppedBody {
-            item_id: item_id.to_string(),
-            position_ticks,
-        };
         self.send_with_retry(|| {
             Ok(self
                 .http
                 .post(url.clone())
                 .headers(self.build_headers()?)
-                .json(&body))
+                .json(&info))
         })
         .await?;
         Ok(())
@@ -1893,23 +1878,12 @@ struct AuthByNameBody {
     pw: String,
 }
 
-#[derive(Serialize)]
-struct PlaybackProgressBody {
-    #[serde(rename = "ItemId")]
-    item_id: String,
-    #[serde(rename = "PositionTicks")]
-    position_ticks: i64,
-    #[serde(rename = "IsPaused")]
-    is_paused: bool,
-}
-
-#[derive(Serialize)]
-struct PlaybackStoppedBody {
-    #[serde(rename = "ItemId")]
-    item_id: String,
-    #[serde(rename = "PositionTicks")]
-    position_ticks: i64,
-}
+// PlaybackProgressBody and PlaybackStoppedBody are kept as thin private
+// wrappers so the public PlaybackProgressInfo / PlaybackStopInfo models can
+// be serialised directly — the rename_all = "PascalCase" attribute on those
+// models handles the wire format without a separate private type.
+// (These aliases are no longer needed; serialisation is done via the public
+// models directly in the client methods below.)
 
 #[derive(Serialize)]
 struct CreatePlaylistBody {
