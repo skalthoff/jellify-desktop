@@ -732,6 +732,7 @@ final class AppModel {
         audio.stop()
         try? core.logout()
         session = nil
+        imageURLCache.removeAll()
         albums = []
         artists = []
         tracks = []
@@ -2384,9 +2385,26 @@ final class AppModel {
 
     }
 
+    /// Memoized cache keyed on (itemID, tag, maxWidth). Each grid cell calls
+    /// `imageURL` during every scroll-driven body recomputation; without this
+    /// cache every cell crosses the UniFFI boundary (Swift → C → Rust) and
+    /// locks `Inner` — an O(n) mutex hit per frame that serialized against
+    /// every background `loadMore*` and caused the main-thread beach ball.
+    /// The URL string is deterministic for a given (itemID, tag, maxWidth),
+    /// so one FFI crossing per tuple is all we ever need.
+    private var imageURLCache: [String: URL?] = [:]
+
     func imageURL(for itemID: String, tag: String?, maxWidth: UInt32 = 400) -> URL? {
-        guard let s = try? core.imageUrl(itemId: itemID, tag: tag, maxWidth: maxWidth) else { return nil }
-        return URL(string: s)
+        let key = "\(itemID)|\(tag ?? "")|\(maxWidth)"
+        if let cached = imageURLCache[key] { return cached }
+        let result: URL?
+        if let s = try? core.imageUrl(itemId: itemID, tag: tag, maxWidth: maxWidth) {
+            result = URL(string: s)
+        } else {
+            result = nil
+        }
+        imageURLCache[key] = result
+        return result
     }
 
     // MARK: - Playback
