@@ -287,12 +287,14 @@ struct LibraryView: View {
 
     /// Fire `loadMoreAlbums` when the user scrolls into the last
     /// `paginationTriggerDistance` cells and there are more albums on the
-    /// server than currently loaded. The model debounces re-entrant calls,
-    /// so this is safe to trigger from every nearby cell's `.onAppear`.
+    /// server than currently loaded. The view-level guard (and the matching
+    /// guard in `AppModel.loadMoreAlbums`) together prevent concurrent Tasks
+    /// from queuing up and re-firing once the flag clears. Fixes #589.
     private func triggerLoadMoreAlbumsIfNeeded(atIndex idx: Int) {
         let loaded = model.albums.count
         let total = Int(model.albumsTotal)
         guard total > loaded else { return }
+        guard !model.isLoadingMoreAlbums else { return }
         let threshold = max(loaded - paginationTriggerDistance, 0)
         guard idx >= threshold else { return }
         Task { await model.loadMoreAlbums() }
@@ -313,12 +315,13 @@ struct LibraryView: View {
 
     /// Fire `loadMoreTracks` when the user scrolls into the last
     /// `paginationTriggerDistance` cells and there are more tracks on the
-    /// server than currently loaded. Mirror of
-    /// `triggerLoadMoreAlbumsIfNeeded`.
+    /// server than currently loaded. Mirror of `triggerLoadMoreAlbumsIfNeeded`;
+    /// see that function's docs for the concurrency guard rationale (#589).
     private func triggerLoadMoreTracksIfNeeded(atIndex idx: Int) {
         let loaded = model.tracks.count
         let total = Int(model.tracksTotal)
         guard total > loaded else { return }
+        guard !model.isLoadingMoreTracks else { return }
         let threshold = max(loaded - paginationTriggerDistance, 0)
         guard idx >= threshold else { return }
         Task { await model.loadMoreTracks() }
@@ -326,11 +329,13 @@ struct LibraryView: View {
 
     /// Mirror of `triggerLoadMoreAlbumsIfNeeded` for the Playlists grid.
     /// Separate function rather than a parameterised helper so the guard
-    /// arithmetic stays obvious at the call site.
+    /// arithmetic stays obvious at the call site. See #589 for the
+    /// concurrency guard rationale.
     private func triggerLoadMorePlaylistsIfNeeded(atIndex idx: Int) {
         let loaded = model.playlists.count
         let total = Int(model.playlistsTotal)
         guard total > loaded else { return }
+        guard !model.isLoadingMorePlaylists else { return }
         let threshold = max(loaded - paginationTriggerDistance, 0)
         guard idx >= threshold else { return }
         Task { await model.loadMorePlaylists() }
