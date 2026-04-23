@@ -4706,7 +4706,6 @@ fn refresh_token_from_keyring_returns_token_when_present() {
     assert_eq!(got, "refreshed-token");
 }
 
-<<<<<<< HEAD
 // ---------------------------------------------------------------------------
 // Shuffle + repeat persistence — round-trip tests (#583)
 // ---------------------------------------------------------------------------
@@ -4787,33 +4786,14 @@ fn shuffle_repeat_round_trips_all_variants() {
 /// `From<reqwest::Error>` mapping without a live TLS server.
 #[test]
 fn self_signed_cert_error_detected_from_error_chain() {
-    use crate::error::JellifyError;
-    use std::fmt;
-
-    // A minimal error whose Display output matches the rustls 0.23 pattern.
-    #[derive(Debug)]
-    struct FakeCertError;
-    impl fmt::Display for FakeCertError {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.write_str("invalid peer certificate: UnknownIssuer")
-        }
-    }
-    impl std::error::Error for FakeCertError {}
-
-    // Build a reqwest::Error whose source chain contains our fake cert error.
-    // `reqwest::Error` can be constructed from a boxed `std::error::Error`
-    // via the `reqwest::Error` public constructor path.  The cleanest way
-    // available in reqwest's public API is `reqwest::get` on a URL that wraps
-    // our error, but that requires async.  Instead we test `is_cert_error`
-    // directly (pub(crate)) since the `From` impl delegates to it, and pair
-    // it with a separate live-URL smoke-test below.
-    //
-    // Confirm that a non-cert network error is NOT flagged.
+    // We can't synthesise a real reqwest cert error without a live TLS server,
+    // so this test exercises the negative path: a URL parse error must NOT be
+    // classified as a cert error. Positive-path coverage lives in the
+    // `#[ignore]`-tagged integration test against self-signed.badssl.com below.
     let plain_err = reqwest::Client::new()
         .get("not-a-url-at-all")
         .build()
         .unwrap_err();
-    // The URL parse error is not a cert error.
     assert!(
         !crate::error::is_cert_error(&plain_err),
         "URL parse error must not be treated as cert error"
