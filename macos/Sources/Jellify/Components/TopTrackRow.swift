@@ -115,8 +115,14 @@ struct TopTrackRow: View {
             }
         }
         .contextMenu { TrackContextMenu(selection: [track]) }
+        // `.focusable` lets the VoiceOver rotor Tab through the Top Tracks
+        // list; `.combine` collapses rank/artwork/text so the element reads
+        // as a single playable row. See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(track.name), \(playCountLabel), rank \(rank)")
         .accessibilityHint("Plays this track")
+        .accessibilityAddTraits(.isButton)
     }
 
     /// Start playback at this row. Passing the full `queue` keeps the Top

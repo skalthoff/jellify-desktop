@@ -67,8 +67,14 @@ struct PlaylistCard: View {
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
         .contextMenu { PlaylistContextMenu(playlist: playlist) }
+        // `.focusable` lets the VoiceOver rotor Tab into this card; `.combine`
+        // collapses the artwork, title, and play-button children so the card
+        // reads as a single "Opens playlist detail" button. See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(playlist.name), \(subtitle)")
         .accessibilityHint("Opens playlist detail")
+        .accessibilityAddTraits(.isButton)
     }
 
     /// "42 tracks" / "1 track" — singular vs plural. Jellyfin reports

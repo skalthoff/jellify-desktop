@@ -126,10 +126,13 @@ struct TrackListRow: View {
         // A single row should read as one VoiceOver element — the wrapping
         // Button already carries a label, but we override it here to pull
         // in the active state so playing rows announce "Now playing" and
-        // non-playing rows announce "Plays this track".
+        // non-playing rows announce "Plays this track". `.combine` collapses
+        // the artwork and text sub-views so the rotor sees one button per
+        // row rather than several unlabelled children. See #588.
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(track.name) by \(track.artistName)")
         .accessibilityHint(isPlaying ? "Now playing" : "Plays this track")
-        .accessibilityAddTraits(isPlaying ? .isSelected : [])
+        .accessibilityAddTraits(isPlaying ? [.isButton, .isSelected] : .isButton)
         // MARK: Keyboard navigation (#105)
         .focusable()
         .focused($isFocused)

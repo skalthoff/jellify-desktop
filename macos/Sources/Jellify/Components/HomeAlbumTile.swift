@@ -53,10 +53,13 @@ struct HomeAlbumTile<Badge: View>: View {
         // a container — the outer body is its own focus target with the
         // album's label + hint, but the inline Play button remains a
         // separately-focusable control with its own "Play <album>" label.
-        // See #331.
+        // `.focusable` allows the VoiceOver rotor to Tab into the tile from
+        // a horizontal carousel. See #331 / #588.
+        .focusable(true)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(album.name) by \(album.artistName)")
         .accessibilityHint(hint)
+        .accessibilityAddTraits(.isButton)
     }
 
     private var artwork: some View {

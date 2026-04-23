@@ -66,7 +66,12 @@ struct HomeQuickTile: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        // `.focusable` lets the VoiceOver rotor Tab into the tile from the
+        // Home quick-tiles row; `.combine` presents the artwork + text + play
+        // button as a single actionable element. See #588.
+        .focusable(true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(subtitle.map { "\(title), \($0)" } ?? title)
+        .accessibilityAddTraits(.isButton)
     }
 }

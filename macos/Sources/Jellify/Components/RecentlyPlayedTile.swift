@@ -59,7 +59,13 @@ struct RecentlyPlayedTile: View {
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }
+        // `.focusable` lets the VoiceOver rotor Tab through the Recently
+        // Played / For You carousels; `.combine` collapses artwork + metadata
+        // into one button element. See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(track.name) by \(track.artistName)")
         .accessibilityHint("Plays this track")
+        .accessibilityAddTraits(.isButton)
     }
 }

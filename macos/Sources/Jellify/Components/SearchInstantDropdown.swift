@@ -307,7 +307,11 @@ private struct ArtistCircleTile: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { onPick(.artist(artist)) }
+        // Custom tap-gesture control needs an explicit focusable + button
+        // trait so the VoiceOver rotor can reach it. See #588.
+        .focusable(true)
         .accessibilityLabel("Artist \(artist.name)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -365,8 +369,12 @@ private struct AlbumMiniTile: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { onPick(.album(album)) }
+        // Custom tap-gesture control — expose as a focusable button so the
+        // VoiceOver rotor can reach search result album tiles. See #588.
+        .focusable(true)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Album \(album.name) by \(album.artistName)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -427,7 +435,12 @@ private struct TrackDropdownRow: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { onPick(.track(track)) }
+        // Custom tap-gesture row — expose as focusable button so the
+        // VoiceOver rotor can reach search result track rows. See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("Track \(track.name) by \(track.artistName)")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -485,7 +498,12 @@ private struct PlaylistMiniTile: View {
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
         .onTapGesture { onPick(.playlist(playlist)) }
+        // Custom tap-gesture control — expose as focusable button so the
+        // VoiceOver rotor can reach search result playlist tiles. See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("Playlist \(playlist.name)")
+        .accessibilityAddTraits(.isButton)
     }
 
     private var countLabel: String {
@@ -538,7 +556,11 @@ private struct GenreTile: View {
             .contentShape(Rectangle())
             .onHover { isHovering = $0 }
             .onTapGesture { onPick(.genre(genre)) }
+            // Custom tap-gesture genre chip — expose as focusable button for
+            // VoiceOver rotor traversal. See #588.
+            .focusable(true)
             .accessibilityLabel("Genre \(genre.name)")
+            .accessibilityAddTraits(.isButton)
     }
 }
 

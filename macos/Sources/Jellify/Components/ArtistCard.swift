@@ -102,9 +102,14 @@ struct ArtistCard: View {
         .contextMenu { ArtistContextMenu(artist: artist) }
         // Outer tap target reads as an artist navigation control; the
         // inner hover Play button owns its own label. VoiceOver sees
-        // "Artist <name>, <album count>. Opens artist detail."
+        // "Artist <name>, <album count>. Opens artist detail." `.focusable`
+        // ensures the VoiceOver rotor can Tab into this card from a grid.
+        // See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(artist.name), \(albumCountLabel)")
         .accessibilityHint("Opens artist detail")
+        .accessibilityAddTraits(.isButton)
     }
 
     /// Subline shown under the artist name. Uses `album_count` when known;
