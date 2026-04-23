@@ -1,4 +1,5 @@
 use crate::error::{JellifyError, Result};
+use crate::player::RepeatMode;
 use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use std::path::{Path, PathBuf};
@@ -87,6 +88,36 @@ impl Database {
             .lock()
             .execute("DELETE FROM settings WHERE key = ?1", params![key])?;
         Ok(())
+    }
+
+    /// Persist the current shuffle flag and repeat mode so they survive an app
+    /// restart. Values are stored as two rows in the `settings` table under
+    /// `"shuffle_enabled"` and `"repeat_mode"`.
+    pub fn save_shuffle_repeat(&self, shuffle: bool, repeat: RepeatMode) -> Result<()> {
+        let repeat_str = match repeat {
+            RepeatMode::Off => "off",
+            RepeatMode::One => "one",
+            RepeatMode::All => "all",
+        };
+        self.set_setting("shuffle_enabled", if shuffle { "true" } else { "false" })?;
+        self.set_setting("repeat_mode", repeat_str)?;
+        Ok(())
+    }
+
+    /// Read back the shuffle flag and repeat mode written by
+    /// [`Self::save_shuffle_repeat`]. Returns `(false, RepeatMode::Off)` when
+    /// no values have been stored yet (first launch or fresh install).
+    pub fn load_shuffle_repeat(&self) -> Result<(bool, RepeatMode)> {
+        let shuffle = self
+            .get_setting("shuffle_enabled")?
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let repeat = match self.get_setting("repeat_mode")?.as_deref().unwrap_or("off") {
+            "one" => RepeatMode::One,
+            "all" => RepeatMode::All,
+            _ => RepeatMode::Off,
+        };
+        Ok((shuffle, repeat))
     }
 
     pub fn record_play(&self, track_id: &str, played_at: i64) -> Result<()> {

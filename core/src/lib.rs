@@ -80,6 +80,13 @@ impl JellifyCore {
             .build()
             .map_err(|e| JellifyError::Other(format!("tokio runtime: {e}")))?;
 
+        // Restore shuffle/repeat state from the previous launch.
+        let player = Arc::new(Player::new());
+        if let Ok((shuffle, repeat)) = db.load_shuffle_repeat() {
+            player.set_shuffle(shuffle);
+            player.set_repeat_mode(repeat);
+        }
+
         Ok(Arc::new(Self {
             inner: Arc::new(Mutex::new(Inner {
                 client: None,
@@ -87,7 +94,7 @@ impl JellifyCore {
                 device_id,
                 device_name: config.device_name,
             })),
-            player: Arc::new(Player::new()),
+            player,
             runtime,
         }))
     }
@@ -845,16 +852,30 @@ impl JellifyCore {
     /// SMTC `ShuffleEnabled` on Windows) stay in sync with the app. The
     /// core does not reorder the underlying queue — callers hand over
     /// already-shuffled tracks via [`Self::set_queue`] and use this to
-    /// reflect the current mode. See issue #34.
+    /// reflect the current mode. Persisted to the local database so the
+    /// setting survives app restarts. See issue #34 / #583.
     pub fn set_shuffle(&self, on: bool) {
         self.player.set_shuffle(on);
+        let status = self.player.status();
+        let _ = self
+            .inner
+            .lock()
+            .db
+            .save_shuffle_repeat(on, status.repeat_mode);
     }
 
     /// Set the queue-wide [`RepeatMode`]. Consumed by the platform audio
     /// engine at end-of-track (replay vs. advance vs. stop) and exposed on
-    /// the remote-control surface. See issue #34.
+    /// the remote-control surface. Persisted to the local database so the
+    /// setting survives app restarts. See issue #34 / #583.
     pub fn set_repeat_mode(&self, mode: RepeatMode) {
         self.player.set_repeat_mode(mode);
+        let status = self.player.status();
+        let _ = self
+            .inner
+            .lock()
+            .db
+            .save_shuffle_repeat(status.shuffle, mode);
     }
 
     pub fn stop(&self) {
