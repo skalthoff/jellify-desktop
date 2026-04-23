@@ -2316,6 +2316,91 @@ async fn unset_favorite_without_session_returns_not_authenticated() {
 }
 
 #[tokio::test]
+async fn toggle_favorite_dispatches_to_set_when_true() {
+    // `toggle_favorite(_, true)` must use POST (matching set_favorite), not
+    // DELETE — otherwise a macOS `likeCommand` tap would unfavorite on a
+    // track whose state is already "not favorited" (the target state).
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/UserFavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": true,
+            "PlayCount": 0,
+            "LastPlayedDate": null
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let state = client.toggle_favorite("item-xyz", true).await.unwrap();
+    assert!(state.is_favorite);
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests
+            .iter()
+            .any(|r| r.method.as_str() == "POST" && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        "expected POST to /UserFavoriteItems on toggle_favorite(true)"
+    );
+    assert!(
+        !requests.iter().any(|r| r.method.as_str() == "DELETE"),
+        "toggle_favorite(true) must not issue a DELETE"
+    );
+}
+
+#[tokio::test]
+async fn toggle_favorite_dispatches_to_unset_when_false() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("DELETE"))
+        .and(path("/UserFavoriteItems/item-xyz"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "IsFavorite": false,
+            "PlayCount": 3,
+            "LastPlayedDate": null
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let state = client.toggle_favorite("item-xyz", false).await.unwrap();
+    assert!(!state.is_favorite);
+    assert_eq!(state.play_count, Some(3));
+
+    let requests = server.received_requests().await.unwrap();
+    assert!(
+        requests.iter().any(|r| r.method.as_str() == "DELETE"
+            && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        "expected DELETE to /UserFavoriteItems on toggle_favorite(false)"
+    );
+    // Auth is also a POST — we only care that we don't hit the favorite
+    // endpoint with POST.
+    assert!(
+        !requests
+            .iter()
+            .any(|r| r.method.as_str() == "POST" && r.url.path() == "/UserFavoriteItems/item-xyz"),
+        "toggle_favorite(false) must not issue a POST to the favorite endpoint"
+    );
+}
+
+#[tokio::test]
 async fn report_playback_progress_posts_pascal_case_body() {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
