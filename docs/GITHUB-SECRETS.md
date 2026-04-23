@@ -9,9 +9,9 @@ See `.env.example` for the local-dev counterpart of these values.
 
 ## E2E testing
 
-Target: [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml). Runs on every push / PR / nightly cron against `https://music.skalthoff.com` as user `test`.
+Target: [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml). Runs on every push / PR / nightly cron against an **ephemeral `jellyfin/jellyfin:10.11.8` Docker container** that is spun up fresh for each CI run and torn down automatically when the job finishes.
 
-**No secret needed.** The `test` account has no password — the workflow passes an empty string, which Jellyfin accepts for passwordless accounts. If you later set a password on the account, add a `JELLIFY_E2E_PASS` secret and wire it into `e2e.yml`'s `env:` block.
+**No secret needed.** The container is seeded by `Scripts/e2e-setup-jellyfin.sh` with throwaway credentials (`jellify-e2e` / `jellify-e2e-password`) that are baked into the workflow file. There is no external server dependency.
 
 ---
 
@@ -118,6 +118,6 @@ gh secret list
 Plain workflow env vars — these live in the YAML, not in secrets:
 
 - `CARGO_TERM_COLOR`, `CARGO_INCREMENTAL`, `RUST_BACKTRACE`, `RUSTDOCFLAGS` — Rust build knobs.
-- `JELLIFY_E2E_URL`, `JELLIFY_E2E_USER` — pointed at `https://music.skalthoff.com` + `test` in `e2e.yml`.
+- `JELLIFY_E2E_URL`, `JELLIFY_E2E_USER`, `JELLIFY_E2E_PASS` — ephemeral Docker Jellyfin coordinates baked into `e2e.yml`; not secrets.
 - `JELLIFY_UNIVERSAL`, `JELLIFY_BUILD_CONFIG`, `JELLIFY_VERSION`, `JELLIFY_BUILD` — release build flags injected by `macos-release.yml`.
 - `RELEASE_TAG` — derived from the tag push in the release workflow.
