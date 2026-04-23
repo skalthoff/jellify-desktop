@@ -6,6 +6,7 @@ use reqwest::{Client as HttpClient, RequestBuilder, Response, StatusCode};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
 const CLIENT_NAME: &str = "Jellify Desktop";
@@ -65,6 +66,12 @@ pub struct JellyfinClient {
     /// Wired by [`crate::JellifyCore`] at login / resume time; tests may
     /// leave it unset to exercise the "no refresh available" fallback.
     refresh_cb: Mutex<Option<Arc<RefreshTokenFn>>>,
+    /// Cancellation signal shared with any background task (e.g. the
+    /// heartbeat scheduler) that holds a reference to this client. When
+    /// cancelled, [`Self::send_with_retry_raw`] abandons any pending backoff
+    /// sleep between retry attempts and returns
+    /// [`JellifyError::Other`]`("cancelled")` immediately. See issue #605.
+    pub cancel: CancellationToken,
 }
 
 impl JellyfinClient {
@@ -88,6 +95,7 @@ impl JellyfinClient {
             user_id: None,
             library_cache: Mutex::new(LibraryCache::default()),
             refresh_cb: Mutex::new(None),
+            cancel: CancellationToken::new(),
         })
     }
 
@@ -332,7 +340,16 @@ impl JellyfinClient {
                             "jellyfin request retriable, backing off"
                         );
                         drop(resp);
-                        tokio::time::sleep(delay).await;
+                        // Respect the cancellation signal: if the caller's
+                        // future is being torn down (e.g. user navigated away
+                        // during a search) bail out immediately instead of
+                        // sleeping through the full backoff delay. See #605.
+                        tokio::select! {
+                            _ = tokio::time::sleep(delay) => {}
+                            _ = self.cancel.cancelled() => {
+                                return Err(JellifyError::Other("request cancelled".into()));
+                            }
+                        }
                         continue;
                     }
 
@@ -347,7 +364,13 @@ impl JellyfinClient {
                             delay_ms = delay.as_millis() as u64,
                             "jellyfin transport error, backing off"
                         );
-                        tokio::time::sleep(delay).await;
+                        // Same cancellation check between retries. See #605.
+                        tokio::select! {
+                            _ = tokio::time::sleep(delay) => {}
+                            _ = self.cancel.cancelled() => {
+                                return Err(JellifyError::Other("request cancelled".into()));
+                            }
+                        }
                         continue;
                     }
                     // Route through `From<reqwest::Error>` so cert-validation

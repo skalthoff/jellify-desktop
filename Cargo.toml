@@ -16,6 +16,7 @@ repository = "https://github.com/Jellify-Music/Jellify"
 [workspace.dependencies]
 # Runtime
 tokio = { version = "1.40", features = ["full"] }
+tokio-util = { version = "0.7", features = ["rt"] }
 async-trait = "0.1"
 futures = "0.3"
 
