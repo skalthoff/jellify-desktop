@@ -1787,7 +1787,7 @@ impl JellyfinClient {
     /// Fetch the full audio payload for a track, authenticated. Returns the
     /// bytes plus the reported Content-Type (needed to pick the right decoder).
     pub async fn stream_bytes(&self, track_id: &str) -> Result<(Vec<u8>, Option<String>)> {
-        let url = self.stream_url(track_id)?;
+        let url = self.stream_url(track_id, None, None)?;
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
@@ -1802,10 +1802,21 @@ impl JellyfinClient {
 
     /// Build the URL to stream a given track.
     ///
+    /// `media_source_id` should come from `MediaSourceInfo::id` returned by
+    /// `POST /Items/{id}/PlaybackInfo` so the server streams the correct source
+    /// when an item has multiple audio versions. `play_session_id` should be
+    /// the `PlaySessionId` returned by the same endpoint and must be echoed on
+    /// every subsequent progress/stop report.
+    ///
     /// Advertises all containers AVFoundation / MediaPlayer handle natively,
     /// so Jellyfin direct-streams whenever the source matches. Exotic source
     /// formats fall back to a transcoded MP3 stream.
-    pub fn stream_url(&self, track_id: &str) -> Result<Url> {
+    pub fn stream_url(
+        &self,
+        track_id: &str,
+        media_source_id: Option<&str>,
+        play_session_id: Option<&str>,
+    ) -> Result<Url> {
         let mut url = self.endpoint(&format!("Audio/{track_id}/universal"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1816,6 +1827,12 @@ impl JellyfinClient {
             q.append_pair("AudioCodec", "mp3,aac,flac,alac,pcm,vorbis,opus");
             q.append_pair("TranscodingContainer", "mp3");
             q.append_pair("TranscodingProtocol", "http");
+            if let Some(msid) = media_source_id {
+                q.append_pair("MediaSourceId", msid);
+            }
+            if let Some(psid) = play_session_id {
+                q.append_pair("PlaySessionId", psid);
+            }
             if let Some(token) = self.token.lock().as_deref() {
                 q.append_pair("api_key", token);
             }

@@ -54,6 +54,12 @@ pub struct PlayerStatus {
     /// [`Player::skip_next`] / [`Player::skip_previous`] when the caller
     /// walks past a queue boundary. See issue #34.
     pub repeat_mode: RepeatMode,
+    /// The `PlaySessionId` assigned by Jellyfin's `POST /Items/{id}/PlaybackInfo`
+    /// for the current track. Must be echoed on every subsequent
+    /// `PlaybackProgressInfo` / `PlaybackStopInfo` report so the server can
+    /// correlate the stream with its transcode job. `None` when no session is
+    /// active. See issue #569.
+    pub play_session_id: Option<String>,
 }
 
 pub struct Player {
@@ -69,6 +75,7 @@ struct Shared {
     position_seconds: f64,
     shuffle: bool,
     repeat_mode: RepeatMode,
+    play_session_id: Option<String>,
 }
 
 impl Shared {
@@ -82,6 +89,7 @@ impl Shared {
             position_seconds: 0.0,
             shuffle: false,
             repeat_mode: RepeatMode::Off,
+            play_session_id: None,
         }
     }
 
@@ -101,6 +109,7 @@ impl Shared {
             queue_length: self.queue.len() as u32,
             shuffle: self.shuffle,
             repeat_mode: self.repeat_mode,
+            play_session_id: self.play_session_id.clone(),
         }
     }
 }
@@ -180,6 +189,19 @@ impl Player {
         s.state = PlaybackState::Playing;
     }
 
+    /// Store the `PlaySessionId` from `POST /Items/{id}/PlaybackInfo`.
+    /// Must be called at playback start and echoed on every subsequent
+    /// `PlaybackProgressInfo` / `PlaybackStopInfo` report. See issue #569.
+    pub fn set_play_session_id(&self, id: Option<String>) {
+        self.shared.lock().play_session_id = id;
+    }
+
+    /// The current session's `PlaySessionId`, or `None` when no playback
+    /// session is active.
+    pub fn play_session_id(&self) -> Option<String> {
+        self.shared.lock().play_session_id.clone()
+    }
+
     pub fn mark_state(&self, state: PlaybackState) {
         self.shared.lock().state = state;
     }
@@ -213,6 +235,7 @@ impl Player {
         s.state = PlaybackState::Stopped;
         s.current = None;
         s.position_seconds = 0.0;
+        s.play_session_id = None;
     }
 
     pub fn status(&self) -> PlayerStatus {

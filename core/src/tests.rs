@@ -4174,11 +4174,114 @@ fn stream_url_contains_api_key() {
     let mut client =
         JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
     client.set_session("mytoken".into(), "u1".into());
-    let url = client.stream_url("track-id").unwrap();
+    let url = client.stream_url("track-id", None, None).unwrap();
     let s = url.as_str();
     assert!(s.contains("api_key=mytoken"), "url: {s}");
     assert!(s.contains("DeviceId=dev"), "url: {s}");
     assert!(s.contains("/Audio/track-id/universal"), "url: {s}");
+}
+
+// ---------------------------------------------------------------------------
+// stream_url — MediaSourceId + PlaySessionId threading (#593, #569)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn stream_url_includes_media_source_id_when_provided() {
+    let mut client =
+        JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
+    client.set_session("tok".into(), "u1".into());
+    let url = client
+        .stream_url("track-abc", Some("source-xyz"), None)
+        .unwrap();
+    let s = url.as_str();
+    assert!(
+        s.contains("MediaSourceId=source-xyz"),
+        "expected MediaSourceId in url: {s}"
+    );
+    assert!(
+        s.contains("/Audio/track-abc/universal"),
+        "expected universal path in url: {s}"
+    );
+}
+
+#[test]
+fn stream_url_includes_play_session_id_when_provided() {
+    let mut client =
+        JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
+    client.set_session("tok".into(), "u1".into());
+    let url = client
+        .stream_url("track-abc", None, Some("session-42"))
+        .unwrap();
+    let s = url.as_str();
+    assert!(
+        s.contains("PlaySessionId=session-42"),
+        "expected PlaySessionId in url: {s}"
+    );
+}
+
+#[test]
+fn stream_url_omits_optional_params_when_none() {
+    let mut client =
+        JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
+    client.set_session("tok".into(), "u1".into());
+    let url = client.stream_url("track-abc", None, None).unwrap();
+    let s = url.as_str();
+    assert!(
+        !s.contains("MediaSourceId"),
+        "MediaSourceId should be absent when None: {s}"
+    );
+    assert!(
+        !s.contains("PlaySessionId"),
+        "PlaySessionId should be absent when None: {s}"
+    );
+}
+
+#[test]
+fn stream_url_includes_both_media_source_id_and_play_session_id() {
+    let mut client =
+        JellyfinClient::new("https://example.com", "dev".into(), "Dev".into()).unwrap();
+    client.set_session("tok".into(), "u1".into());
+    let url = client
+        .stream_url("track-abc", Some("src-1"), Some("sess-99"))
+        .unwrap();
+    let s = url.as_str();
+    assert!(s.contains("MediaSourceId=src-1"), "url: {s}");
+    assert!(s.contains("PlaySessionId=sess-99"), "url: {s}");
+    assert!(s.contains("api_key=tok"), "url: {s}");
+}
+
+// ---------------------------------------------------------------------------
+// Player — play_session_id threading (#569)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn player_play_session_id_defaults_to_none() {
+    use crate::player::Player;
+    let player = Player::new();
+    assert!(player.play_session_id().is_none());
+    assert!(player.status().play_session_id.is_none());
+}
+
+#[test]
+fn player_set_play_session_id_round_trips() {
+    use crate::player::Player;
+    let player = Player::new();
+    player.set_play_session_id(Some("sess-abc".into()));
+    assert_eq!(player.play_session_id().as_deref(), Some("sess-abc"));
+    assert_eq!(player.status().play_session_id.as_deref(), Some("sess-abc"));
+}
+
+#[test]
+fn player_clear_resets_play_session_id() {
+    use crate::player::Player;
+    let player = Player::new();
+    player.set_play_session_id(Some("sess-abc".into()));
+    player.clear();
+    assert!(
+        player.play_session_id().is_none(),
+        "clear() must reset play_session_id"
+    );
+    assert!(player.status().play_session_id.is_none());
 }
 
 #[test]
