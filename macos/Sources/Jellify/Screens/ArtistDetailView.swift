@@ -68,7 +68,11 @@ struct ArtistDetailView: View {
             if model.artists.first(where: { $0.id == artistID }) == nil {
                 fetchedArtist = await model.resolveArtist(id: artistID)
             }
-            artistAlbums = model.albums.filter { $0.artistId == artistID }
+            // Server-scoped fetch via `AlbumArtistIds`. The prior
+            // `model.albums.filter { ... }` only looked at the cached
+            // first page of 100 library-wide albums, so Discography
+            // rendered empty for most artists on a large library (#60).
+            artistAlbums = await model.loadArtistAlbums(artistId: artistID)
             topTracks = await model.loadArtistTopTracks(artistId: artistID)
             isLoadingTopTracks = false
         }

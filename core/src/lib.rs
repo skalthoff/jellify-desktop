@@ -351,6 +351,23 @@ impl JellifyCore {
         self.with_client(|c| self.runtime.block_on(c.artists(Paging::new(offset, limit))))
     }
 
+    /// Every album where the given artist is the primary (album) artist,
+    /// paginated. Scopes by `AlbumArtistIds` on the server so compilations
+    /// the artist only appears on don't leak into the Discography section.
+    /// See issue #60 — closes the `ArtistDetailView` gap where the
+    /// Discography was rendered by filtering a paged library-wide cache.
+    pub fn albums_by_artist(
+        &self,
+        artist_id: String,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.albums_by_artist(&artist_id, Paging::new(offset, limit)))
+        })
+    }
+
     pub fn album_tracks(&self, album_id: String) -> std::result::Result<Vec<Track>, JellifyError> {
         self.with_client(|c| self.runtime.block_on(c.album_tracks(&album_id)))
     }
