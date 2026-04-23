@@ -255,7 +255,18 @@ public final class MediaSession {
 
         cc.previousTrackCommand.isEnabled = false
         cc.previousTrackCommand.addTarget { [weak self] _ in
-            self?.delegate?.mediaSessionSkipPrevious()
+            guard let self, let delegate = self.delegate else {
+                return .commandFailed
+            }
+            // #581: Standard "previous track" behaviour — if the user is more
+            // than 3 seconds into the current track, restart it instead of
+            // jumping to the previous queue item. Only skip back when at or
+            // within the first 3 seconds.
+            if delegate.currentStatus.positionSeconds > 3.0 {
+                delegate.mediaSessionSeek(toSeconds: 0)
+            } else {
+                delegate.mediaSessionSkipPrevious()
+            }
             return .success
         }
 
