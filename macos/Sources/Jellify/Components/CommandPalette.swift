@@ -99,6 +99,9 @@ struct CommandPalette: View {
             }
             .padding(.top, 120)
         }
+        // #585: Route space-bar keypresses to the palette's search TextField
+        // even while the global Play/Pause ⎵ shortcut is active.
+        .spaceKeyGuardForTextField()
         .onAppear {
             // Autofocus the search input on present. The 0.01s defer
             // works around a SwiftUI quirk where `@FocusState` set on the
