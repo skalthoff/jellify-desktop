@@ -23,6 +23,31 @@ WAIT_SECONDS="${JELLIFY_E2E_WAIT_SECONDS:-180}"
 
 log() { printf '[e2e-setup] %s\n' "$*" >&2; }
 
+# `GET /Startup/User` is what the Jellyfin web wizard hits when it mounts
+# the "create admin" form — and that call is *also* what lazily seeds the
+# default admin row in the database. Without it, the very next
+# `POST /Startup/User` blows up with
+# `System.InvalidOperationException: Sequence contains no elements`
+# from `StartupController.UpdateStartupUser -> _userManager.Users.First()`.
+# Works on 10.9 / 10.10 / 10.11 alike.
+#
+# Also acts as a readiness probe: Jellyfin accepts /System/Info/Public
+# a few seconds before it's ready for write endpoints, and the first
+# /Startup/Configuration after boot tends to 503 until the host stops
+# reloading config. Retry until we get the 200 that says everything's up.
+seed_default_user() {
+	local deadline=$(( $(date +%s) + WAIT_SECONDS ))
+	while (( $(date +%s) < deadline )); do
+		if curl -fsS "$URL/Startup/User" >/dev/null 2>&1; then
+			log "default admin seeded"
+			return 0
+		fi
+		sleep 2
+	done
+	log "GET /Startup/User never returned 200 within ${WAIT_SECONDS}s"
+	return 1
+}
+
 wait_for_server() {
 	log "waiting up to ${WAIT_SECONDS}s for $URL/System/Info/Public"
 	local deadline=$(( $(date +%s) + WAIT_SECONDS ))
@@ -94,6 +119,7 @@ json_kv() {
 }
 
 wait_for_server
+seed_default_user
 
 log "POST /Startup/Configuration"
 json_post /Startup/Configuration \
