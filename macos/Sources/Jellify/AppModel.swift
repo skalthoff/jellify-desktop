@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MediaPlayer
 import Observation
 import SwiftUI
 @preconcurrency import JellifyCore
@@ -3033,20 +3034,18 @@ final class AppModel {
         }
     }
 
-    /// Rename a playlist by id. Local-only update until the core exposes
-    /// `update_playlist` (see core-#130); on the next full library refresh
-    /// a local-only rename will be overwritten by the server's persisted
-    /// name. Shared by the sidebar inline rename and the playlist hero
-    /// click-to-edit title.
+    /// Rename a playlist by id. Optimistically updates the in-memory list
+    /// first for instant UI feedback, then persists to the server via
+    /// `core.renamePlaylist`. On failure the old name is restored and
+    /// `errorMessage` surfaces the failure.
     func renamePlaylist(id: String, newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         guard let idx = playlists.firstIndex(where: { $0.id == id }) else { return }
         let existing = playlists[idx]
         guard trimmed != existing.name else { return }
-        // TODO(core-#130): call `core.updatePlaylist(playlistId:, name:)`
-        // once the FFI lands. For now, optimistically update in place.
-        print("[AppModel] renamePlaylist(\(id)) local-only — see core-#130")
+        // Optimistic update so the sidebar / hero reflects the new name
+        // before the network round-trip completes.
         playlists[idx] = Playlist(
             id: existing.id,
             name: trimmed,
@@ -3054,6 +3053,24 @@ final class AppModel {
             runtimeTicks: existing.runtimeTicks,
             imageTag: existing.imageTag
         )
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) { [core] in
+                    try core.renamePlaylist(playlistId: id, newName: trimmed)
+                }.value
+                serverReachability.noteSuccess()
+            } catch {
+                if handleAuthError(error) { return }
+                // Rollback the optimistic rename on failure.
+                if let rollbackIdx = playlists.firstIndex(where: { $0.id == id }) {
+                    playlists[rollbackIdx] = existing
+                }
+                errorMessage = "Rename failed: \(error.localizedDescription)"
+                if ServerReachability.shouldCount(error: error) {
+                    serverReachability.noteFailure()
+                }
+            }
+        }
     }
 
     /// Duplicate a playlist: create "<original> Copy" and seed it with the
@@ -3099,16 +3116,39 @@ final class AppModel {
         }
     }
 
-    /// Delete a playlist. Today this is an in-memory drop with a matching
-    /// TODO stub — the core's `delete_playlist` FFI hasn't landed yet
-    /// (see core-#131). When it does, swap the `print` line for a
-    /// `try core.deletePlaylist(id:)` call.
+    /// Delete a playlist. Optimistically removes the playlist from
+    /// the in-memory list for instant UI feedback, then persists the
+    /// deletion to the server via `core.deletePlaylist`. On failure
+    /// the playlist is re-inserted at its original position and
+    /// `errorMessage` surfaces the failure.
     func deletePlaylist(id: String) {
-        playlists.removeAll { $0.id == id }
+        guard let idx = playlists.firstIndex(where: { $0.id == id }) else { return }
+        let removed = playlists[idx]
+        let removedTracks = playlistTracks[id]
+        let removedDescription = playlistDescriptions[id]
+        // Optimistic drop.
+        playlists.remove(at: idx)
         playlistTracks.removeValue(forKey: id)
         playlistDescriptions.removeValue(forKey: id)
-        // TODO(core-#131): delete_playlist FFI not yet wired — local drop only.
-        print("[AppModel] deletePlaylist(\(id)) local-only — see core-#131")
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) { [core] in
+                    try core.deletePlaylist(playlistId: id)
+                }.value
+                serverReachability.noteSuccess()
+            } catch {
+                if handleAuthError(error) { return }
+                // Rollback the optimistic delete on failure.
+                let insertIdx = min(idx, playlists.count)
+                playlists.insert(removed, at: insertIdx)
+                if let tracks = removedTracks { playlistTracks[id] = tracks }
+                if let desc = removedDescription { playlistDescriptions[id] = desc }
+                errorMessage = "Delete failed: \(error.localizedDescription)"
+                if ServerReachability.shouldCount(error: error) {
+                    serverReachability.noteFailure()
+                }
+            }
+        }
     }
 
     /// Resolve a dropped track id (from the drag-reorder affordance in
@@ -3122,14 +3162,15 @@ final class AppModel {
         moveTrackInPlaylist(playlistId: playlistId, from: sourceIndex, to: destinationIndex)
     }
 
-    /// Reorder a track within a playlist. Swaps the local cache entry so
-    /// the UI reflects the new order immediately, then defers the server
-    /// round trip until `move_playlist_item` (core-#129) lands. Matches
-    /// the optimistic-update pattern used for rename/delete above.
+    /// Reorder a track within a playlist. Applies the move to the local
+    /// cache immediately (optimistic update), then calls
+    /// `core.reorderPlaylistTrack` to persist the new position on the server.
+    /// Requires the moved track to carry a `playlistItemId` — if it doesn't
+    /// (e.g. old cached data pre-dating the `PlaylistItemId` field), the move
+    /// is local-only and an error is logged.
     ///
     /// Indices are relative to the current cached order in
-    /// `playlistTracks[playlistId]`. Out-of-range indices are silently
-    /// dropped. The semantics match SwiftUI's native
+    /// `playlistTracks[playlistId]`. The semantics match SwiftUI's native
     /// `Array.move(fromOffsets:toOffset:)` so the detail view can feed its
     /// drop position straight through.
     func moveTrackInPlaylist(playlistId: String, from: Int, to: Int) {
@@ -3141,13 +3182,38 @@ final class AppModel {
         // no-ops — bail early to avoid a needless assignment + notify.
         guard to >= 0, to <= tracks.count else { return }
         guard to != from, to != from + 1 else { return }
-        let track = tracks.remove(at: from)
+        let movedTrack = tracks[from]
+        tracks.remove(at: from)
         let insertIndex = to > from ? to - 1 : to
-        tracks.insert(track, at: insertIndex)
+        tracks.insert(movedTrack, at: insertIndex)
         playlistTracks[playlistId] = tracks
-        // TODO(core-#129): call `core.movePlaylistItem(playlistId:, fromIndex:, toIndex:)`
-        // once the FFI lands. Local-only for now.
-        print("[AppModel] moveTrackInPlaylist(\(playlistId)) \(from) → \(to) local-only — see core-#129")
+        // Keep currentPlaylistTracks in sync if this playlist is currently shown.
+        if !currentPlaylistTracks.isEmpty {
+            currentPlaylistTracks = tracks
+        }
+        // Persist the reorder to the server if the track carries a PlaylistItemId.
+        guard let playlistItemId = movedTrack.playlistItemId else {
+            print("[AppModel] moveTrackInPlaylist(\(playlistId)) — track missing PlaylistItemId, local-only")
+            return
+        }
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) { [core] in
+                    try core.reorderPlaylistTrack(
+                        playlistId: playlistId,
+                        playlistItemId: playlistItemId,
+                        newIndex: UInt32(insertIndex)
+                    )
+                }.value
+                serverReachability.noteSuccess()
+            } catch {
+                if handleAuthError(error) { return }
+                errorMessage = "Reorder failed: \(error.localizedDescription)"
+                if ServerReachability.shouldCount(error: error) {
+                    serverReachability.noteFailure()
+                }
+            }
+        }
     }
 
     // MARK: - Playlist sharing
@@ -4029,8 +4095,38 @@ extension AppModel: MediaSessionDelegate {
         // one we signal `.noActionableNowPlayingItem` back to the remote
         // surface via a `nil` return.
         guard let track = status.currentTrack else { return nil }
-        let target = !(isFavorite(id: track.id) || track.isFavorite)
-        Task { await setFavorite(itemId: track.id, enabled: target) }
+        let previous = isFavorite(id: track.id) || track.isFavorite
+        let target = !previous
+        // Optimistic local update so the heart glyph responds instantly.
+        favoriteById[track.id] = target
+        let trackId = track.id
+        Task {
+            do {
+                let state = try await Task.detached(priority: .userInitiated) { [core] in
+                    if target {
+                        return try core.setFavorite(itemId: trackId)
+                    } else {
+                        return try core.unsetFavorite(itemId: trackId)
+                    }
+                }.value
+                favoriteById[trackId] = state.isFavorite
+                serverReachability.noteSuccess()
+                // Reconcile the remote-command surface with the server's
+                // authoritative answer (handles the edge case where the server
+                // disagrees with the local optimistic flip).
+                MPRemoteCommandCenter.shared().likeCommand.isActive = state.isFavorite
+            } catch {
+                if handleAuthError(error) { return }
+                // Rollback the optimistic flip — restore the previous state
+                // in both the local cache and the Control Center widget.
+                favoriteById[trackId] = previous
+                MPRemoteCommandCenter.shared().likeCommand.isActive = previous
+                errorMessage = "Favorite toggle failed: \(error.localizedDescription)"
+                if ServerReachability.shouldCount(error: error) {
+                    serverReachability.noteFailure()
+                }
+            }
+        }
         return target
     }
 

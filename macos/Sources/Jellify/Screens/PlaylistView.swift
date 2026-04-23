@@ -75,6 +75,16 @@ struct PlaylistView: View {
         .onChange(of: model.playlistTracks[playlistID]) { _, newValue in
             if let newValue = newValue { tracks = newValue }
         }
+        // Clear click-to-edit drafts when the user navigates away (#602).
+        // SwiftUI may reuse the view struct across back-forward navigations
+        // (especially with `NavigationStack`), so stale `titleDraft` /
+        // `descriptionDraft` from a prior session would appear pre-filled
+        // on the next visit to the same playlist. Resetting on disappear
+        // ensures the next open starts with the committed (server) values.
+        .onDisappear {
+            titleDraft = nil
+            descriptionDraft = nil
+        }
     }
 
     // MARK: - Hero

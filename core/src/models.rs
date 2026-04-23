@@ -64,6 +64,12 @@ pub struct Track {
     pub container: Option<String>,
     pub bitrate: Option<u32>,
     pub image_tag: Option<String>,
+    /// Jellyfin `PlaylistItemId` — only populated when the track was fetched
+    /// as part of a playlist (via `playlist_tracks`). Used by
+    /// `reorder_playlist_track` and `remove_from_playlist` to identify the
+    /// specific entry rather than the underlying item, so duplicate tracks in
+    /// the same playlist can be operated on independently.
+    pub playlist_item_id: Option<String>,
 }
 
 impl Track {

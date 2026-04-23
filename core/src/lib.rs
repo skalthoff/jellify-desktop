@@ -858,6 +858,51 @@ impl JellifyCore {
         })
     }
 
+    /// Rename a playlist on the server. Fetches the current item to prefill
+    /// the required `POST /Items/{id}` body, then re-POSTs with only `Name`
+    /// changed. UI callers should update their local playlist cache on success.
+    /// Errors with [`JellifyError::NotAuthenticated`] when no session is active.
+    pub fn rename_playlist(
+        &self,
+        playlist_id: String,
+        new_name: String,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.rename_playlist(&playlist_id, &new_name))
+        })
+    }
+
+    /// Delete a playlist from the server via `DELETE /Items/{id}`. UI callers
+    /// should drop the item from their local cache on success.
+    /// Errors with [`JellifyError::NotAuthenticated`] when no session is active.
+    pub fn delete_playlist(&self, playlist_id: String) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| self.runtime.block_on(c.delete_playlist(&playlist_id)))
+    }
+
+    /// Move a playlist entry to a new position via
+    /// `POST /Playlists/{playlistId}/Items/{playlistItemId}/Move/{newIndex}`.
+    ///
+    /// `playlist_item_id` is the per-entry `PlaylistItemId` on the `Track`
+    /// (populated by `playlist_tracks`). `new_index` is zero-based.
+    /// Callers should reload playlist tracks after this returns so the UI
+    /// reflects the server order.
+    /// Errors with [`JellifyError::NotAuthenticated`] when no session is active.
+    pub fn reorder_playlist_track(
+        &self,
+        playlist_id: String,
+        playlist_item_id: String,
+        new_index: u32,
+    ) -> std::result::Result<(), JellifyError> {
+        self.with_client(|c| {
+            self.runtime.block_on(c.reorder_playlist_track(
+                &playlist_id,
+                &playlist_item_id,
+                new_index,
+            ))
+        })
+    }
+
     /// A default macOS [`DeviceProfile`] advertising direct-play for
     /// FLAC / ALAC / MP3 / AAC / Opus / OGG / WAV with an MP3 320
     /// transcode fallback. Intended as a one-liner for UIs that don't

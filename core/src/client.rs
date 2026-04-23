@@ -1828,6 +1828,82 @@ impl JellyfinClient {
         Ok(())
     }
 
+    /// Rename a playlist by updating its `Name` field via `POST /Items/{id}`.
+    ///
+    /// The `POST /Items/{id}` endpoint requires the full item body, so we first
+    /// fetch the existing item with `GET /Items/{id}` and then re-POST with only
+    /// `Name` changed. Responds 204 on success.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn rename_playlist(&self, playlist_id: &str, new_name: &str) -> Result<()> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        // Fetch the current item to prefill required fields.
+        let existing = self.fetch_item(playlist_id, &[]).await?;
+        // Build the update body from the existing item, overwriting Name.
+        let mut body = existing;
+        body["Name"] = serde_json::Value::String(new_name.to_string());
+        let mut url = self.endpoint(&format!("Items/{playlist_id}"))?;
+        url.query_pairs_mut().append_pair("UserId", user_id);
+        self.send_with_retry(|| {
+            Ok(self
+                .http
+                .post(url.clone())
+                .headers(self.build_headers()?)
+                .json(&body))
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Delete a playlist via `DELETE /Items/{id}`.
+    ///
+    /// Responds 204 on success, 403 when the caller does not own the playlist
+    /// (some Jellyfin configurations also accept
+    /// `DELETE /Items?Ids={id}` for batch deletes — this method uses the
+    /// single-item path which is broadly supported). Callers should remove
+    /// the item from any in-memory caches after this returns.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn delete_playlist(&self, playlist_id: &str) -> Result<()> {
+        self.require_token()?;
+        let url = self.endpoint(&format!("Items/{playlist_id}"))?;
+        self.send_with_retry(|| Ok(self.http.delete(url.clone()).headers(self.build_headers()?)))
+            .await?;
+        Ok(())
+    }
+
+    /// Move a playlist entry to a new position via
+    /// `POST /Playlists/{playlistId}/Items/{playlistItemId}/Move/{newIndex}`.
+    ///
+    /// `playlist_item_id` is the per-entry `PlaylistItemId` returned by
+    /// `playlist_tracks` (not the underlying `ItemId`). `new_index` is
+    /// zero-based and is the desired final position in the playlist.
+    ///
+    /// Responds 204 on success. Callers should invalidate their
+    /// `playlist_tracks` cache so the UI reflects the server order.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    pub async fn reorder_playlist_track(
+        &self,
+        playlist_id: &str,
+        playlist_item_id: &str,
+        new_index: u32,
+    ) -> Result<()> {
+        self.require_token()?;
+        let url = self.endpoint(&format!(
+            "Playlists/{playlist_id}/Items/{playlist_item_id}/Move/{new_index}"
+        ))?;
+        self.send_with_retry(|| Ok(self.http.post(url.clone()).headers(self.build_headers()?)))
+            .await?;
+        Ok(())
+    }
+
     // ----- Streaming -----
 
     /// Fetch the full audio payload for a track, authenticated. Returns the
@@ -2066,6 +2142,8 @@ pub struct RawItem {
     pub bitrate: Option<u32>,
     #[serde(rename = "Path")]
     pub path: Option<String>,
+    #[serde(rename = "PlaylistItemId")]
+    pub playlist_item_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -2262,6 +2340,7 @@ impl From<RawItem> for Track {
             container: r.container,
             bitrate: r.bitrate,
             image_tag: r.image_tags.get("Primary").cloned(),
+            playlist_item_id: r.playlist_item_id,
         }
     }
 }

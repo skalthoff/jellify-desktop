@@ -265,6 +265,7 @@ mod tests {
             container: None,
             bitrate: None,
             image_tag: None,
+            playlist_item_id: None,
         }
     }
 
