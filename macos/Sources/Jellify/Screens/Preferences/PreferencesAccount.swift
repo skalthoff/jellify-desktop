@@ -2,14 +2,19 @@ import AppKit
 import SwiftUI
 
 /// The "Account" pane of the Preferences window. Shows the signed-in server
-/// URL and username, and offers "Change server…" and "Sign out" actions.
+/// URL and username, and offers "Change server…", "Sign out", and a disabled
+/// "Quick Connect" placeholder actions.
 ///
-/// Both actions hang off the existing `AppModel.forgetToken()` entry point
-/// (added for the auth-expired flow in #303) — they drop the stored token and
-/// null the session so `RootView` routes back to `LoginView`. The difference
-/// is cosmetic: "Sign out" leaves the remembered server URL + username on the
-/// model so the user re-enters only their password, while "Change server…"
-/// also clears those so the login form comes up blank.
+/// Both mutating actions hang off the existing `AppModel.forgetToken()` entry
+/// point (added for the auth-expired flow in #303) — they drop the stored
+/// token and null the session so `RootView` routes back to `LoginView`. The
+/// difference is cosmetic: "Sign out" leaves the remembered server URL +
+/// username on the model so the user re-enters only their password, while
+/// "Change server…" also clears those so the login form comes up blank.
+///
+/// Quick Connect (Jellyfin pairing via a short numeric code) is tracked in
+/// #609 and not yet implemented; the button is present but disabled so users
+/// can discover the feature is planned.
 ///
 /// Issue: #259.
 struct PreferencesAccount: View {
@@ -127,6 +132,14 @@ struct PreferencesAccount: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Sign out")
             .accessibilityHint("Signs out of the current server.")
+
+            // Quick Connect — Jellyfin's pairing flow (short numeric code).
+            // Not yet implemented; see #609.
+            Button("Quick Connect") {}
+                .disabled(true)
+                .help("Coming soon — see #609")
+                .accessibilityLabel("Quick Connect")
+                .accessibilityHint("Not yet available. Jellyfin Quick Connect pairing is coming in a future update.")
         }
     }
 
