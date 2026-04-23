@@ -26,6 +26,11 @@ struct SearchView: View {
     /// path. Cancelled on each keystroke so the last keystroke wins.
     @State private var searchDebounce: Task<Void, Never>?
 
+    /// Handle for the in-flight `runFullSearch` network call. Cancelled
+    /// whenever a newer query starts so a slow response from an older
+    /// request can never overwrite fresher results (#566).
+    @State private var searchTask: Task<Void, Never>?
+
     /// Per-scope reveal caps — each scope section shows `initialRevealCount`
     /// rows by default, and the "Load more" button bumps by `revealStep`
     /// until either the local bucket is exhausted or the server signals
@@ -351,7 +356,9 @@ struct SearchView: View {
         guard !trimmed.isEmpty else { return }
         AppModel.addRecentSearch(trimmed, into: &recentSearchesJSON)
         revealedCounts = [:]
-        Task { await model.runFullSearch(query: trimmed, scope: model.activeSearchScope) }
+        searchTask?.cancel()
+        let scope = model.activeSearchScope
+        searchTask = Task { await model.runFullSearch(query: trimmed, scope: scope) }
     }
 
     /// Schedule a debounced "live" search so typing into the field
@@ -360,14 +367,17 @@ struct SearchView: View {
     /// a small buffer for the heavier full-page fetch.
     private func scheduleDebouncedSearch(_ query: String) {
         searchDebounce?.cancel()
+        searchTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         // Empty field → clear the page immediately and don't schedule
         // anything. The recents panel will take over.
         guard !trimmed.isEmpty else {
             revealedCounts = [:]
-            Task { await model.runFullSearch(query: "", scope: model.activeSearchScope) }
+            let scope = model.activeSearchScope
+            searchTask = Task { await model.runFullSearch(query: "", scope: scope) }
             return
         }
+        let scope = model.activeSearchScope
         searchDebounce = Task {
             do {
                 try await Task.sleep(nanoseconds: 300_000_000)
@@ -375,8 +385,12 @@ struct SearchView: View {
                 return
             }
             if Task.isCancelled { return }
+            // Cancel any prior request that may still be in flight before
+            // issuing the new one; the debounce sleep alone doesn't guarantee
+            // the previous network call has finished.
+            searchTask?.cancel()
             revealedCounts = [:]
-            await model.runFullSearch(query: trimmed, scope: model.activeSearchScope)
+            searchTask = Task { await model.runFullSearch(query: trimmed, scope: scope) }
         }
     }
 
@@ -384,10 +398,12 @@ struct SearchView: View {
     /// and by Esc.
     private func clearQuery() {
         searchDebounce?.cancel()
+        searchTask?.cancel()
         model.searchPageQuery = ""
         revealedCounts = [:]
         searchFieldFocused = true
-        Task { await model.runFullSearch(query: "", scope: model.activeSearchScope) }
+        let scope = model.activeSearchScope
+        searchTask = Task { await model.runFullSearch(query: "", scope: scope) }
     }
 }
 
