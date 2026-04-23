@@ -1026,6 +1026,21 @@ async fn similar_items_builds_query_and_parses() {
     assert_eq!(items.len(), 2);
     assert_eq!(items[0].kind.as_deref(), Some("MusicAlbum"));
     assert_eq!(items[1].kind.as_deref(), Some("Audio"));
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("Fields="), "query should include Fields: {q}");
+    assert!(
+        q.contains("PrimaryImageAspectRatio"),
+        "Fields should include PrimaryImageAspectRatio: {q}"
+    );
+    assert!(q.contains("EnableUserData=true"), "query: {q}");
+    assert!(q.contains("EnableImages=true"), "query: {q}");
+    assert!(q.contains("ImageTypeLimit=1"), "query: {q}");
 }
 
 #[tokio::test]
@@ -2204,6 +2219,103 @@ async fn search_hints_builds_expected_query_and_parses() {
     assert_eq!(track.album_id.as_deref(), Some("album-1"));
     assert_eq!(track.index_number, Some(3));
     assert_eq!(track.parent_index_number, Some(1));
+}
+
+/// Verify that the three image-related fields added in #596
+/// (`ThumbImageTag`, `BackdropImageTag`, `PrimaryImageAspectRatio`) are
+/// correctly deserialised from the Jellyfin `SearchHint` DTO.
+#[tokio::test]
+async fn search_hint_parses_image_fields() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Search/Hints"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "SearchHints": [
+                {
+                    "Id": "album-99",
+                    "Name": "Wide Screen Album",
+                    "Type": "MusicAlbum",
+                    "MediaType": "Unknown",
+                    "Artists": [],
+                    "PrimaryImageTag": "img-primary",
+                    "ThumbImageTag": "img-thumb",
+                    "BackdropImageTag": "img-backdrop",
+                    "PrimaryImageAspectRatio": 1.777_777_8_f64
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let results = client
+        .search_hints("Wide Screen", Paging::new(0, 8))
+        .await
+        .unwrap();
+
+    assert_eq!(results.total_record_count, 1);
+    let hint = &results.search_hints[0];
+    assert_eq!(hint.primary_image_tag.as_deref(), Some("img-primary"));
+    assert_eq!(hint.thumb_image_tag.as_deref(), Some("img-thumb"));
+    assert_eq!(hint.backdrop_image_tag.as_deref(), Some("img-backdrop"));
+    let ratio = hint.primary_image_aspect_ratio.expect("aspect ratio");
+    assert!((ratio - 1.777_777_8_f64).abs() < 1e-5, "ratio: {ratio}");
+}
+
+/// Hints whose optional image fields are absent must deserialise cleanly
+/// (all three fields must be `None`).
+#[tokio::test]
+async fn search_hint_image_fields_absent_is_none() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Search/Hints"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "SearchHints": [
+                {
+                    "Id": "artist-42",
+                    "Name": "No Image Artist",
+                    "Type": "MusicArtist",
+                    "MediaType": "Unknown",
+                    "Artists": []
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let results = client
+        .search_hints("No Image", Paging::new(0, 8))
+        .await
+        .unwrap();
+
+    let hint = &results.search_hints[0];
+    assert!(hint.thumb_image_tag.is_none(), "thumb should be None");
+    assert!(hint.backdrop_image_tag.is_none(), "backdrop should be None");
+    assert!(
+        hint.primary_image_aspect_ratio.is_none(),
+        "aspect ratio should be None"
+    );
 }
 
 #[tokio::test]

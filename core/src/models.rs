@@ -241,6 +241,18 @@ pub struct SearchHint {
     /// highlighting the matched portion of `name` in the UI.
     pub matched_term: Option<String>,
     pub primary_image_tag: Option<String>,
+    /// Tag for the item's thumbnail image (`ThumbImageTag` in the Jellyfin
+    /// DTO). Used to build a `/Items/{id}/Images/Thumb?tag=…` URL.
+    #[serde(rename = "ThumbImageTag")]
+    pub thumb_image_tag: Option<String>,
+    /// Tag for the item's backdrop image (`BackdropImageTag` in the Jellyfin
+    /// DTO). Used to build a `/Items/{id}/Images/Backdrop?tag=…` URL.
+    #[serde(rename = "BackdropImageTag")]
+    pub backdrop_image_tag: Option<String>,
+    /// Server-reported aspect ratio for the primary image so the UI can
+    /// reserve the correct amount of space before the image loads.
+    #[serde(rename = "PrimaryImageAspectRatio")]
+    pub primary_image_aspect_ratio: Option<f64>,
     pub production_year: Option<i32>,
     pub index_number: Option<u32>,
     pub parent_index_number: Option<u32>,
