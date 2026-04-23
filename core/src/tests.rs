@@ -12,6 +12,13 @@ fn mock_client(base: &str) -> JellyfinClient {
     JellyfinClient::new(base, "test-device".into(), "Test Device".into()).unwrap()
 }
 
+/// Placeholder credentials for wiremock-backed tests. These are not real
+/// secrets — the mock server accepts any value and returns a canned
+/// `AccessToken` regardless.
+fn test_credentials() -> (&'static str, &'static str) {
+    ("mock-user", "mock-secret-for-wiremock")
+}
+
 /// Register a process-wide in-memory credential store as `keyring`'s default
 /// the first time a test touches the credential layer. Without this, on macOS
 /// the crate's `apple-native` feature would route every test into the real
@@ -2103,7 +2110,8 @@ async fn search_sends_enable_user_data_and_expanded_fields() {
         .await;
 
     let mut client = mock_client(&server.uri());
-    client.authenticate_by_name("n", "pw").await.unwrap();
+    let (user, secret) = test_credentials();
+    client.authenticate_by_name(user, secret).await.unwrap();
     client.search("radio", Paging::new(0, 10)).await.unwrap();
 
     let requests = server.received_requests().await.unwrap();
