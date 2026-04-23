@@ -24,6 +24,7 @@ struct PlaylistView: View {
 
     @State private var tracks: [Track] = []
     @State private var isLoadingTracks = true
+    @State private var fetchedPlaylist: Playlist?
 
     /// Editor draft state for the title. `nil` means the title is being
     /// displayed; non-nil means the user has tapped it and a `TextField` is
@@ -36,12 +37,11 @@ struct PlaylistView: View {
     @State private var descriptionDraft: String? = nil
     @FocusState private var descriptionFocused: Bool
 
-    /// Resolve the playlist from the model's cache. Missing is an edge
-    /// case (deep link landing on `.playlist(id)` before the sidebar /
-    /// library has primed the cache); we render a gentle fallback rather
-    /// than crash.
+    /// Resolve the playlist: cached library page first, then whichever
+    /// record the `.task` block fetched on demand. Nil means the id can't
+    /// be resolved (deleted upstream, not a real Playlist, server errored).
     private var playlist: Playlist? {
-        model.playlist(id: playlistID)
+        model.playlist(id: playlistID) ?? fetchedPlaylist
     }
 
     private var description: String {
@@ -59,7 +59,16 @@ struct PlaylistView: View {
         }
         .background(Theme.bg)
         .task(id: playlistID) {
+            // Cache miss (deep link past the first page of library playlists,
+            // or the pre-#654 "Playlists collection folder id" regression
+            // the core now defends against): ask `resolvePlaylist` to
+            // fetch + validate the record so the hero can render.
+            if model.playlist(id: playlistID) == nil {
+                fetchedPlaylist = await model.resolvePlaylist(id: playlistID)
+            }
             guard let playlist = playlist else {
+                // Unknown / deleted / non-playlist id — refuse to load
+                // tracks so the "Playlist not found" hero renders alone.
                 isLoadingTracks = false
                 return
             }
@@ -358,10 +367,24 @@ struct PlaylistView: View {
         }
     }
 
+    /// Render a tick-count runtime as a human playlist duration.
+    ///
+    /// `ticks == 0` → "0" (falls back to zero rather than rendering a hero
+    /// stat that reads as "no runtime data"; callers gate the surrounding
+    /// stat line on `playlist != nil`).
+    /// `< 60 min` → "42" (bare minute count — matches the stat's "MINUTES"
+    /// label beneath).
+    /// `≥ 60 min` → "5h 42m" (hours segment so a 5h42m playlist doesn't
+    /// read as "342" minutes and tell the user it's roughly six hours by
+    /// forcing them to do long division).
     private func formatMinutes(_ ticks: UInt64) -> String {
-        let seconds = Double(ticks) / 10_000_000.0
-        let minutes = Int(seconds / 60)
-        return "\(minutes)"
+        guard ticks > 0 else { return "0" }
+        let totalSeconds = Int(Double(ticks) / 10_000_000.0)
+        let totalMinutes = totalSeconds / 60
+        guard totalMinutes >= 60 else { return "\(totalMinutes)" }
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
+        return "\(hours)h \(minutes)m"
     }
 }
 

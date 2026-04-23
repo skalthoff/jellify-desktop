@@ -54,10 +54,13 @@ struct Sidebar: View {
             // in place; the playlist list lives as its own section below.
             sectionHeader("Your Library")
             VStack(alignment: .leading, spacing: 2) {
-                libRow("heart", label: "Favorites", count: nil)
-                libRow("square.stack", label: "Albums", count: UInt32(model.albums.count))
-                libRow("person.crop.circle", label: "Artists", count: UInt32(model.artists.count))
-                libRow("music.note.list", label: "Playlists", count: UInt32(model.playlists.count))
+                // "Favorites" has no dedicated surface yet — route to the
+                // library's default tab for now so the row isn't a dead
+                // click (follow-up: dedicated favorites tab, #133).
+                libRow("heart", label: "Favorites", count: nil, tab: .albums)
+                libRow("square.stack", label: "Albums", count: UInt32(model.albums.count), tab: .albums)
+                libRow("person.crop.circle", label: "Artists", count: UInt32(model.artists.count), tab: .artists)
+                libRow("music.note.list", label: "Playlists", count: UInt32(model.playlists.count), tab: .playlists)
             }
             .padding(.horizontal, 10)
 
@@ -289,28 +292,39 @@ struct Sidebar: View {
     }
 
     @ViewBuilder
-    private func libRow(_ icon: String, label: String, count: UInt32?) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(Theme.ink2)
-                .frame(width: 18)
-                .accessibilityHidden(true)
-            Text(label)
-                .font(Theme.font(13, weight: .semibold))
-                .foregroundStyle(Theme.ink2)
-            Spacer()
-            if let c = count {
-                Text("\(c)")
-                    .font(Theme.font(10, weight: .bold))
-                    .foregroundStyle(Theme.ink3)
+    private func libRow(_ icon: String, label: String, count: UInt32?, tab: LibraryTab) -> some View {
+        Button {
+            // Set the requested library tab before flipping the screen so the
+            // Library view reads the right chip on its first render. See
+            // `AppModel.libraryTab`.
+            model.libraryTab = tab
+            model.screen = .library
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .foregroundStyle(Theme.ink2)
+                    .frame(width: 18)
+                    .accessibilityHidden(true)
+                Text(label)
+                    .font(Theme.font(13, weight: .semibold))
+                    .foregroundStyle(Theme.ink2)
+                Spacer()
+                if let c = count {
+                    Text("\(c)")
+                        .font(Theme.font(10, weight: .bold))
+                        .foregroundStyle(Theme.ink3)
+                }
             }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .buttonStyle(.plain)
         // Combine icon + label + count into one VoiceOver utterance so the
         // row reads as "Albums, 42" rather than three separate fragments.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(count.map { "\(label), \($0)" } ?? label)
+        .accessibilityAddTraits(.isButton)
     }
 
     @ViewBuilder

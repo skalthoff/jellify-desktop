@@ -233,7 +233,12 @@ struct LibraryListRow: View {
         case .artist(let artist):
             model.screen = .artist(artist.id)
         case .playlist(let playlist):
-            model.screen = .playlist(playlist.id)
+            // Route through `goToPlaylist` so the playlist is seeded into
+            // `model.playlists` before the screen flips. Without this seed,
+            // `PlaylistView`'s cache lookup misses for any row the user
+            // opens from a non-first-page list (search results, list
+            // pagination beyond 100 items) and the hero renders "not found".
+            model.goToPlaylist(playlist)
         }
     }
 

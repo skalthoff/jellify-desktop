@@ -761,62 +761,51 @@ impl JellyfinClient {
         })
     }
 
-    /// Fetch playlists the current user owns. Jellyfin stores user-owned
-    /// playlists under the user's profile directory, so the returned `Path`
-    /// contains `/data/` (e.g. `/config/data/users/<id>/playlists/...`);
-    /// public/community playlists live elsewhere and are filtered out.
+    /// Fetch every playlist visible to the current user under the given
+    /// Playlists library view, paginated.
     ///
     /// `playlist_library_id` is the Playlists view id (the CollectionFolder
-    /// with `CollectionType == "playlists"`). Resolving that id is tracked
-    /// separately; callers pass it in here.
+    /// with `CollectionType == "playlists"`). Resolving that id is handled
+    /// by [`JellyfinClient::playlist_library_id`].
     ///
-    /// `total_count` on the returned [`PaginatedPlaylists`] is the server's
-    /// unfiltered `TotalRecordCount` (all playlists under the library view,
-    /// both user- and public-owned) — the per-page `items.len()` may be
-    /// smaller once the client-side `/data/` filter has been applied.
+    /// Historical note: previous versions filtered by `Path.contains("/data/")`
+    /// on the assumption that Jellyfin stores user-owned playlists under the
+    /// user profile dir. That's only true on default-install servers — any
+    /// server where the Playlists library is mounted elsewhere (e.g.
+    /// `/sMusic/playlists/` as on music.skalthoff.com) hides *every* playlist
+    /// from the client, leaving "0 OF 78 PLAYLISTS" on the UI. The filter is
+    /// removed; "user-owned vs public" is a split that needs a proper
+    /// discriminator (e.g. `CanDelete` or `OwnerId` from `Fields`), tracked
+    /// separately.
     pub async fn user_playlists(
         &self,
         playlist_library_id: &str,
         paging: Paging,
     ) -> Result<PaginatedPlaylists> {
         let raw = self.playlists_items(playlist_library_id, paging).await?;
-        let items = raw
-            .items
-            .into_iter()
-            .filter(|i| i.path.as_deref().is_some_and(|p| p.contains("/data/")))
-            .map(Playlist::from)
-            .collect();
+        let items: Vec<Playlist> = raw.items.into_iter().map(Playlist::from).collect();
         Ok(PaginatedPlaylists {
             items,
             total_count: raw.total_record_count,
         })
     }
 
-    /// Fetch playlists visible to the current user that are NOT owned by
-    /// them — i.e. public/community playlists. These live outside the user's
-    /// profile directory, so their `Path` does not contain `/data/`.
+    /// Same implementation as [`JellyfinClient::user_playlists`] until a
+    /// reliable user-vs-public discriminator is wired. Kept as a distinct
+    /// method so callers that care about the intent — a future "Community
+    /// Playlists" surface — don't have to change when the split lands.
     ///
-    /// `playlist_library_id` is the Playlists view id (the CollectionFolder
-    /// with `CollectionType == "playlists"`). Resolving that id is tracked
-    /// separately; callers pass it in here.
-    ///
-    /// See [`JellyfinClient::user_playlists`] for the `total_count` caveat.
+    /// Previous behaviour filtered on `!Path.contains("/data/")`. That was a
+    /// false discriminator (returned everything when the Playlists library
+    /// was mounted outside the user profile dir, returned nothing when it
+    /// was). Same fix rationale as `user_playlists`.
     pub async fn public_playlists(
         &self,
         playlist_library_id: &str,
         paging: Paging,
     ) -> Result<PaginatedPlaylists> {
-        let raw = self.playlists_items(playlist_library_id, paging).await?;
-        let items = raw
-            .items
-            .into_iter()
-            .filter(|i| !i.path.as_deref().is_some_and(|p| p.contains("/data/")))
-            .map(Playlist::from)
-            .collect();
-        Ok(PaginatedPlaylists {
-            items,
-            total_count: raw.total_record_count,
-        })
+        // Same query today; see doc comment. Avoid duplicating the HTTP call.
+        self.user_playlists(playlist_library_id, paging).await
     }
 
     /// Shared `GET /Items` request that returns all playlists under the
@@ -858,6 +847,15 @@ impl JellyfinClient {
     /// returns items in the playlist's stored order when no sort is specified.
     /// Callers that need a different sort can do it client-side.
     ///
+    /// Caller-ID guard: if a caller accidentally hands the Playlists
+    /// CollectionFolder id (the library-view id, not a single playlist) as
+    /// `playlist_id`, the server **ignores `IncludeItemTypes=Audio`** under a
+    /// folder parent and returns the folder's children — 78 Playlist-typed
+    /// entries that would otherwise get mapped through `Track::from` and
+    /// render as minute-long "tracks" on the UI. Defend with a
+    /// post-response `kind == "Audio"` filter so the pipe refuses to accept
+    /// non-audio rows regardless of what the server returns.
+    ///
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
     pub async fn playlist_tracks(
@@ -886,8 +884,18 @@ impl JellyfinClient {
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
             .await?;
         let raw: RawItems<RawItem> = resp.json().await?;
+        let items: Vec<Track> = raw
+            .items
+            .into_iter()
+            .filter(|i| i.kind.as_deref() == Some("Audio"))
+            .map(Track::from)
+            .collect();
+        // `total_count` is the server's `TotalRecordCount` — may over-count
+        // if we just rejected non-Audio entries. That's fine for the UI
+        // (our items.len() is the authoritative "what we rendered"); leaving
+        // total as the server value preserves the pagination contract.
         Ok(PaginatedTracks {
-            items: raw.items.into_iter().map(Track::from).collect(),
+            items,
             total_count: raw.total_record_count,
         })
     }

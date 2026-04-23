@@ -1731,7 +1731,17 @@ async fn latest_albums_requires_authenticated_session() {
 }
 
 #[tokio::test]
-async fn user_playlists_filters_to_data_path_and_builds_query() {
+async fn user_playlists_returns_every_playlist_in_library_view() {
+    // Rationale: the prior `Path.contains("/data/")` filter was a false
+    // discriminator — it assumed Jellyfin stored user-owned playlists
+    // under `/config/data/users/…` but any server that mounts its
+    // Playlists library elsewhere (e.g. `/sMusic/playlists/` as on the
+    // author's own server) had 100% of its playlists filtered out, leaving
+    // the UI reading "0 OF N PLAYLISTS".
+    //
+    // Corrected behaviour: `user_playlists` returns every playlist the
+    // server lists under the given library view, without a client-side
+    // path filter.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/Users/AuthenticateByName"))
@@ -1761,7 +1771,7 @@ async fn user_playlists_filters_to_data_path_and_builds_query() {
                 {
                     "Id": "p2", "Name": "Community Top 40", "Type": "Playlist",
                     "ChildCount": 40,
-                    "Path": "/media/playlists/community-top-40",
+                    "Path": "/sMusic/playlists/community-top-40",
                     "ImageTags": {}
                 }
             ],
@@ -1776,21 +1786,24 @@ async fn user_playlists_filters_to_data_path_and_builds_query() {
         .user_playlists("lib-pl", Paging::new(5, 20))
         .await
         .unwrap();
-    let playlists = page.items;
 
-    assert_eq!(playlists.len(), 1);
-    // `total_count` surfaces the server's unfiltered TotalRecordCount —
-    // the paging UI needs this to know when a follow-up page would yield
-    // more results even if the client-side /data/ filter removed some.
+    assert_eq!(page.items.len(), 2, "should return every playlist, not apply a /data/ filter");
     assert_eq!(page.total_count, 2);
-    assert_eq!(playlists[0].id, "p1");
-    assert_eq!(playlists[0].name, "My Mix");
-    assert_eq!(playlists[0].track_count, 12);
-    assert_eq!(playlists[0].image_tag.as_deref(), Some("tag-1"));
+    assert_eq!(page.items[0].id, "p1");
+    assert_eq!(page.items[0].name, "My Mix");
+    assert_eq!(page.items[0].track_count, 12);
+    assert_eq!(page.items[0].image_tag.as_deref(), Some("tag-1"));
+    // Crucially, the non-`/data/`-path playlist is included.
+    assert_eq!(page.items[1].id, "p2");
+    assert_eq!(page.items[1].name, "Community Top 40");
 }
 
 #[tokio::test]
-async fn public_playlists_filters_out_data_path() {
+async fn public_playlists_mirrors_user_playlists_until_split_lands() {
+    // Until a real user-vs-public discriminator (e.g. CanDelete / OwnerId)
+    // is wired, `public_playlists` intentionally returns the same set as
+    // `user_playlists` so neither method silently drops rows based on a
+    // broken `Path` heuristic.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/Users/AuthenticateByName"))
@@ -1831,18 +1844,13 @@ async fn public_playlists_filters_out_data_path() {
         .public_playlists("lib-pl", Paging::new(0, 50))
         .await
         .unwrap();
-    let playlists = page.items;
 
-    // Both the community playlist (non-/data/ path) and the playlist with no
-    // `Path` at all are treated as public — absence cannot prove ownership.
-    assert_eq!(playlists.len(), 2);
+    assert_eq!(page.items.len(), 3, "public_playlists mirrors user_playlists today");
     assert_eq!(page.total_count, 3);
-    let ids: Vec<&str> = playlists.iter().map(|p| p.id.as_str()).collect();
-    assert!(ids.contains(&"p2"), "public_playlists should include p2");
-    assert!(ids.contains(&"p3"), "public_playlists should include p3");
-    let community = playlists.iter().find(|p| p.id == "p2").unwrap();
-    assert_eq!(community.track_count, 40);
-    assert_eq!(community.image_tag.as_deref(), Some("tag-2"));
+    let ids: Vec<&str> = page.items.iter().map(|p| p.id.as_str()).collect();
+    assert!(ids.contains(&"p1"));
+    assert!(ids.contains(&"p2"));
+    assert!(ids.contains(&"p3"));
 }
 
 #[tokio::test]
@@ -6319,4 +6327,69 @@ async fn albums_by_artist_clamps_zero_limit_to_one() {
         .expect("expected a GET request");
     let q = get.url.query().expect("expected a query string");
     assert!(q.contains("Limit=1"), "zero limit should clamp to 1, got: {q}");
+}
+
+// ============================================================================
+// playlist_tracks defensive Type filter — #313 / ux-audit
+// ============================================================================
+
+/// Regression for the "Playlists > Playlists" screenshot. When the caller
+/// accidentally hands the Playlists *CollectionFolder* id (the library-view
+/// id, not a single playlist) as `playlist_id`, the server ignores
+/// `IncludeItemTypes=Audio` under a folder parent and returns the folder's
+/// children — Playlist-typed items that, if mapped through `Track::from`,
+/// would render as minute-long "tracks" on the UI. The Rust client now
+/// post-filters by `Type == "Audio"` so the downstream UI never sees
+/// non-audio rows regardless of what the server returns.
+#[tokio::test]
+async fn playlist_tracks_rejects_non_audio_items() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    // Simulate the server's bad behaviour: return a mix of Audio and
+    // Playlist items for the /Items?ParentId=<folderId>&IncludeItemTypes=Audio
+    // request.
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Real Track", "Type": "Audio",
+                    "AlbumId": "a1", "AlbumArtist": "Artist",
+                    "RunTimeTicks": 180_000_000_000u64
+                },
+                {
+                    "Id": "pl1", "Name": "Africa by Toto", "Type": "Playlist",
+                    "RunTimeTicks": 12_000_000_000u64,
+                    "ChildCount": 5
+                },
+                {
+                    "Id": "pl2", "Name": "Ayla Music", "Type": "Playlist",
+                    "RunTimeTicks": 205_200_000_000u64,
+                    "ChildCount": 92
+                }
+            ],
+            "TotalRecordCount": 3
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .playlist_tracks("library-folder-id", crate::Paging::new(0, 50))
+        .await
+        .unwrap();
+
+    // Only the Audio entry survives; the Playlist items would otherwise
+    // render as tracks with multi-hour durations on the UI.
+    assert_eq!(page.items.len(), 1, "non-Audio rows must be dropped");
+    assert_eq!(page.items[0].id, "t1");
+    assert_eq!(page.items[0].name, "Real Track");
 }
