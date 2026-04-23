@@ -6,6 +6,13 @@ pub enum JellifyError {
     #[error("network error: {0}")]
     Network(String),
 
+    /// The server presented a TLS certificate that could not be verified (e.g.
+    /// self-signed or issued by an unknown CA). Separated from the generic
+    /// [`JellifyError::Network`] variant so the UI can offer a "Trust this
+    /// server" action instead of a generic error message.
+    #[error("the server at '{host}' uses a certificate that could not be verified — it may be self-signed")]
+    SelfSignedCertificate { host: String },
+
     #[error("authentication failed: {0}")]
     Auth(String),
 
@@ -49,8 +56,43 @@ pub enum JellifyError {
 
 impl From<reqwest::Error> for JellifyError {
     fn from(e: reqwest::Error) -> Self {
+        // Walk the error source chain looking for a rustls certificate-
+        // validation failure. rustls 0.23 renders these as
+        // "invalid peer certificate: …" in its `Display` impl.  We detect
+        // the pattern here rather than taking a direct `rustls` dependency
+        // so that the detection stays in sync with whatever rustls version
+        // reqwest pulls in transitively.
+        if is_cert_error(&e) {
+            let host = e
+                .url()
+                .and_then(|u| u.host_str().map(str::to_string))
+                .unwrap_or_else(|| "unknown".to_string());
+            return JellifyError::SelfSignedCertificate { host };
+        }
         JellifyError::Network(e.to_string())
     }
+}
+
+/// Returns `true` when the error chain contains a TLS certificate-validation
+/// failure.  Compatible with both rustls 0.22 and 0.23.
+pub(crate) fn is_cert_error(e: &reqwest::Error) -> bool {
+    use std::error::Error as StdError;
+    let mut source: Option<&(dyn StdError + 'static)> = Some(e);
+    while let Some(err) = source {
+        let msg = err.to_string();
+        // rustls 0.23: "invalid peer certificate: …"
+        // older rustls / webpki: "invalid certificate: …"
+        if msg.contains("invalid peer certificate")
+            || msg.contains("invalid certificate")
+            || msg.contains("certificate verify failed")
+            || msg.contains("UnknownIssuer")
+            || msg.contains("self-signed certificate")
+        {
+            return true;
+        }
+        source = err.source();
+    }
+    false
 }
 
 impl From<serde_json::Error> for JellifyError {
