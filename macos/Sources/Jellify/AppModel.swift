@@ -753,6 +753,7 @@ final class AppModel {
         sidebarCopyingPlaylistIds = []
         playlistPendingDelete = nil
         artistTopTracks = [:]
+        artistAlbumsCache = [:]
         recentlyPlayed = []
         forYou = []
         jumpBackIn = []
@@ -812,6 +813,7 @@ final class AppModel {
         sidebarCopyingPlaylistIds = []
         playlistPendingDelete = nil
         artistTopTracks = [:]
+        artistAlbumsCache = [:]
         recentlyPlayed = []
         forYou = []
         jumpBackIn = []
@@ -1869,6 +1871,38 @@ final class AppModel {
             imageTag: imageTag
         )
     }
+
+    /// Every album where the given artist is the primary (album) artist.
+    /// Server-scoped via `AlbumArtistIds`, so compilations / guest-spots
+    /// don't leak into the Discography section. Drives
+    /// `ArtistDetailView.artistAlbums` — replaces the stale
+    /// `model.albums.filter { $0.artistId == artistID }` pattern that
+    /// only searched the first page of 100 cached albums (#60).
+    ///
+    /// Results are cached per-artist for the session since the data is
+    /// stable for the duration of the user's browsing session and the
+    /// detail screen may be entered / left repeatedly.
+    @discardableResult
+    func loadArtistAlbums(artistId: String, limit: UInt32 = 100) async -> [Album] {
+        if let cached = artistAlbumsCache[artistId] { return cached }
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.albumsByArtist(artistId: artistId, offset: 0, limit: limit)
+            }.value
+            artistAlbumsCache[artistId] = page.items
+            serverReachability.noteSuccess()
+            return page.items
+        } catch {
+            if handleAuthError(error) { return [] }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            return []
+        }
+    }
+
+    /// Per-session cache for `loadArtistAlbums`. Cleared on `logout()`.
+    private var artistAlbumsCache: [String: [Album]] = [:]
 
     /// Fetch the top 5 most-played tracks for an artist, driving the
     /// "Top Tracks" section on the artist detail screen (#229). Backed by

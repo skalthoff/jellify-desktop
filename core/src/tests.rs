@@ -6195,3 +6195,128 @@ async fn cancelled_token_aborts_retry_backoff() {
         other => panic!("expected Other(\"request cancelled\"), got {other:?}"),
     }
 }
+
+// ============================================================================
+// albums_by_artist — #60, ArtistDetailView Discography
+// ============================================================================
+
+/// Covers the artist-scoped Discography endpoint. Asserts the query is
+/// scoped by `AlbumArtistIds` (not `ArtistIds` — compilations the artist
+/// only appears on should NOT show up in Discography), that the response
+/// is parsed, and that `total_count` carries the server's total.
+#[tokio::test]
+async fn albums_by_artist_scopes_by_album_artist_ids() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "al1", "Name": "Debut", "Type": "MusicAlbum",
+                    "AlbumArtist": "Solo",
+                    "AlbumArtistId": "artist-xyz",
+                    "AlbumArtists": [{"Id": "artist-xyz", "Name": "Solo"}],
+                    "ArtistItems": [{"Id": "artist-xyz", "Name": "Solo"}],
+                    "ProductionYear": 2020, "RunTimeTicks": 1800000000000u64,
+                    "ChildCount": 11, "Genres": ["Indie"],
+                    "ImageTags": { "Primary": "imgA" }
+                },
+                {
+                    "Id": "al2", "Name": "Sophomore Slump", "Type": "MusicAlbum",
+                    "AlbumArtist": "Solo",
+                    "AlbumArtistId": "artist-xyz",
+                    "AlbumArtists": [{"Id": "artist-xyz", "Name": "Solo"}],
+                    "ArtistItems": [{"Id": "artist-xyz", "Name": "Solo"}],
+                    "ProductionYear": 2022, "RunTimeTicks": 2400000000000u64,
+                    "ChildCount": 14, "Genres": ["Indie"],
+                    "ImageTags": { "Primary": "imgB" }
+                }
+            ],
+            "TotalRecordCount": 2
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .albums_by_artist("artist-xyz", crate::Paging::new(0, 20))
+        .await
+        .unwrap();
+
+    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.total_count, 2);
+    assert_eq!(page.items[0].name, "Debut");
+    assert_eq!(page.items[0].artist_id.as_deref(), Some("artist-xyz"));
+    assert_eq!(page.items[1].name, "Sophomore Slump");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(
+        q.contains("AlbumArtistIds=artist-xyz"),
+        "should scope by AlbumArtistIds, got: {q}"
+    );
+    // "AlbumArtistIds=" contains "ArtistIds=" as a substring, so check
+    // for the broader filter either as the first param or after an `&`.
+    assert!(
+        !q.starts_with("ArtistIds=") && !q.contains("&ArtistIds="),
+        "should NOT use the broader ArtistIds filter (would include compilations), got: {q}"
+    );
+    assert!(q.contains("IncludeItemTypes=MusicAlbum"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("Limit=20"), "query: {q}");
+    assert!(q.contains("StartIndex=0"), "query: {q}");
+}
+
+/// `albums_by_artist` with `limit = 0` should clamp to 1, matching the
+/// other `Paging`-taking endpoints (`albums`, `artists`, `list_tracks`,
+/// `albums_by_artist`, ...). The server treats `Limit=0` as "no limit"
+/// which would blow response size on an artist with a deep back
+/// catalogue; clamping keeps the contract uniform.
+#[tokio::test]
+async fn albums_by_artist_clamps_zero_limit_to_one() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [],
+            "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client
+        .albums_by_artist("artist-xyz", crate::Paging::new(0, 0))
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("Limit=1"), "zero limit should clamp to 1, got: {q}");
+}

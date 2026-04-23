@@ -542,6 +542,57 @@ impl JellyfinClient {
         })
     }
 
+    /// Every album where the given artist is the primary (album) artist,
+    /// paginated and sorted by `SortName` ascending. Scopes via
+    /// `AlbumArtistIds` (not `ArtistIds`) so compilations the artist only
+    /// appears on don't show up in their Discography — the rule music
+    /// players conventionally apply for "artist's own work".
+    ///
+    /// Backed by `GET /Users/{id}/Items?AlbumArtistIds={artist_id}
+    /// &IncludeItemTypes=MusicAlbum&Recursive=true`. Returns a
+    /// [`PaginatedAlbums`] whose `total_count` is the server's authoritative
+    /// count so callers can drive "N of M" sublines.
+    ///
+    /// See issue #60: closes the `ArtistDetailView` gap where the
+    /// Discography section silently rendered empty for any artist past
+    /// the first page of the library-wide `albums` cache.
+    pub async fn albums_by_artist(
+        &self,
+        artist_id: &str,
+        paging: Paging,
+    ) -> Result<PaginatedAlbums> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(JellifyError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
+        {
+            let mut q = url.query_pairs_mut();
+            q.append_pair("AlbumArtistIds", artist_id);
+            q.append_pair("Recursive", "true");
+            q.append_pair("IncludeItemTypes", "MusicAlbum");
+            q.append_pair("Limit", &paging.limit.max(1).to_string());
+            q.append_pair("StartIndex", &paging.offset.to_string());
+            q.append_pair("SortBy", "SortName");
+            q.append_pair("SortOrder", "Ascending");
+            q.append_pair(
+                "Fields",
+                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
+            );
+            q.append_pair("EnableUserData", "true");
+            q.append_pair("EnableImages", "true");
+            q.append_pair("ImageTypeLimit", "1");
+        }
+        let resp = self
+            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
+            .await?;
+        let raw: RawItems<RawItem> = resp.json().await?;
+        Ok(PaginatedAlbums {
+            items: raw.items.into_iter().map(Album::from).collect(),
+            total_count: raw.total_record_count,
+        })
+    }
+
     /// Fetch the most recently added albums in a library, respecting the
     /// authenticated user's parental controls (enforced server-side via
     /// `userId`). Backed by `GET /Items/Latest`.
