@@ -5936,3 +5936,262 @@ async fn playlist_tracks_populates_playlist_item_id() {
         "playlist_item_id must be populated from the server response"
     );
 }
+
+// ---------------------------------------------------------------------------
+// #594 — heartbeat scheduler fires at the expected cadence
+// ---------------------------------------------------------------------------
+
+/// Helper: spawn a heartbeat loop directly using `JellyfinClient` (not
+/// `JellifyCore`) so the test can run inside a `#[tokio::test]` without
+/// fighting the core's embedded `tokio::runtime::Runtime`.
+///
+/// Returns an `AbortHandle` — the test cancels the task when done.
+async fn spawn_heartbeat_for_test(
+    client: std::sync::Arc<JellyfinClient>,
+    interval: std::time::Duration,
+    play_session_id: Option<String>,
+    current_track_id: std::sync::Arc<parking_lot::Mutex<Option<String>>>,
+    current_position: std::sync::Arc<parking_lot::Mutex<f64>>,
+) -> tokio::task::AbortHandle {
+    use crate::models::PlaybackProgressInfo;
+    let handle = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        ticker.tick().await; // skip the immediate first tick
+        loop {
+            ticker.tick().await;
+            let item_id = match current_track_id.lock().clone() {
+                Some(id) => id,
+                None => continue,
+            };
+            let pos = *current_position.lock();
+            let info = PlaybackProgressInfo {
+                item_id,
+                failed: false,
+                is_paused: false,
+                is_muted: false,
+                position_ticks: (pos * 10_000_000.0) as i64,
+                play_session_id: play_session_id.clone(),
+                ..Default::default()
+            };
+            let _ = client.report_playback_progress(info).await;
+        }
+    });
+    handle.abort_handle()
+}
+
+/// The heartbeat scheduler must fire `POST /Sessions/Playing/Progress` at
+/// least N times in N * interval_secs of simulated time.  We use
+/// `tokio::time::pause` + `tokio::time::advance` so the test runs
+/// instantaneously without real wall-clock delays.
+///
+/// The test operates on `JellyfinClient` directly to avoid the nested-
+/// runtime conflict that arises when `JellifyCore`'s embedded `block_on`
+/// runs inside the test's tokio executor. See issue #594.
+#[tokio::test]
+async fn heartbeat_fires_at_expected_cadence() {
+    use parking_lot::Mutex;
+    use std::sync::Arc;
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "hb-token",
+            "ServerId": "hb-server",
+            "ServerName": "HB",
+            "User": {
+                "Id": "hb-user",
+                "Name": "hbuser",
+                "ServerId": "hb-server",
+                "PrimaryImageTag": null
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Playing/Progress"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("hbuser", "pw").await.unwrap();
+    let client = Arc::new(client);
+
+    let track_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(Some("hb-track-1".into())));
+    let position: Arc<Mutex<f64>> = Arc::new(Mutex::new(42.0));
+
+    let interval_secs: u64 = 5;
+
+    // Pause time after the real HTTP auth so reqwest's connection logic
+    // completes normally. From here on, `advance` drives the fake clock.
+    tokio::time::pause();
+
+    let abort = spawn_heartbeat_for_test(
+        Arc::clone(&client),
+        std::time::Duration::from_secs(interval_secs),
+        Some("sess-abc".into()),
+        Arc::clone(&track_id),
+        Arc::clone(&position),
+    )
+    .await;
+
+    // Advance time in per-interval steps, yielding between each so the
+    // heartbeat task can run and the HTTP POST to wiremock can complete
+    // before the next tick fires.
+    for _ in 0..(interval_secs * 3) {
+        tokio::time::advance(std::time::Duration::from_secs(1)).await;
+        for _ in 0..8 {
+            tokio::task::yield_now().await;
+        }
+    }
+
+    abort.abort();
+    // One final yield to flush any in-flight request.
+    tokio::task::yield_now().await;
+
+    let reqs = server.received_requests().await.unwrap();
+    let heartbeats = reqs
+        .iter()
+        .filter(|r| r.url.path() == "/Sessions/Playing/Progress")
+        .count();
+
+    assert!(
+        heartbeats >= 2,
+        "expected at least 2 heartbeats in {} simulated seconds, got {}",
+        interval_secs * 3,
+        heartbeats,
+    );
+}
+
+/// After aborting the heartbeat task no further POSTs should be sent.
+/// Verifies the scheduler does not leak a timer after `AbortHandle::abort()`.
+/// See issue #594.
+#[tokio::test]
+async fn heartbeat_stops_after_abort() {
+    use parking_lot::Mutex;
+    use std::sync::Arc;
+
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "tok2",
+            "ServerId": "srv2",
+            "ServerName": "S2",
+            "User": {
+                "Id": "u2", "Name": "u2", "ServerId": "srv2",
+                "PrimaryImageTag": null
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Playing/Progress"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("u2", "pw").await.unwrap();
+    let client = Arc::new(client);
+
+    let track_id: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(Some("t2".into())));
+    let position: Arc<Mutex<f64>> = Arc::new(Mutex::new(0.0));
+
+    // Pause time after real HTTP auth completes so `advance` controls ticks.
+    tokio::time::pause();
+
+    let abort = spawn_heartbeat_for_test(
+        Arc::clone(&client),
+        std::time::Duration::from_secs(5),
+        None,
+        Arc::clone(&track_id),
+        Arc::clone(&position),
+    )
+    .await;
+
+    // Advance 6 s — heartbeat fires once at t=5 s.
+    tokio::time::advance(std::time::Duration::from_secs(6)).await;
+    for _ in 0..4 {
+        tokio::task::yield_now().await;
+    }
+
+    abort.abort();
+    let count_after_abort = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/Sessions/Playing/Progress")
+        .count();
+
+    // Advance another 10 s — no new POSTs should appear.
+    tokio::time::advance(std::time::Duration::from_secs(10)).await;
+    for _ in 0..4 {
+        tokio::task::yield_now().await;
+    }
+
+    let count_final = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/Sessions/Playing/Progress")
+        .count();
+
+    assert_eq!(
+        count_after_abort, count_final,
+        "no heartbeats should fire after abort; before={count_after_abort} after={count_final}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// #605 — CancellationToken aborts mid-backoff retry sleep
+// ---------------------------------------------------------------------------
+
+/// When the `CancellationToken` on a `JellyfinClient` is cancelled while
+/// the retry loop is sleeping through its backoff delay, the request must
+/// return `JellifyError::Other("request cancelled")` immediately rather than
+/// waiting out the full delay or completing the retry.
+#[tokio::test]
+async fn cancelled_token_aborts_retry_backoff() {
+    use std::time::Instant;
+
+    let server = MockServer::start().await;
+
+    // Always respond with 503 so the retry loop always enters the backoff.
+    Mock::given(method("GET"))
+        .and(path("/System/Info/Public"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+
+    let client = mock_client(&server.uri());
+    // Cancel the token after a very short delay — the backoff is 200 ms+,
+    // so the cancel fires while the sleep is still pending.
+    let cancel = client.cancel.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        cancel.cancel();
+    });
+
+    let start = Instant::now();
+    let err = client.public_info().await.unwrap_err();
+    let elapsed = start.elapsed();
+
+    // The full backoff ladder for 3 attempts is ≥600 ms; we should bail
+    // well before that.
+    assert!(
+        elapsed < std::time::Duration::from_millis(500),
+        "cancellation should abort the retry sleep quickly, elapsed={elapsed:?}"
+    );
+    match err {
+        JellifyError::Other(ref msg) if msg.contains("cancelled") => {}
+        other => panic!("expected Other(\"request cancelled\"), got {other:?}"),
+    }
+}
