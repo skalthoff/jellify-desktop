@@ -34,4 +34,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [build-dependencies]
-glib-build-tools = "0.20"
+glib-build-tools = "0.22"
