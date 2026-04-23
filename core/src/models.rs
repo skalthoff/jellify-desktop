@@ -560,6 +560,71 @@ pub struct PlaybackStartInfo {
     pub is_muted: bool,
 }
 
+// ============================================================================
+// Playback progress report — sent to `POST /Sessions/Playing/Progress`
+// periodically during playback and on pause/resume/seek transitions.
+// ============================================================================
+
+/// The body for `POST /Sessions/Playing/Progress`. Mirrors Jellyfin's
+/// `PlaybackProgressInfo` DTO.
+///
+/// `Failed` must always be sent (Jellyfin 10.9+ validates its presence).
+/// `PlayMethod` is one of `"DirectPlay"`, `"DirectStream"`, `"Transcode"`.
+/// `PlaybackRate` is `1.0` during normal playback; set to the actual
+/// speed when the user changes playback rate. All tick fields are in
+/// Jellyfin's 100-ns tick units (`seconds * 10_000_000`).
+#[derive(Clone, Debug, Default, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct PlaybackProgressInfo {
+    pub item_id: String,
+    /// Whether playback failed. Must be sent; typically `false`.
+    pub failed: bool,
+    pub is_paused: bool,
+    pub is_muted: bool,
+    pub position_ticks: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_method: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub volume_level: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playback_rate: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audio_stream_index: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
+// ============================================================================
+// Playback stopped report — sent to `POST /Sessions/Playing/Stopped`.
+// ============================================================================
+
+/// The body for `POST /Sessions/Playing/Stopped`. Mirrors Jellyfin's
+/// `PlaybackStopInfo` DTO.
+///
+/// `Failed` must always be sent; set to `true` if playback ended due to
+/// an error. `MediaSourceId` must match the value returned by
+/// `/PlaybackInfo` so the server can clean up the transcode job.
+/// `PositionTicks` near `RunTimeTicks` signals a completed play and
+/// triggers the server-side play-count increment.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, uniffi::Record)]
+#[serde(rename_all = "PascalCase")]
+pub struct PlaybackStopInfo {
+    pub item_id: String,
+    /// Whether playback ended due to an error. Must be sent; typically `false`.
+    pub failed: bool,
+    pub position_ticks: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_source_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub play_session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+}
+
 /// Jellyfin image variants served from `GET /Items/{id}/Images/{type}`.
 /// Mirrors the `ImageType` routes defined by the Jellyfin `ImageController`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]

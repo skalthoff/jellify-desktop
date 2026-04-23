@@ -707,18 +707,14 @@ impl JellifyCore {
     /// Report that playback has stopped for an item — backed by
     /// `POST /Sessions/Playing/Stopped`.
     ///
-    /// Drives Jellyfin's server-side PlayCount increment for tracks. Callers
-    /// invoke this on track end, user-driven skip, and app quit. When a song
-    /// completed normally, pass the full `RunTimeTicks` as `position_ticks`.
+    /// Drives Jellyfin's server-side PlayCount increment for tracks and
+    /// cleans up any active transcode job. Callers invoke this on track
+    /// end, user-driven skip, and app quit.
     pub fn report_playback_stopped(
         &self,
-        item_id: String,
-        position_ticks: i64,
+        info: PlaybackStopInfo,
     ) -> std::result::Result<(), JellifyError> {
-        self.with_client(|c| {
-            self.runtime
-                .block_on(c.report_playback_stopped(&item_id, position_ticks))
-        })
+        self.with_client(|c| self.runtime.block_on(c.report_playback_stopped(info)))
     }
 
     /// Report that playback of an item has started — backed by
@@ -814,17 +810,12 @@ impl JellifyCore {
     /// Report playback progress to the server. Called by the platform
     /// playback engine roughly every 10 seconds and on pause/resume/seek
     /// transitions so Jellyfin can drive "Now Playing" state and resume
-    /// points. `position_ticks` is in Jellyfin's 100-ns tick units.
+    /// points.
     pub fn report_playback_progress(
         &self,
-        item_id: String,
-        position_ticks: i64,
-        is_paused: bool,
+        info: PlaybackProgressInfo,
     ) -> std::result::Result<(), JellifyError> {
-        self.with_client(|c| {
-            self.runtime
-                .block_on(c.report_playback_progress(&item_id, position_ticks, is_paused))
-        })
+        self.with_client(|c| self.runtime.block_on(c.report_playback_progress(info)))
     }
 
     pub fn skip_next(&self) -> Option<Track> {
