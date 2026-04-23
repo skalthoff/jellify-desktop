@@ -455,6 +455,9 @@ impl JellyfinClient {
             q.append_pair("SortBy", "SortName");
             q.append_pair("SortOrder", "Ascending");
             q.append_pair("Fields", "Genres,PrimaryImageAspectRatio");
+            q.append_pair("EnableUserData", "true");
+            q.append_pair("EnableImages", "true");
+            q.append_pair("ImageTypeLimit", "1");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -484,6 +487,9 @@ impl JellyfinClient {
                 "Fields",
                 "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
             );
+            q.append_pair("EnableUserData", "true");
+            q.append_pair("EnableImages", "true");
+            q.append_pair("ImageTypeLimit", "1");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -543,6 +549,9 @@ impl JellyfinClient {
                 "Fields",
                 "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
             );
+            q.append_pair("EnableUserData", "true");
+            q.append_pair("EnableImages", "true");
+            q.append_pair("ImageTypeLimit", "1");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -599,6 +608,9 @@ impl JellyfinClient {
                 "Fields",
                 "ParentId,AlbumId,AlbumArtist,Artists,ProductionYear,RunTimeTicks",
             );
+            q.append_pair("EnableUserData", "true");
+            q.append_pair("EnableImages", "true");
+            q.append_pair("ImageTypeLimit", "1");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -643,6 +655,9 @@ impl JellyfinClient {
                 "Fields",
                 "ParentId,MediaSources,UserData,ProductionYear,PrimaryImageAspectRatio",
             );
+            q.append_pair("EnableUserData", "true");
+            q.append_pair("EnableImages", "true");
+            q.append_pair("ImageTypeLimit", "1");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))

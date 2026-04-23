@@ -595,6 +595,184 @@ async fn list_tracks_requires_authenticated_session() {
 }
 
 // ---------------------------------------------------------------------------
+// Browse flag assertions — EnableUserData + EnableImages + ImageTypeLimit
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn artists_includes_user_data_and_image_flags() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Artists/AlbumArtists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client.artists(Paging::new(0, 50)).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("EnableUserData=true"), "query: {q}");
+    assert!(q.contains("EnableImages=true"), "query: {q}");
+    assert!(q.contains("ImageTypeLimit=1"), "query: {q}");
+}
+
+#[tokio::test]
+async fn albums_includes_user_data_and_image_flags() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client.albums(Paging::new(0, 50)).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("EnableUserData=true"), "query: {q}");
+    assert!(q.contains("EnableImages=true"), "query: {q}");
+    assert!(q.contains("ImageTypeLimit=1"), "query: {q}");
+}
+
+#[tokio::test]
+async fn latest_albums_includes_user_data_and_image_flags() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items/Latest"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client
+        .latest_albums("lib-1", Paging::new(0, 24))
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("EnableUserData=true"), "query: {q}");
+    assert!(q.contains("EnableImages=true"), "query: {q}");
+    assert!(q.contains("ImageTypeLimit=1"), "query: {q}");
+}
+
+#[tokio::test]
+async fn list_tracks_includes_user_data_and_image_flags() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client.list_tracks(None, Paging::new(0, 50)).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("EnableUserData=true"), "query: {q}");
+    assert!(q.contains("EnableImages=true"), "query: {q}");
+    assert!(q.contains("ImageTypeLimit=1"), "query: {q}");
+}
+
+#[tokio::test]
+async fn recently_played_includes_user_data_and_image_flags() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [], "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let _ = client
+        .recently_played(None, Paging::new(0, 50))
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("EnableUserData=true"), "query: {q}");
+    assert!(q.contains("EnableImages=true"), "query: {q}");
+    assert!(q.contains("ImageTypeLimit=1"), "query: {q}");
+}
+
+// ---------------------------------------------------------------------------
 // Discovery: instant_mix / suggestions / similar_* / frequently_played
 // ---------------------------------------------------------------------------
 
@@ -1374,6 +1552,12 @@ async fn latest_albums_builds_expected_query_and_parses_unwrapped_array() {
                 pairs.get("Fields").map(String::as_str),
                 Some("Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio")
             );
+            assert_eq!(
+                pairs.get("EnableUserData").map(String::as_str),
+                Some("true")
+            );
+            assert_eq!(pairs.get("EnableImages").map(String::as_str), Some("true"));
+            assert_eq!(pairs.get("ImageTypeLimit").map(String::as_str), Some("1"));
             let expected_keys: std::collections::HashSet<&str> = [
                 "UserId",
                 "ParentId",
@@ -1381,6 +1565,9 @@ async fn latest_albums_builds_expected_query_and_parses_unwrapped_array() {
                 "Limit",
                 "GroupItems",
                 "Fields",
+                "EnableUserData",
+                "EnableImages",
+                "ImageTypeLimit",
             ]
             .into_iter()
             .collect();
