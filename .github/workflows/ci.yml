@@ -165,11 +165,18 @@ jobs:
             exit 1
           fi
           kill $PID
+      # upload-artifact strips the common ancestor (so passing Jellify.app
+      # uploads its *contents*), and GitHub's zip layer drops symlinks —
+      # which silently breaks Sparkle.framework. ditto produces a proper
+      # macOS zip that preserves the bundle; we upload that.
+      - name: Archive .app bundle
+        working-directory: macos/build
+        run: ditto -c -k --sequesterRsrc --keepParent Jellify.app Jellify-macos-arm64.zip
       - name: Upload macOS app bundle
         uses: actions/upload-artifact@v4
         with:
           name: Jellify-macos-arm64
-          path: macos/build/Jellify.app
+          path: macos/build/Jellify-macos-arm64.zip
           if-no-files-found: error
           retention-days: 7
 
