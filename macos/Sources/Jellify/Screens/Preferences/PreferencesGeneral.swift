@@ -2,19 +2,16 @@ import SwiftUI
 
 /// General preferences pane.
 ///
-/// Launch-at-login, menu-bar presence, and language. These are the knobs that
-/// don't fit under a more specific pane but still belong in the p0 shipping
-/// set. All three are UI-only today:
+/// Launch-at-login, menu-bar presence, and language.
 ///
 /// - **Language**: only English ships; the picker is present so the setting
 ///   is visible and the user can see i18n is on the roadmap. Real wiring is
 ///   tracked in `TODO(i18n-#345)`.
-/// - **Auto-start on login**: persists the selection; real `SMAppService`
-///   registration lands alongside the rest of the launch-item scaffolding
-///   (see TODO below). A naive toggle is still useful to surface the feature
-///   so users can opt-in and the choice is remembered across a restart.
-/// - **Show in menu bar**: persists today; the actual `NSStatusItem` mount
-///   belongs with the mini-player / menu-bar companion work.
+/// - **Auto-start on login**: wired to `SMAppService.mainApp` via
+///   `LaunchAtLogin`. The stored `@AppStorage` value shadows the system
+///   registration so the toggle reflects the true state on every launch.
+/// - **Show in menu bar**: wired to `MenuBarController.shared`. The
+///   `NSStatusItem` is created on enable and released on disable.
 ///
 /// Spec: `research/03-ux-patterns.md` Issue 66 top-level General bullet.
 struct PreferencesGeneral: View {
@@ -26,6 +23,34 @@ struct PreferencesGeneral: View {
         Binding(
             get: { AppLanguage(rawValue: languageRaw) ?? .system },
             set: { languageRaw = $0.rawValue }
+        )
+    }
+
+    /// Binding that syncs `@AppStorage` with the real `SMAppService`
+    /// registration whenever the value changes.
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { autoStartOnLogin },
+            set: { newValue in
+                autoStartOnLogin = newValue
+                if newValue {
+                    LaunchAtLogin.enable()
+                } else {
+                    LaunchAtLogin.disable()
+                }
+            }
+        )
+    }
+
+    /// Binding that syncs `@AppStorage` with `MenuBarController` whenever
+    /// the value changes.
+    private var showInMenuBarBinding: Binding<Bool> {
+        Binding(
+            get: { showInMenuBar },
+            set: { newValue in
+                showInMenuBar = newValue
+                MenuBarController.shared.setVisible(newValue)
+            }
         )
     }
 
@@ -55,7 +80,7 @@ struct PreferencesGeneral: View {
 
             PreferenceSection(
                 title: "Startup",
-                footnote: "Auto-start launches Jellify in the background when you log in. The toggle persists today; TODO(#566) registers the login-item through SMAppService so the behaviour actually fires."
+                footnote: "Auto-start launches Jellify in the background when you log in."
             ) {
                 PreferenceRow(
                     label: "Open at login",
@@ -63,7 +88,7 @@ struct PreferencesGeneral: View {
                         ? "On — Jellify will launch in the background when you sign in."
                         : "Off — Jellify only opens when you launch it manually."
                 ) {
-                    Toggle("", isOn: $autoStartOnLogin)
+                    Toggle("", isOn: launchAtLoginBinding)
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .accessibilityLabel("Launch Jellify at login")
@@ -72,15 +97,15 @@ struct PreferencesGeneral: View {
 
             PreferenceSection(
                 title: "Menu Bar",
-                footnote: "Keeps a transport icon in the macOS menu bar for quick play/pause, skip, and now-playing access. TODO(#567) — NSStatusItem mount lands with the mini-player work."
+                footnote: "Keeps a transport icon in the macOS menu bar for quick access."
             ) {
                 PreferenceRow(
                     label: "Show in menu bar",
                     help: showInMenuBar
-                        ? "On — a compact transport icon stays in the menu bar."
+                        ? "On — a compact icon stays in the menu bar."
                         : "Off — Jellify lives only in the Dock."
                 ) {
-                    Toggle("", isOn: $showInMenuBar)
+                    Toggle("", isOn: showInMenuBarBinding)
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .accessibilityLabel("Show in menu bar")
@@ -88,6 +113,15 @@ struct PreferencesGeneral: View {
             }
 
             Spacer(minLength: 0)
+        }
+        .onAppear {
+            // Reconcile stored value with true SMAppService state on every
+            // pane open so the toggle is never stale (e.g. if the user
+            // toggled the login item from System Settings).
+            autoStartOnLogin = LaunchAtLogin.isEnabled
+            // Re-apply the menu-bar state in case the controller lost its
+            // item during a Settings window close/reopen cycle.
+            MenuBarController.shared.setVisible(showInMenuBar)
         }
     }
 
