@@ -686,15 +686,15 @@ impl JellifyCore {
 
     /// Set the queue to a list of tracks and mark `tracks[start_index]` as
     /// the current track. Returns the track that should start playing now.
+    ///
+    /// Errors with [`JellifyError::InvalidIndex`] when `start_index` is
+    /// out-of-bounds for `tracks`, or `tracks` is empty.
     pub fn set_queue(
         &self,
         tracks: Vec<Track>,
         start_index: u32,
     ) -> std::result::Result<Option<Track>, JellifyError> {
-        if tracks.is_empty() {
-            return Err(JellifyError::InvalidInput("empty queue".into()));
-        }
-        self.player.set_queue(tracks, start_index);
+        self.player.set_queue(tracks, start_index)?;
         Ok(self.player.current_in_queue())
     }
 
