@@ -71,6 +71,12 @@ public final class AudioEngine: NSObject {
     /// Reset to 0 every time `play(_:)` loads a brand-new track.
     private var stallRetryCount: Int = 0
 
+    /// Monotonically-increasing counter used to detect stale seek completions
+    /// (#582). Each call to `seek(toSeconds:)` increments this; the completion
+    /// closure captures the value at dispatch time and discards the callback if
+    /// a newer seek has already been issued.
+    private var seekGeneration: Int = 0
+
     /// Called when AVPlayer reaches the end of the current item, so the
     /// owner (AppModel) can advance the queue.
     public var onTrackEnded: (() -> Void)?
@@ -174,13 +180,25 @@ public final class AudioEngine: NSObject {
 
     public func seek(toSeconds seconds: Double) {
         guard let player = player else { return }
+        // #582: Cancel any in-flight seek before issuing the new one so
+        // rapid scrubber drags don't race against each other.
+        player.currentItem?.cancelPendingSeeks()
+        seekGeneration &+= 1
+        let generation = seekGeneration
         let time = CMTime(seconds: seconds, preferredTimescale: 1000)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            // Push the post-seek elapsed to MPNowPlayingInfoCenter inside
-            // the completion handler so the widget confirms the scrub
-            // without waiting for the next status tick. See issue #32.
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] finished in
+            // Ignore completions from seeks that were superseded by a
+            // newer drag event — `finished` is `false` for pre-empted seeks,
+            // but we gate on generation equality instead so we never update
+            // elapsed to a stale position even on a race between two seeks
+            // that both happen to complete (the earlier one finishing after
+            // the later one due to scheduling). Push the post-seek elapsed to
+            // MPNowPlayingInfoCenter so the widget confirms the scrub without
+            // waiting for the next status tick (issue #32).
+            guard finished else { return }
             Task { @MainActor in
-                self?.mediaSession?.seeked(to: seconds)
+                guard let self, self.seekGeneration == generation else { return }
+                self.mediaSession?.seeked(to: seconds)
             }
         }
     }
