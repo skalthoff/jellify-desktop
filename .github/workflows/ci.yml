@@ -173,7 +173,7 @@ jobs:
         working-directory: macos/build
         run: ditto -c -k --sequesterRsrc --keepParent Jellify.app Jellify-macos-arm64.zip
       - name: Upload macOS app bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: Jellify-macos-arm64
           path: macos/build/Jellify-macos-arm64.zip
