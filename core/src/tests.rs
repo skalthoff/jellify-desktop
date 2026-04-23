@@ -1114,7 +1114,7 @@ async fn genres_builds_query_and_parses_counts() {
         .mount(&server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/MusicGenres"))
+        .and(path("/Genres"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "Items": [
                 {
@@ -1148,10 +1148,29 @@ async fn genres_builds_query_and_parses_counts() {
         .iter()
         .find(|r| r.method.as_str() == "GET")
         .expect("expected a GET request");
+    assert_eq!(
+        get.url.path(),
+        "/Genres",
+        "should call /Genres, not /MusicGenres"
+    );
     let q = get.url.query().expect("expected a query string");
     assert!(q.contains("userId=u1"), "query: {q}");
     assert!(q.contains("Limit=100"), "query: {q}");
     assert!(q.contains("StartIndex=0"), "query: {q}");
+    let include_types = get
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "IncludeItemTypes")
+        .map(|(_, v)| v.into_owned())
+        .expect("expected IncludeItemTypes query param");
+    assert!(
+        include_types.split(',').any(|t| t == "Audio"),
+        "IncludeItemTypes should include Audio, got: {include_types}"
+    );
+    assert!(
+        include_types.split(',').any(|t| t == "MusicAlbum"),
+        "IncludeItemTypes should include MusicAlbum, got: {include_types}"
+    );
     let fields = get
         .url
         .query_pairs()

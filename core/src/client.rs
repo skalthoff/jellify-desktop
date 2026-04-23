@@ -1083,18 +1083,19 @@ impl JellyfinClient {
     }
 
     /// All music genres in the user's library, paginated. Backed by
-    /// `GET /MusicGenres` with `Fields=ItemCounts` so each returned
-    /// [`Genre`] carries `song_count` / `album_count` in a single round-trip.
-    /// The plain `/Genres` controller is obsolete for music.
+    /// `GET /Genres?IncludeItemTypes=Audio,MusicAlbum,MusicArtist` with
+    /// `Fields=ItemCounts` so each returned [`Genre`] carries `song_count` /
+    /// `album_count` in a single round-trip.
     pub async fn genres(&self, paging: Paging) -> Result<PaginatedGenres> {
         let user_id = self
             .user_id
             .as_ref()
             .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint("MusicGenres")?;
+        let mut url = self.endpoint("Genres")?;
         {
             let mut q = url.query_pairs_mut();
             q.append_pair("userId", user_id);
+            q.append_pair("IncludeItemTypes", "Audio,MusicAlbum,MusicArtist");
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
             q.append_pair("SortBy", "SortName");
