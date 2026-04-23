@@ -637,7 +637,16 @@ async fn suggestions_builds_query_and_parses() {
         .expect("expected a GET request");
     let q = get.url.query().expect("expected a query string");
     assert!(q.contains("UserId=u1"), "query: {q}");
-    assert!(q.contains("MediaType=Audio"), "query: {q}");
+    // Must filter by item type, not MediaType, so only music items are returned
+    assert!(
+        q.contains("IncludeItemTypes=Audio"),
+        "expected IncludeItemTypes in query: {q}"
+    );
+    assert!(
+        !q.contains("MediaType=Audio"),
+        "must not send MediaType=Audio (returns movies+TV): {q}"
+    );
+    assert!(q.contains("EnableUserData=true"), "query: {q}");
     assert!(q.contains("Limit=12"), "query: {q}");
 }
 
@@ -2066,6 +2075,54 @@ async fn search_requires_authenticated_session() {
     assert!(
         matches!(err, crate::error::JellifyError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+#[tokio::test]
+async fn search_sends_enable_user_data_and_expanded_fields() {
+    // Regression for #574: search must include EnableUserData=true and
+    // Fields containing UserData + AlbumId so that favorites state and
+    // track-to-album links are populated in the response.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .and(query_param("SearchTerm", "radio"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [],
+            "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client.search("radio", Paging::new(0, 10)).await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(
+        q.contains("EnableUserData=true"),
+        "missing EnableUserData=true in query: {q}"
+    );
+    assert!(
+        q.contains("UserData"),
+        "Fields must include UserData in query: {q}"
+    );
+    assert!(
+        q.contains("AlbumId"),
+        "Fields must include AlbumId in query: {q}"
     );
 }
 

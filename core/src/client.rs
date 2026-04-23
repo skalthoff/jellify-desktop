@@ -927,8 +927,7 @@ impl JellyfinClient {
         {
             let mut q = url.query_pairs_mut();
             q.append_pair("UserId", user_id);
-            q.append_pair("MediaType", "Audio");
-            q.append_pair("Type", "Audio");
+            q.append_pair("IncludeItemTypes", "Audio,MusicAlbum");
             q.append_pair("Limit", &limit.max(1).to_string());
             q.append_pair("EnableUserData", "true");
         }
@@ -1420,7 +1419,11 @@ impl JellyfinClient {
             q.append_pair("IncludeItemTypes", "MusicArtist,MusicAlbum,Audio");
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("Fields", "Genres,ProductionYear,PrimaryImageAspectRatio");
+            q.append_pair(
+                "Fields",
+                "Genres,ProductionYear,PrimaryImageAspectRatio,UserData,MediaSources,AlbumId",
+            );
+            q.append_pair("EnableUserData", "true");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
