@@ -41,6 +41,11 @@ pub enum JellifyError {
     #[error("credential store error: {0}")]
     Credentials(String),
 
+    /// The OS keyring rejected a token write. Surfaced (rather than silenced)
+    /// so the UI can warn the user that credentials will not survive a restart.
+    #[error("keyring write failed: {reason}")]
+    KeyringWrite { reason: String },
+
     #[error("audio error: {0}")]
     Audio(String),
 
@@ -49,6 +54,10 @@ pub enum JellifyError {
 
     #[error("queue index {index} is out of bounds (queue length: {len})")]
     InvalidIndex { index: usize, len: usize },
+
+    /// Credentials were blank (or whitespace-only) after trimming.
+    #[error("invalid credentials: username and password must not be empty")]
+    InvalidCredentials,
 
     #[error("{0}")]
     Other(String),
