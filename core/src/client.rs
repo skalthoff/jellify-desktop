@@ -68,7 +68,7 @@ pub struct JellyfinClient {
     refresh_cb: Mutex<Option<Arc<RefreshTokenFn>>>,
     /// Cancellation signal shared with any background task (e.g. the
     /// heartbeat scheduler) that holds a reference to this client. When
-    /// cancelled, [`Self::send_with_retry_raw`] abandons any pending backoff
+    /// cancelled, the internal retry loop abandons any pending backoff
     /// sleep between retry attempts and returns
     /// [`JellifyError::Other`]`("cancelled")` immediately. See issue #605.
     pub cancel: CancellationToken,
