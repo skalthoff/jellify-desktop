@@ -44,17 +44,29 @@ public protocol AudioEngineDelegate: AnyObject {
     func audioEngineDidFail(_ message: String)
 }
 
-/// AVPlayer-backed audio engine. Reports transport state back to the Rust
-/// core so other parts of the app can observe it via `core.status()`.
+/// `AVQueuePlayer`-backed audio engine. Reports transport state back to the
+/// Rust core so other parts of the app can observe it via `core.status()`.
+///
+/// Gapless playback (issue #580): `AVQueuePlayer` preloads the next
+/// `AVPlayerItem` while the current one is still playing and transitions
+/// between them without silence. Call `preloadNextTrack(_:)` whenever the
+/// caller knows which track follows the current one — typically right after
+/// a `play(track:)` call and again inside `onTrackEnded`. The queue player
+/// will splice the pre-built item in gaplessly.
 @MainActor
 public final class AudioEngine: NSObject {
     private let core: JellifyCore
-    private var player: AVPlayer?
+    private var player: AVQueuePlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var statusObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
     private var timeControlObservation: NSKeyValueObservation?
+    /// KVO observation on `AVQueuePlayer.currentItem`. Fires whenever the
+    /// queue player auto-advances to the next item so we can re-wire the
+    /// `AVPlayerItemDidPlayToEndTime` notification to the new `currentItem`
+    /// and update `currentStreamURL` for stall recovery.
+    private var currentItemObservation: NSKeyValueObservation?
 
     /// The URL + auth header of the item currently loaded into the player.
     /// Captured on `play(_:)` so we can rebuild a fresh `AVPlayerItem` when
@@ -125,7 +137,9 @@ public final class AudioEngine: NSObject {
 
         // Tear down the old player cleanly before switching.
         removePlayerObservers()
-        let newPlayer = AVPlayer(playerItem: item)
+        // AVQueuePlayer: pass the first item at construction time, which
+        // sets it as currentItem without an extra insert call.
+        let newPlayer = AVQueuePlayer(items: [item])
         newPlayer.automaticallyWaitsToMinimizeStalling = true
         self.player = newPlayer
 
@@ -168,7 +182,10 @@ public final class AudioEngine: NSObject {
     public func stop() {
         cancelStallWatchdog()
         player?.pause()
-        player?.replaceCurrentItem(with: nil)
+        // removeAllItems() drains the AVQueuePlayer's item list (including any
+        // pre-loaded next-track entry) and implicitly nulls currentItem — the
+        // equivalent of replaceCurrentItem(with: nil) for a queue player.
+        player?.removeAllItems()
         removePlayerObservers()
         player = nil
         currentStreamURL = nil
@@ -208,9 +225,53 @@ public final class AudioEngine: NSObject {
         core.setVolume(volume: v)
     }
 
+    /// Pre-load the next track into the `AVQueuePlayer` so it can transition
+    /// gaplessly when the current item reaches end-of-file.
+    ///
+    /// The caller should invoke this:
+    ///   1. Right after `play(track:)` when the next queue item is known.
+    ///   2. Inside `onTrackEnded` once `AppModel` has advanced the queue —
+    ///      pass the *new* next track (queue position + 1) so the player
+    ///      always has one item queued ahead.
+    ///
+    /// Calling this when there is no next track (end of queue) is a no-op.
+    /// `AVQueuePlayer.insert(_:after:nil)` appends after the last item, which
+    /// is what we want. Existing queued-but-not-yet-playing items are replaced
+    /// so rapid skip-next doesn't accumulate stale entries.
+    public func preloadNextTrack(_ track: Track) throws {
+        guard let player else { return }
+
+        let urlString = try core.streamUrl(trackId: track.id)
+        guard let url = URL(string: urlString) else {
+            throw AudioEngineError.invalidURL(urlString)
+        }
+        let authHeader = try core.authHeader()
+        let asset = AVURLAsset(
+            url: url,
+            options: [
+                "AVURLAssetHTTPHeaderFieldsKey": [
+                    "Authorization": authHeader
+                ]
+            ]
+        )
+        let nextItem = AVPlayerItem(asset: asset)
+
+        // Remove any previously queued (not-yet-playing) items so we never
+        // accumulate stale entries from rapid queue mutations. `items()` returns
+        // all items including the current one; skip index 0 (currently playing).
+        let queued = player.items()
+        for item in queued.dropFirst() {
+            player.remove(item)
+        }
+
+        // Append the new item after the current one (or as the only item if
+        // the player was empty — shouldn't happen in normal flow but safe).
+        player.insert(nextItem, after: player.currentItem)
+    }
+
     // MARK: - Observers
 
-    private func attachPlayerObservers(to player: AVPlayer, item: AVPlayerItem) {
+    private func attachPlayerObservers(to player: AVQueuePlayer, item: AVPlayerItem) {
         let interval = CMTime(seconds: 0.5, preferredTimescale: 1000)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
@@ -218,14 +279,34 @@ public final class AudioEngine: NSObject {
             self.core.markPosition(seconds: seconds)
         }
 
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            self.core.markState(state: .ended)
-            self.onTrackEnded?()
+        // Wire the end-of-item notification to the first item. When
+        // AVQueuePlayer auto-advances this observer is replaced inside the
+        // currentItem KVO handler below so every item in the queue fires
+        // onTrackEnded correctly.
+        wireEndObserver(to: item)
+
+        // currentItem KVO — fires when AVQueuePlayer advances to the next
+        // pre-loaded item (the gapless transition). We use it to:
+        //   1. Re-wire `endObserver` to the new currentItem.
+        //   2. Update `currentStreamURL` so stall recovery targets the right URL.
+        //   3. Fire `onTrackEnded` so AppModel can update metadata and pre-load
+        //      the track after the one that just started.
+        currentItemObservation = player.observe(\.currentItem, options: [.new, .old]) { [weak self] player, change in
+            // Guard: only act when the item actually changed (not on initial
+            // attachment where old == new == firstItem).
+            guard change.oldValue != change.newValue else { return }
+            Task { @MainActor in
+                guard let self else { return }
+                // Re-register end-of-item notification for the newly-current item.
+                if let current = player.currentItem {
+                    self.wireEndObserver(to: current)
+                }
+                // Reset stall URL tracking — the new item has its own URL.
+                if let urlAsset = player.currentItem?.asset as? AVURLAsset {
+                    self.currentStreamURL = urlAsset.url
+                }
+                self.stallRetryCount = 0
+            }
         }
 
         rateObservation = player.observe(\.rate, options: [.new]) { [weak self] player, _ in
@@ -273,6 +354,29 @@ public final class AudioEngine: NSObject {
         }
     }
 
+    /// Register (or re-register) `endObserver` against `item`. Called once at
+    /// player setup and again from the `currentItem` KVO handler whenever
+    /// `AVQueuePlayer` gaplessly advances to the next item.
+    private func wireEndObserver(to item: AVPlayerItem) {
+        if let old = endObserver {
+            NotificationCenter.default.removeObserver(old)
+        }
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            // Note: by the time this fires, AVQueuePlayer has already
+            // advanced currentItem to the next queued item (gapless
+            // transition). We mark the state as ended and let AppModel
+            // advance its logical queue position + call preloadNextTrack
+            // for the item after that.
+            self.core.markState(state: .ended)
+            self.onTrackEnded?()
+        }
+    }
+
     private func removePlayerObservers() {
         if let obs = timeObserver, let p = player {
             p.removeTimeObserver(obs)
@@ -288,6 +392,8 @@ public final class AudioEngine: NSObject {
         statusObservation = nil
         timeControlObservation?.invalidate()
         timeControlObservation = nil
+        currentItemObservation?.invalidate()
+        currentItemObservation = nil
     }
 
     // MARK: - Stall recovery (issue #439)
@@ -349,7 +455,12 @@ public final class AudioEngine: NSObject {
     /// swap it in via `replaceCurrentItem`. This restarts the HTTP fetch
     /// without tearing the player down, so `rate` / `timeControlStatus`
     /// observers remain wired and the UI doesn't flicker.
-    private func recoverFromStall(player: AVPlayer, url: URL) {
+    ///
+    /// `AVQueuePlayer` inherits `replaceCurrentItem` from `AVPlayer`, so this
+    /// call drops any pre-loaded next-item from the queue. The owner's
+    /// `onTrackEnded` handler should call `preloadNextTrack` again once
+    /// playback recovers.
+    private func recoverFromStall(player: AVQueuePlayer, url: URL) {
         let options: [String: Any]
         if let header = currentAuthHeader {
             options = [
@@ -361,25 +472,12 @@ public final class AudioEngine: NSObject {
         let asset = AVURLAsset(url: url, options: options)
         let item = AVPlayerItem(asset: asset)
 
-        // `replaceCurrentItem` does NOT re-fire the end-of-item
-        // notification for the old item, so we need to re-register the
-        // end observer against the freshly-built `AVPlayerItem` or the
-        // queue will stop advancing after a stall recovery. Tearing down
-        // just the end observer (rather than everything) keeps
-        // `rateObservation` / `timeControlObservation` in place — both
-        // target the `AVPlayer`, not the item.
-        if let end = endObserver {
-            NotificationCenter.default.removeObserver(end)
-        }
-        endObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemDidPlayToEndTime,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            self.core.markState(state: .ended)
-            self.onTrackEnded?()
-        }
+        // Re-wire the end observer to the fresh item — `replaceCurrentItem`
+        // does not re-fire the notification for the old item. Keeping
+        // `rateObservation` / `timeControlObservation` / `currentItemObservation`
+        // in place is intentional; all three target the AVQueuePlayer, not the
+        // item, so they stay valid across the swap.
+        wireEndObserver(to: item)
 
         player.replaceCurrentItem(with: item)
         player.play()
