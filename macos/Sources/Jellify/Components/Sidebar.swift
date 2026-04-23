@@ -17,10 +17,6 @@ struct Sidebar: View {
     /// nothing is hovered.
     @State private var hoveredPlaylistId: String?
 
-    /// Focus binding for the inline TextField. Bound to whichever row
-    /// (new-placeholder or existing-rename) is currently in edit mode.
-    @FocusState private var editFieldFocused: Bool
-
     var body: some View {
         @Bindable var model = model
         VStack(alignment: .leading, spacing: 0) {
@@ -159,6 +155,9 @@ struct Sidebar: View {
             // the overflow.
             .frame(maxHeight: 280)
         }
+        // #585: Allow space-bar input in the inline rename / new-playlist
+        // TextField even while the global Play/Pause ⎵ shortcut is active.
+        .spaceKeyGuardForTextField()
     }
 
     // MARK: - Playlist row (display + inline edit)
@@ -179,7 +178,12 @@ struct Sidebar: View {
                 .frame(width: 18)
 
             if isEditing {
-                editTextField(initialText: playlist.name)
+                // #590: Use a dedicated subview so SwiftUI treats the
+                // TextField as a stable identity across parent re-renders
+                // (e.g. when the playlists array updates mid-rename). The
+                // `.id` pin below further anchors it to the editing session.
+                SidebarInlineEditField(initialText: playlist.name)
+                    .id("rename-\(playlist.id)")
             } else {
                 Text(playlist.name)
                     .font(Theme.font(12, weight: isActiveScreen ? .bold : .medium))
@@ -232,7 +236,9 @@ struct Sidebar: View {
             Image(systemName: "music.note.list")
                 .foregroundStyle(Theme.accent)
                 .frame(width: 18)
-            editTextField(initialText: "")
+            // #590: stable subview identity for the new-playlist field too.
+            SidebarInlineEditField(initialText: "")
+                .id("rename-\(AppModel.sidebarNewPlaylistSentinel)")
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
@@ -241,54 +247,6 @@ struct Sidebar: View {
             RoundedRectangle(cornerRadius: 6)
                 .strokeBorder(Theme.border, lineWidth: 1)
         )
-    }
-
-    /// Inline TextField bound to `AppModel.sidebarEditingDraft`. Used both
-    /// by the new-playlist row and the rename-in-place affordance. On
-    /// commit (Return) the draft is fed to `commitSidebarPlaylistEdit`; on
-    /// Escape the edit is cancelled. On blur without any edit change (i.e.
-    /// the draft still matches `initialText`) we also treat it as cancel to
-    /// match macOS Finder's inline-rename behaviour.
-    @ViewBuilder
-    private func editTextField(initialText: String) -> some View {
-        @Bindable var model = model
-        TextField("Playlist name", text: $model.sidebarEditingDraft)
-            .textFieldStyle(.plain)
-            .font(Theme.font(12, weight: .semibold))
-            .foregroundStyle(Theme.ink)
-            .focused($editFieldFocused)
-            .onAppear {
-                // Seed the draft with the passed-in initial text so existing
-                // playlists open their rename field prefilled. The new-row
-                // case passes an empty string and should stay empty.
-                if !initialText.isEmpty && model.sidebarEditingDraft.isEmpty {
-                    model.sidebarEditingDraft = initialText
-                }
-                // Defer focus by a tick so the field has mounted.
-                DispatchQueue.main.async { editFieldFocused = true }
-            }
-            .onSubmit {
-                Task { await model.commitSidebarPlaylistEdit() }
-            }
-            .onExitCommand {
-                // Escape cancels the edit without committing.
-                model.cancelSidebarPlaylistEdit()
-            }
-            .onChange(of: editFieldFocused) { _, focused in
-                // Blur without an active commit → treat as cancel (empty) or
-                // commit (non-empty unchanged draft). The committer itself
-                // trims and ignores empty values.
-                guard !focused else { return }
-                // If the edit was already cleared elsewhere (e.g. Escape),
-                // there's nothing to do.
-                guard model.sidebarEditingPlaylistId != nil else { return }
-                let trimmed = model.sidebarEditingDraft.trimmingCharacters(in: .whitespacesAndNewlines)
-                if trimmed.isEmpty {
-                    model.cancelSidebarPlaylistEdit()
-                } else {
-                    Task { await model.commitSidebarPlaylistEdit() }
-                }
-            }
     }
 
     @ViewBuilder
@@ -364,5 +322,65 @@ struct Sidebar: View {
             .padding(.horizontal, 18)
             .padding(.top, 20)
             .padding(.bottom, 6)
+    }
+}
+
+// MARK: - #590: Stable inline-rename TextField subview
+//
+// Extracted from `Sidebar` so SwiftUI maintains its view identity across
+// parent re-renders (e.g. when `model.playlists` updates while a rename is
+// in progress). When the logic lived as a `@ViewBuilder` method on `Sidebar`,
+// any change to the playlists array could cause the ForEach to rebuild
+// the row's subtree, dismounting the TextField mid-edit and silently
+// discarding the draft. As a separate `struct`, SwiftUI treats it as a
+// stable node and preserves its `@FocusState` across parent refreshes.
+//
+// The `.id("rename-\(playlistId)")` modifier in `playlistRow` pins the
+// view's identity to the edit session so a rename of playlist A doesn't
+// accidentally re-use a previously mounted field for playlist B.
+private struct SidebarInlineEditField: View {
+    @Environment(AppModel.self) private var model
+    let initialText: String
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        @Bindable var model = model
+        TextField("Playlist name", text: $model.sidebarEditingDraft)
+            .textFieldStyle(.plain)
+            .font(Theme.font(12, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+            .focused($isFocused)
+            .onAppear {
+                // Seed the draft with the passed-in initial text so existing
+                // playlists open their rename field prefilled. New-row case
+                // passes "" and should stay empty.
+                if !initialText.isEmpty && model.sidebarEditingDraft.isEmpty {
+                    model.sidebarEditingDraft = initialText
+                }
+                // Defer focus by a tick so the field has mounted.
+                DispatchQueue.main.async { isFocused = true }
+            }
+            .onSubmit {
+                Task { await model.commitSidebarPlaylistEdit() }
+            }
+            .onExitCommand {
+                model.cancelSidebarPlaylistEdit()
+            }
+            .onChange(of: isFocused) { _, focused in
+                // #590: Only act on a genuine user-driven focus loss.
+                // If `sidebarEditingPlaylistId` was already cleared (by
+                // Escape, commit, or a concurrent model update), skip the
+                // commit/cancel path so we don't double-act.
+                guard !focused else { return }
+                guard model.sidebarEditingPlaylistId != nil else { return }
+                let trimmed = model.sidebarEditingDraft
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    model.cancelSidebarPlaylistEdit()
+                } else {
+                    Task { await model.commitSidebarPlaylistEdit() }
+                }
+            }
     }
 }

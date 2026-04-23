@@ -70,6 +70,9 @@ struct SearchView: View {
             .padding(.bottom, 32)
         }
         .background(Theme.bg)
+        // #585: Route space-bar keypresses to the search TextField even
+        // while the global Play/Pause ⎵ shortcut is active.
+        .spaceKeyGuardForTextField()
         .onAppear {
             if model.requestSearchFocus {
                 searchFieldFocused = true
