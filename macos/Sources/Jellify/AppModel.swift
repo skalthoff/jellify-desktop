@@ -1721,7 +1721,8 @@ final class AppModel {
             playCount: playCount,
             container: container,
             bitrate: bitrate,
-            imageTag: imageTag
+            imageTag: imageTag,
+            playlistItemId: nil
         )
     }
 
