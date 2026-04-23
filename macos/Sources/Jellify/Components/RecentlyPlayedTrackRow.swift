@@ -72,8 +72,14 @@ struct RecentlyPlayedTrackRow: View {
                 }
             }
         }
+        // `.focusable` lets the VoiceOver rotor Tab through the Home
+        // Recently Played list; `.combine` presents thumbnail + title +
+        // duration as a single playable element. See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel("\(track.name) by \(track.artistName)")
         .accessibilityHint("Plays this track")
+        .accessibilityAddTraits(.isButton)
     }
 
     private var thumbnail: some View {

@@ -104,8 +104,13 @@ struct LibraryListRow: View {
         // VoiceOver hears "<primary>, <secondary>. Opens <kind> detail."
         // The hover play button only appears on cursor hover, so we route
         // the row's body tap (openDetail) as the single focusable target.
+        // `.focusable` lets the rotor Tab through the list; `.combine`
+        // collapses artwork + text into one element. See #588.
+        .focusable(true)
+        .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(accessibilityHint)
+        .accessibilityAddTraits(.isButton)
     }
 
     private var accessibilityLabel: String {

@@ -533,7 +533,15 @@ private struct QueueInspectorRow: View {
                 .fill(isHovering ? Theme.rowHover : .clear)
         )
         .contentShape(Rectangle())
+        // `.focusable` on reorderable rows so the rotor can Tab through Up
+        // Next; auto-queue rows are read-only and remain non-focusable.
+        // `.combine` collapses artwork + text + remove button into one element
+        // so VoiceOver reads "Track by Artist" as a single queue entry.
+        // See #588.
         .focusable(removable)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(entry.track.name) by \(entry.track.artistName)")
+        .accessibilityAddTraits(removable ? .isButton : [])
         // Opt+↑ / Opt+↓ reorders the focused row. Only match when the
         // Option modifier is held so plain arrow keys fall through to
         // the surrounding list's focus traversal.
@@ -553,7 +561,6 @@ private struct QueueInspectorRow: View {
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
         }
-        .accessibilityLabel("\(entry.track.name) by \(entry.track.artistName)")
     }
 }
 
