@@ -730,7 +730,12 @@ final class AppModel {
 
     func logout() {
         audio.stop()
-        try? core.logout()
+        // core.logout() does a blocking POST /Sessions/Logout; fire it off
+        // the main actor so the UI clears immediately and the user isn't
+        // staring at a stalled window for the network round-trip.
+        Task.detached(priority: .userInitiated) { [core] in
+            try? core.logout()
+        }
         session = nil
         imageURLCache.removeAll()
         albums = []
@@ -910,21 +915,50 @@ final class AppModel {
             try core.listTracks(musicLibraryId: nil, offset: 0, limit: libraryInitialPageSize)
         }.value
         async let playlistsResult: Void = refreshPlaylists()
+        // Each loader gets its own try/catch so one failure (typically a
+        // transient 5xx on a single endpoint) doesn't drop the other two.
+        // Before, the tuple-destructure `try await (a, b, c)` cancelled the
+        // assignments for all three on any single error — Library rendered
+        // empty even when two of the three endpoints succeeded.
+        var anySucceeded = false
         do {
-            let (albums, artists, tracks) = try await (albumsPage, artistsPage, tracksPage)
+            let albums = try await albumsPage
             self.albums = albums.items
             self.albumsTotal = albums.totalCount
-            self.artists = artists.items
-            self.artistsTotal = artists.totalCount
-            self.tracks = tracks.items
-            self.tracksTotal = tracks.totalCount
-            serverReachability.noteSuccess()
+            anySucceeded = true
         } catch {
             if handleAuthError(error) { return }
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = "Albums load failed: \(error.localizedDescription)"
+        }
+        do {
+            let artists = try await artistsPage
+            self.artists = artists.items
+            self.artistsTotal = artists.totalCount
+            anySucceeded = true
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            self.errorMessage = "Artists load failed: \(error.localizedDescription)"
+        }
+        do {
+            let tracks = try await tracksPage
+            self.tracks = tracks.items
+            self.tracksTotal = tracks.totalCount
+            anySucceeded = true
+        } catch {
+            if handleAuthError(error) { return }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            self.errorMessage = "Tracks load failed: \(error.localizedDescription)"
+        }
+        if anySucceeded {
+            serverReachability.noteSuccess()
         }
         _ = await playlistsResult
         await refreshRecentlyPlayed()
@@ -1036,23 +1070,24 @@ final class AppModel {
 
     /// Resolve (and cache) the `ParentId` to scope playlist queries by.
     ///
-    /// Jellyfin exposes playlists under a dedicated "Playlists"
-    /// CollectionFolder, but the core doesn't yet ship an FFI for listing a
-    /// user's libraries (tracked alongside #124 / #483). Until it does, we
-    /// fall back to the empty string: Jellyfin's `/Items` endpoint treats an
-    /// empty `ParentId` query value as "no filter", which returns the
-    /// server-wide set of playlists the user can see. That's slightly
-    /// broader than what the eventual proper resolve will return, but the
-    /// client-side `Path`-based filter in `user_playlists` / `public_playlists`
-    /// keeps the result correct.
-    ///
-    /// Logs a warning on first resolve so the gap is visible in Console.app.
-    private func ensurePlaylistLibraryId() -> String {
+    /// Calls `core.playlistLibraryId()` once, which hits
+    /// `/Users/{id}/Views` and picks the CollectionFolder whose
+    /// `CollectionType == "playlists"`. On failure we fall back to the
+    /// empty string — Jellyfin's `/Items` endpoint treats an empty
+    /// `ParentId` as "no filter", and the client-side `Path`-based filter
+    /// in `user_playlists` / `public_playlists` still yields a correct set,
+    /// just with more server-side work.
+    private func ensurePlaylistLibraryId() async -> String {
         if let cached = playlistLibraryId { return cached }
-        // TODO: wire `core.libraries()` (tracked in core followup) so we can
-        // pick the CollectionFolder with `CollectionType == "playlists"`.
-        print("[AppModel] No playlist-library resolver available — falling back to empty ParentId. This returns the correct set for typical Jellyfin servers; wire core.libraries() when it lands.")
-        let resolved = ""
+        let resolved: String
+        do {
+            resolved = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.playlistLibraryId()
+            }.value
+        } catch {
+            print("[AppModel] ensurePlaylistLibraryId: core.playlistLibraryId() failed (\(error.localizedDescription)); falling back to empty ParentId.")
+            resolved = ""
+        }
         playlistLibraryId = resolved
         return resolved
     }
@@ -1066,7 +1101,7 @@ final class AppModel {
     /// Playlists tab spec (#212) describes "your playlists"; a separate
     /// "Community" affordance for public playlists is a future concern.
     func refreshPlaylists() async {
-        let libraryId = ensurePlaylistLibraryId()
+        let libraryId = await ensurePlaylistLibraryId()
         do {
             let page = try await Task.detached(priority: .userInitiated) { [core, libraryInitialPageSize] in
                 try core.userPlaylists(
@@ -1105,7 +1140,7 @@ final class AppModel {
         guard playlistsTotal == 0 || playlists.count < Int(playlistsTotal) else { return }
         isLoadingMorePlaylists = true
         defer { isLoadingMorePlaylists = false }
-        let libraryId = ensurePlaylistLibraryId()
+        let libraryId = await ensurePlaylistLibraryId()
         let offset = UInt32(playlists.count)
         do {
             let page = try await Task.detached(priority: .userInitiated) { [core, libraryPageSize] in
