@@ -1033,6 +1033,13 @@ impl JellyfinClient {
             let mut q = url.query_pairs_mut();
             q.append_pair("UserId", user_id);
             q.append_pair("Limit", &limit.max(1).to_string());
+            q.append_pair(
+                "Fields",
+                "PrimaryImageAspectRatio,BasicSyncInfo,MediaSourceCount,UserData",
+            );
+            q.append_pair("EnableUserData", "true");
+            q.append_pair("EnableImages", "true");
+            q.append_pair("ImageTypeLimit", "1");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -2072,6 +2079,12 @@ struct RawSearchHint {
     matched_term: Option<String>,
     #[serde(rename = "PrimaryImageTag")]
     primary_image_tag: Option<String>,
+    #[serde(rename = "ThumbImageTag")]
+    thumb_image_tag: Option<String>,
+    #[serde(rename = "BackdropImageTag")]
+    backdrop_image_tag: Option<String>,
+    #[serde(rename = "PrimaryImageAspectRatio")]
+    primary_image_aspect_ratio: Option<f64>,
     #[serde(rename = "ProductionYear")]
     production_year: Option<i32>,
     #[serde(rename = "IndexNumber")]
@@ -2098,6 +2111,9 @@ impl From<RawSearchHint> for SearchHint {
             album_artist: r.album_artist,
             matched_term: r.matched_term,
             primary_image_tag: r.primary_image_tag,
+            thumb_image_tag: r.thumb_image_tag,
+            backdrop_image_tag: r.backdrop_image_tag,
+            primary_image_aspect_ratio: r.primary_image_aspect_ratio,
             production_year: r.production_year,
             index_number: r.index_number,
             parent_index_number: r.parent_index_number,
