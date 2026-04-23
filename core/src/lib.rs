@@ -523,15 +523,20 @@ impl JellifyCore {
     /// Append items (tracks/albums/artists) to a playlist in a single
     /// round-trip. Mirrors Jellify's `addManyToPlaylist`; callers should
     /// invalidate their `playlist_tracks` cache after this returns.
+    ///
+    /// When `position` is `Some(n)`, the Jellyfin `StartIndex` query param is
+    /// set so the server inserts the items starting at index `n` rather than
+    /// appending to the end.
     pub fn add_to_playlist(
         &self,
         playlist_id: String,
         item_ids: Vec<String>,
+        position: Option<u32>,
     ) -> std::result::Result<(), JellifyError> {
         self.with_client(|c| {
             let id_refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
             self.runtime
-                .block_on(c.add_to_playlist(&playlist_id, &id_refs))
+                .block_on(c.add_to_playlist(&playlist_id, &id_refs, position))
         })
     }
 
@@ -611,14 +616,19 @@ impl JellifyCore {
     /// [`JellifyCore::fetch_item`] if they need the populated record.
     /// `item_ids` may be empty to create an empty playlist. Errors with
     /// [`JellifyError::NotAuthenticated`] if no session is active.
+    ///
+    /// When `position` is `Some(n)`, the Jellyfin `StartIndex` query param is
+    /// set so the server inserts the initial items starting at index `n`.
     pub fn create_playlist(
         &self,
         name: String,
         item_ids: Vec<String>,
+        position: Option<u32>,
     ) -> std::result::Result<String, JellifyError> {
         self.with_client(|c| {
             let id_refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
-            self.runtime.block_on(c.create_playlist(&name, &id_refs))
+            self.runtime
+                .block_on(c.create_playlist(&name, &id_refs, position))
         })
     }
 

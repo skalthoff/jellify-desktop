@@ -785,7 +785,10 @@ impl JellyfinClient {
             q.append_pair("IncludeItemTypes", "Audio");
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("Fields", "MediaSources,ParentId,Path,SortName");
+            q.append_pair(
+                "Fields",
+                "MediaSources,ParentId,Path,PlaylistItemId,SortName",
+            );
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -810,7 +813,12 @@ impl JellyfinClient {
     ///
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
-    pub async fn add_to_playlist(&self, playlist_id: &str, item_ids: &[&str]) -> Result<()> {
+    pub async fn add_to_playlist(
+        &self,
+        playlist_id: &str,
+        item_ids: &[&str],
+        position: Option<u32>,
+    ) -> Result<()> {
         let user_id = self
             .user_id
             .as_ref()
@@ -820,6 +828,9 @@ impl JellyfinClient {
             let mut q = url.query_pairs_mut();
             q.append_pair("Ids", &item_ids.join(","));
             q.append_pair("UserId", user_id);
+            if let Some(pos) = position {
+                q.append_pair("StartIndex", &pos.to_string());
+            }
         }
         self.send_with_retry(|| Ok(self.http.post(url.clone()).headers(self.build_headers()?)))
             .await?;
@@ -1353,12 +1364,21 @@ impl JellyfinClient {
     ///
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
-    pub async fn create_playlist(&self, name: &str, item_ids: &[&str]) -> Result<String> {
+    pub async fn create_playlist(
+        &self,
+        name: &str,
+        item_ids: &[&str],
+        position: Option<u32>,
+    ) -> Result<String> {
         let user_id = self
             .user_id
             .as_ref()
             .ok_or(JellifyError::NotAuthenticated)?;
-        let url = self.endpoint("Playlists")?;
+        let mut url = self.endpoint("Playlists")?;
+        if let Some(pos) = position {
+            url.query_pairs_mut()
+                .append_pair("StartIndex", &pos.to_string());
+        }
         let body = CreatePlaylistBody {
             name: name.to_string(),
             ids: item_ids.iter().map(|s| s.to_string()).collect(),

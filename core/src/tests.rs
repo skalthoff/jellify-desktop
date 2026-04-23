@@ -1885,7 +1885,10 @@ async fn playlist_tracks_preserves_order_and_builds_query() {
         .and(query_param("IncludeItemTypes", "Audio"))
         .and(query_param("Limit", "50"))
         .and(query_param("StartIndex", "0"))
-        .and(query_param("Fields", "MediaSources,ParentId,Path,SortName"))
+        .and(query_param(
+            "Fields",
+            "MediaSources,ParentId,Path,PlaylistItemId,SortName",
+        ))
         .respond_with(|req: &Request| {
             // Playlist order is load-bearing: the client must NOT send
             // SortBy/SortOrder for this endpoint.
@@ -2997,7 +3000,7 @@ async fn create_playlist_posts_pascal_case_body_and_returns_id() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let id = client
-        .create_playlist("Road Trip", &["t1", "t2", "t3"])
+        .create_playlist("Road Trip", &["t1", "t2", "t3"], None)
         .await
         .unwrap();
     assert_eq!(id, "new-playlist-id");
@@ -3083,7 +3086,10 @@ async fn create_playlist_with_empty_ids_sends_empty_array() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let id = client.create_playlist("Empty List", &[]).await.unwrap();
+    let id = client
+        .create_playlist("Empty List", &[], None)
+        .await
+        .unwrap();
     assert_eq!(id, "empty-playlist-id");
 
     let requests = server.received_requests().await.unwrap();
@@ -3119,7 +3125,7 @@ async fn create_playlist_propagates_server_errors() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let err = client.create_playlist("x", &[]).await.unwrap_err();
+    let err = client.create_playlist("x", &[], None).await.unwrap_err();
     match err {
         crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 500),
         other => panic!("expected Server 500, got {other:?}"),
@@ -3134,7 +3140,7 @@ async fn create_playlist_requires_authenticated_session() {
     // a real host.
     let server = MockServer::start().await;
     let client = mock_client(&server.uri());
-    let err = client.create_playlist("x", &[]).await.unwrap_err();
+    let err = client.create_playlist("x", &[], None).await.unwrap_err();
     assert!(
         matches!(err, crate::error::JellifyError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
@@ -3164,7 +3170,7 @@ async fn add_to_playlist_posts_ids_csv_and_user_id() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     client
-        .add_to_playlist("pl-123", &["t1", "t2", "t3"])
+        .add_to_playlist("pl-123", &["t1", "t2", "t3"], None)
         .await
         .unwrap();
 
@@ -3195,10 +3201,235 @@ async fn add_to_playlist_requires_authenticated_session() {
     // than silently hitting a real host.
     let server = MockServer::start().await;
     let client = mock_client(&server.uri());
-    let err = client.add_to_playlist("pl-123", &["t1"]).await.unwrap_err();
+    let err = client
+        .add_to_playlist("pl-123", &["t1"], None)
+        .await
+        .unwrap_err();
     assert!(
         matches!(err, crate::error::JellifyError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// playlist_tracks — PlaylistItemId in Fields (#572)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn playlist_tracks_includes_playlist_item_id_in_fields() {
+    // #572: PlaylistItemId must appear in the Fields param so the server
+    // returns per-entry identifiers. Without it, duplicate tracks are
+    // indistinguishable and remove-by-entry operations delete all copies.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("ParentId", "dup-pl"))
+        .respond_with(|req: &Request| {
+            let pairs: std::collections::HashMap<_, _> =
+                req.url.query_pairs().into_owned().collect();
+            let fields = pairs.get("Fields").cloned().unwrap_or_default();
+            assert!(
+                fields.contains("PlaylistItemId"),
+                "Fields must contain PlaylistItemId, got: {fields}"
+            );
+            ResponseTemplate::new(200).set_body_json(json!({
+                "Items": [
+                    {
+                        "Id": "t1", "Name": "Repeated", "Type": "Audio",
+                        "AlbumId": "a1", "Album": "A", "AlbumArtist": "X",
+                        "Artists": ["X"], "RunTimeTicks": 1000000000u64,
+                        "PlaylistItemId": "pi-1",
+                        "ImageTags": {}
+                    },
+                    {
+                        "Id": "t1", "Name": "Repeated", "Type": "Audio",
+                        "AlbumId": "a1", "Album": "A", "AlbumArtist": "X",
+                        "Artists": ["X"], "RunTimeTicks": 1000000000u64,
+                        "PlaylistItemId": "pi-2",
+                        "ImageTags": {}
+                    }
+                ],
+                "TotalRecordCount": 2
+            }))
+        })
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .playlist_tracks("dup-pl", Paging::new(0, 50))
+        .await
+        .unwrap();
+    // Both duplicate entries must be returned — the server distinguishes them
+    // via PlaylistItemId, which is now requested in Fields.
+    assert_eq!(page.items.len(), 2);
+    assert_eq!(page.total_count, 2);
+}
+
+// ---------------------------------------------------------------------------
+// add_to_playlist — optional position param (#607)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn add_to_playlist_with_position_sends_start_index() {
+    // #607: when position is Some(n) the client must include StartIndex=n in
+    // the query string so Jellyfin inserts at that position instead of
+    // appending.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl-99/Items"))
+        .and(query_param("StartIndex", "3"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .add_to_playlist("pl-99", &["t1"], Some(3))
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists/pl-99/Items")
+        .expect("expected POST to /Playlists/pl-99/Items");
+    let q = post.url.query().expect("expected a query string");
+    assert!(q.contains("StartIndex=3"), "query: {q}");
+}
+
+#[tokio::test]
+async fn add_to_playlist_without_position_omits_start_index() {
+    // #607: when position is None, StartIndex must NOT appear in the query —
+    // Jellyfin interprets its absence as "append to end".
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl-append/Items"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .add_to_playlist("pl-append", &["t2"], None)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists/pl-append/Items")
+        .expect("expected POST to /Playlists/pl-append/Items");
+    let q = post.url.query().unwrap_or_default();
+    assert!(
+        !q.contains("StartIndex"),
+        "StartIndex must be absent when position is None, query: {q}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// create_playlist — optional position param (#607)
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn create_playlist_with_position_sends_start_index() {
+    // #607: when position is Some(n) the client must include StartIndex=n as a
+    // query param on POST /Playlists.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .and(query_param("StartIndex", "5"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "Id": "pos-pl-id" })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let id = client
+        .create_playlist("Positioned", &["t1"], Some(5))
+        .await
+        .unwrap();
+    assert_eq!(id, "pos-pl-id");
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists")
+        .expect("expected POST to /Playlists");
+    let q = post.url.query().expect("expected a query string");
+    assert!(q.contains("StartIndex=5"), "query: {q}");
+}
+
+#[tokio::test]
+async fn create_playlist_without_position_omits_start_index() {
+    // #607: when position is None, StartIndex must NOT appear in the query.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "Id": "no-pos-pl-id" })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let id = client
+        .create_playlist("Appended", &["t1"], None)
+        .await
+        .unwrap();
+    assert_eq!(id, "no-pos-pl-id");
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists")
+        .expect("expected POST to /Playlists");
+    let q = post.url.query().unwrap_or_default();
+    assert!(
+        !q.contains("StartIndex"),
+        "StartIndex must be absent when position is None, query: {q}"
     );
 }
 
