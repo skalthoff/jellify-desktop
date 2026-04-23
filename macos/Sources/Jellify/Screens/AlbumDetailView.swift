@@ -74,16 +74,7 @@ struct AlbumDetailView: View {
                         .font(Theme.font(72, weight: .black, italic: true))
                         .foregroundStyle(Theme.ink)
                         .tracking(-2)
-                    Text("by \(album.artistName)")
-                        .font(Theme.font(20, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                        .overlay(alignment: .bottom) {
-                            Rectangle()
-                                .fill(Theme.accent)
-                                .frame(height: 2)
-                                .padding(.leading, 28)
-                                .offset(y: 2)
-                        }
+                    artistNameLine(for: album)
                     statStrip(album: album)
                         .padding(.top, 14)
                 }
@@ -95,6 +86,39 @@ struct AlbumDetailView: View {
                 Rectangle().fill(Theme.border).frame(height: 1)
             }
             .contextMenu { AlbumContextMenu(album: album, showGoToAlbum: false) }
+        }
+    }
+
+    /// "by <Artist Name>" below the album title. When the album carries a
+    /// resolvable `artistId` (the usual case — server returns it on every
+    /// MusicAlbum BaseItemDto), the whole line is a button that routes to
+    /// `.artist(id)`. When there's no id (degenerate metadata, compilations
+    /// without a credited album artist) it falls back to plain text so the
+    /// eye isn't drawn to an unresponsive click target.
+    @ViewBuilder
+    private func artistNameLine(for album: Album) -> some View {
+        let line = Text("by \(album.artistName)")
+            .font(Theme.font(20, weight: .semibold))
+            .foregroundStyle(Theme.ink)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(Theme.accent)
+                    .frame(height: 2)
+                    .padding(.leading, 28)
+                    .offset(y: 2)
+            }
+        if let artistId = album.artistId, !artistId.isEmpty {
+            Button {
+                model.screen = .artist(artistId)
+            } label: {
+                line
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Go to artist \(album.artistName)")
+            .accessibilityHint("Opens the artist page")
+            .accessibilityAddTraits(.isButton)
+        } else {
+            line
         }
     }
 
