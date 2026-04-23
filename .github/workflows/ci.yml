@@ -142,12 +142,32 @@ jobs:
           key: spm-${{ runner.os }}-${{ hashFiles('macos/Package.swift', 'macos/Package.resolved') }}
           restore-keys: |
             spm-${{ runner.os }}-
+      # Did the PR touch anything that could make the cached .build go
+      # stale vs a fresh xcframework? Keeping the cache for unrelated
+      # PRs (docs, Swift-only UI tweaks, etc.) still wins on CI time —
+      # this just invalidates it when the FFI surface moves.
+      - name: Detect FFI-relevant changes
+        id: ffi_changed
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            core/src/lib.rs
+            core/src/models.rs
+            core/src/player.rs
+            core/src/error.rs
+            macos/Jellify.xcframework/**
+            macos/Sources/JellifyCore/Generated/jellify_core.swift
       - name: Build xcframework
         working-directory: macos
         run: ./Scripts/build-core.sh
-      - name: swift build
+      - name: swift build (clean when FFI-relevant)
         working-directory: macos
-        run: swift build
+        run: |
+          if [[ "${{ steps.ffi_changed.outputs.any_changed }}" == "true" ]]; then
+            echo "FFI-relevant files changed — clean build to invalidate stale object cache."
+            rm -rf .build
+          fi
+          swift build
       - name: Bundle .app
         working-directory: macos
         run: ./Scripts/make-bundle.sh
