@@ -5543,3 +5543,187 @@ async fn login_keyring_write_is_not_silenced() {
     .await
     .expect("spawn_blocking panicked");
 }
+
+// ============================================================================
+// Logout cleanup tests (#568, #592)
+// ============================================================================
+
+/// Logout calls `POST /Sessions/Logout` before wiping local state.
+/// The server endpoint must be hit while the token is still valid (#592).
+#[tokio::test]
+async fn logout_calls_sessions_logout_endpoint() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "tok-server-logout",
+            "ServerId": "srv-slg",
+            "ServerName": "S",
+            "User": { "Id": "u-slg", "Name": "slg-user", "ServerId": "srv-slg", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Logout"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let server_url = server.uri();
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
+
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path,
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        core.login(server_url, "slg-user".into(), "pw".into())
+            .expect("login");
+        core.logout().expect("logout");
+    })
+    .await
+    .expect("join task");
+
+    let requests = server.received_requests().await.unwrap();
+    let logout_hit = requests
+        .iter()
+        .any(|r| r.method.as_str() == "POST" && r.url.path().ends_with("/Sessions/Logout"));
+    assert!(logout_hit, "expected POST /Sessions/Logout to be called");
+}
+
+/// Logout clears play_history, track_cache, album_cache, artist_cache, and
+/// the four `last_*` settings rows (#568).
+#[tokio::test]
+async fn logout_clears_user_data() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "tok-clear",
+            "ServerId": "srv-clear",
+            "ServerName": "S",
+            "User": { "Id": "u-clear", "Name": "clear-user", "ServerId": "srv-clear", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Logout"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let server_url = server.uri();
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
+
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path.clone(),
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        core.login(server_url, "clear-user".into(), "pw".into())
+            .expect("login");
+
+        {
+            let inner = core.inner.lock();
+            inner.db.record_play("track-seed", 1_000_000).unwrap();
+            inner
+                .db
+                .set_setting("track_cache:track-seed", "cached")
+                .unwrap();
+        }
+
+        core.logout().expect("logout");
+
+        {
+            let inner = core.inner.lock();
+            assert_eq!(inner.db.get_setting("last_server_url").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_username").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_server_id").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_user_id").unwrap(), None);
+            assert_eq!(
+                inner.db.play_count("track-seed").unwrap(),
+                0,
+                "play_history must be truncated on logout"
+            );
+        }
+
+        assert!(
+            CredentialStore::load_token("srv-clear", "clear-user")
+                .unwrap()
+                .is_none(),
+            "keyring token must be deleted on logout"
+        );
+
+        let core2 = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path,
+            device_name: "Test".into(),
+        })
+        .expect("core2 init");
+        assert!(core2.resume_session().expect("resume").is_none());
+    })
+    .await
+    .expect("join task");
+}
+
+/// When `POST /Sessions/Logout` fails (server unreachable), logout must still
+/// clear local state — the server error must not block sign-out (#592).
+#[tokio::test]
+async fn logout_tolerates_server_post_failure() {
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "tok-tol",
+            "ServerId": "srv-tol",
+            "ServerName": "S",
+            "User": { "Id": "u-tol", "Name": "tol-user", "ServerId": "srv-tol", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+
+    // Intentionally do NOT mount a Sessions/Logout handler — the server
+    // returns 404 which our logout() must absorb and continue past.
+
+    let server_url = server.uri();
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
+
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core = JellifyCore::new(CoreConfig {
+            data_dir: tmp_path.clone(),
+            device_name: "Test".into(),
+        })
+        .expect("core init");
+        core.login(server_url, "tol-user".into(), "pw".into())
+            .expect("login");
+
+        core.logout()
+            .expect("logout must succeed even when server POST fails");
+
+        {
+            let inner = core.inner.lock();
+            assert_eq!(inner.db.get_setting("last_server_id").unwrap(), None);
+            assert_eq!(inner.db.get_setting("last_user_id").unwrap(), None);
+        }
+        assert!(
+            CredentialStore::load_token("srv-tol", "tol-user")
+                .unwrap()
+                .is_none(),
+            "keyring token must be cleared even when server POST fails"
+        );
+    })
+    .await
+    .expect("join task");
+}

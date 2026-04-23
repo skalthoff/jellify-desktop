@@ -132,23 +132,23 @@ struct PreferencesAccount: View {
 
     // MARK: - Actions
 
-    /// Drop the stored token, null the session, and leave the server URL /
-    /// username on the model. `RootView` will route back to `LoginView`,
-    /// which prefills those so the user only re-enters their password.
+    /// Full logout: invalidate the server session, clear cached data and the
+    /// keyring token, and return to LoginView. The remembered server URL and
+    /// username stay on the model so the login form pre-fills on the way back
+    /// in. Fixes #568 (stale cache visible to next user) and #592 (server
+    /// session token not revoked).
     private func signOut() {
-        model.forgetToken()
-        model.session = nil
+        model.logout()
         // Clear the auth-expired flag so an ambient 401 prompt doesn't
         // re-appear on top of the login screen after a manual sign-out.
         model.authExpired = false
         closePreferencesWindow()
     }
 
-    /// Sign out AND clear the remembered server URL + username so the login
-    /// form comes up empty, ready for a different server.
+    /// Full logout AND clear the remembered server URL + username so the login
+    /// form comes up blank, ready for a different server.
     private func changeServer() {
-        model.forgetToken()
-        model.session = nil
+        model.logout()
         model.serverURL = ""
         model.username = ""
         model.authExpired = false
