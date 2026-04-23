@@ -1,0 +1,50 @@
+{
+  "Items": [
+    {
+      "Id": "artist-001",
+      "Name": "The Searchables",
+      "Type": "MusicArtist",
+      "ArtistItems": [],
+      "Artists": [],
+      "Genres": ["Pop"],
+      "RunTimeTicks": 0,
+      "UserData": { "IsFavorite": false, "PlayCount": 0 },
+      "ImageTags": { "Primary": "img-a01" }
+    },
+    {
+      "Id": "album-001",
+      "Name": "Searchable Record",
+      "Type": "MusicAlbum",
+      "AlbumArtist": "The Searchables",
+      "AlbumArtistId": "artist-001",
+      "ArtistItems": [{ "Id": "artist-001", "Name": "The Searchables" }],
+      "Artists": ["The Searchables"],
+      "ProductionYear": 2021,
+      "Genres": ["Pop"],
+      "RunTimeTicks": 0,
+      "UserData": { "IsFavorite": false, "PlayCount": 0 },
+      "ImageTags": { "Primary": "img-al1" }
+    },
+    {
+      "Id": "track-001",
+      "Name": "Searchable Song",
+      "Type": "Audio",
+      "IndexNumber": 1,
+      "ParentIndexNumber": 1,
+      "AlbumId": "album-001",
+      "Album": "Searchable Record",
+      "AlbumArtist": "The Searchables",
+      "AlbumArtistId": "artist-001",
+      "ArtistItems": [{ "Id": "artist-001", "Name": "The Searchables" }],
+      "Artists": ["The Searchables"],
+      "ProductionYear": 2021,
+      "RunTimeTicks": 2400000000,
+      "Genres": ["Pop"],
+      "UserData": { "IsFavorite": false, "PlayCount": 1 },
+      "ImageTags": { "Primary": "img-tr1" },
+      "Container": "mp3",
+      "Bitrate": 320000
+    }
+  ],
+  "TotalRecordCount": 3
+}

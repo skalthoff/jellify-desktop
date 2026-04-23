@@ -1,0 +1,29 @@
+{
+  "Items": [
+    {
+      "Id": "album-111",
+      "Name": "Alike Album",
+      "Type": "MusicAlbum",
+      "AlbumArtist": "Similar Artist",
+      "AlbumArtistId": "artist-sim",
+      "ArtistItems": [],
+      "Artists": [],
+      "Genres": ["Rock"],
+      "RunTimeTicks": 0,
+      "UserData": { "IsFavorite": false, "PlayCount": 0 },
+      "ImageTags": { "Primary": "tag-111" }
+    },
+    {
+      "Id": "artist-222",
+      "Name": "Related Artist",
+      "Type": "MusicArtist",
+      "ArtistItems": [],
+      "Artists": [],
+      "Genres": ["Indie"],
+      "RunTimeTicks": 0,
+      "UserData": { "IsFavorite": false, "PlayCount": 0 },
+      "ImageTags": {}
+    }
+  ],
+  "TotalRecordCount": 2
+}
