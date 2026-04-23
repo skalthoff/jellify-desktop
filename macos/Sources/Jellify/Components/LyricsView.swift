@@ -195,20 +195,12 @@ struct LyricsView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "quote.bubble")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(Theme.ink3)
-            Text("No lyrics available")
-                .font(Theme.font(14, weight: .semibold))
-                .foregroundStyle(Theme.ink2)
-            Text("Lyrics haven't been provided for this track.")
-                .font(Theme.font(11, weight: .medium))
-                .foregroundStyle(Theme.ink3)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .accessibilityElement(children: .combine)
+        ContentUnavailableView(
+            "No Lyrics",
+            systemImage: "music.note.list",
+            description: Text("This track doesn't have lyrics available.")
+        )
+        .foregroundStyle(Theme.ink3)
     }
 
     // MARK: - Static (untimed) text
