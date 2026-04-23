@@ -4640,3 +4640,71 @@ fn refresh_token_from_keyring_returns_token_when_present() {
         .expect("token should be present");
     assert_eq!(got, "refreshed-token");
 }
+
+// ---------------------------------------------------------------------------
+// Shuffle + repeat persistence — round-trip tests (#583)
+// ---------------------------------------------------------------------------
+
+use crate::player::RepeatMode;
+
+/// Fresh database returns the safe defaults (shuffle off, repeat off) so a
+/// first launch does not accidentally start in an unexpected mode.
+#[test]
+fn shuffle_repeat_defaults_on_empty_db() {
+    let db = Database::in_memory().expect("in-memory db");
+    let (shuffle, repeat) = db.load_shuffle_repeat().unwrap();
+    assert!(!shuffle, "default shuffle should be off");
+    assert_eq!(repeat, RepeatMode::Off, "default repeat should be Off");
+}
+
+/// Every `(shuffle, RepeatMode)` combination round-trips correctly through the
+/// key-value store. We create a second `Database` instance open on the same
+/// file to verify the values are actually persisted rather than just cached in
+/// memory.
+#[test]
+fn shuffle_repeat_round_trips_all_variants() {
+    // Use a uniquely-named file in the OS temp directory so parallel test
+    // runs do not collide. Best-effort removal at the end — it is fine if
+    // the process exits before the remove; the OS will clean up temp files.
+    let tmp = std::env::temp_dir().join(format!(
+        "jellify_test_sr_{}.db",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+
+    let cases: &[(bool, RepeatMode)] = &[
+        (true, RepeatMode::Off),
+        (false, RepeatMode::One),
+        (true, RepeatMode::All),
+        (false, RepeatMode::Off),
+        (true, RepeatMode::One),
+        (false, RepeatMode::All),
+    ];
+
+    for &(shuffle, repeat) in cases {
+        // Write via one Database handle.
+        {
+            let db = Database::open(&tmp).expect("open db for write");
+            db.save_shuffle_repeat(shuffle, repeat)
+                .expect("save_shuffle_repeat");
+        }
+        // Read back via a fresh Database handle — exercises the actual SQLite
+        // persistence path rather than any in-process cache.
+        {
+            let db = Database::open(&tmp).expect("open db for read");
+            let (got_shuffle, got_repeat) = db.load_shuffle_repeat().expect("load_shuffle_repeat");
+            assert_eq!(
+                got_shuffle, shuffle,
+                "shuffle mismatch for case ({shuffle}, {repeat:?})"
+            );
+            assert_eq!(
+                got_repeat, repeat,
+                "repeat mismatch for case ({shuffle}, {repeat:?})"
+            );
+        }
+    }
+
+    let _ = std::fs::remove_file(&tmp);
+}
