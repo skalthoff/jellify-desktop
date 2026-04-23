@@ -1781,6 +1781,91 @@ final class AppModel {
         }
     }
 
+    /// Resolve an `Artist` record by id — cache-first, falling back to
+    /// `core.artistDetail` for libraries larger than the loaded
+    /// `artists` page. Returns nil on error or missing id.
+    ///
+    /// Album/song counts come back as `0` from the FFI fallback because
+    /// `ArtistDetail` doesn't carry those stats — the detail hero's
+    /// "N albums · M songs" strip silently hides the zero-count lines
+    /// rather than lying.
+    func resolveArtist(id: String) async -> Artist? {
+        if let cached = artists.first(where: { $0.id == id }) { return cached }
+        do {
+            let detail = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.artistDetail(artistId: id)
+            }.value
+            return Artist(
+                id: detail.id,
+                name: detail.name,
+                albumCount: 0,
+                songCount: 0,
+                genres: detail.genres,
+                imageTag: detail.imageTag
+            )
+        } catch {
+            _ = handleAuthError(error)
+            return nil
+        }
+    }
+
+    /// Resolve an `Album` record by id — cache-first, falling back to
+    /// `core.fetchItem` for libraries larger than the loaded `albums`
+    /// page. Returns nil on error or missing id.
+    ///
+    /// Parses a minimal subset of `BaseItemDto` — just the fields the
+    /// hero needs (name, artist, year, runtime, image tag, genres).
+    /// Track count falls back to 0 when the server didn't include
+    /// `ChildCount`; `AlbumDetailView` re-counts the loaded tracklist
+    /// in that case.
+    func resolveAlbum(id: String) async -> Album? {
+        if let cached = albums.first(where: { $0.id == id }) { return cached }
+        do {
+            let json = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.fetchItem(
+                    itemId: id,
+                    fields: ["PrimaryImageAspectRatio", "Genres", "ProductionYear", "ChildCount", "RunTimeTicks"]
+                )
+            }.value
+            return Self.parseAlbum(from: json)
+        } catch {
+            _ = handleAuthError(error)
+            return nil
+        }
+    }
+
+    static func parseAlbum(from json: String) -> Album? {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        guard let id = root["Id"] as? String,
+              let name = root["Name"] as? String
+        else { return nil }
+        let artistName = (root["AlbumArtist"] as? String) ?? ""
+        let year = (root["ProductionYear"] as? NSNumber).map { Int32(truncating: $0) }
+        let runtimeTicks = (root["RunTimeTicks"] as? NSNumber)?.uint64Value ?? 0
+        let trackCount = (root["ChildCount"] as? NSNumber)?.uint32Value ?? 0
+        let genres = (root["Genres"] as? [String]) ?? []
+        let imageTag = (root["ImageTags"] as? [String: String])?["Primary"]
+        let artistId: String? = {
+            guard let albumArtists = root["AlbumArtists"] as? [[String: Any]],
+                  let first = albumArtists.first
+            else { return nil }
+            return first["Id"] as? String
+        }()
+        return Album(
+            id: id,
+            name: name,
+            artistName: artistName,
+            artistId: artistId,
+            year: year,
+            trackCount: trackCount,
+            runtimeTicks: runtimeTicks,
+            genres: genres,
+            imageTag: imageTag
+        )
+    }
+
     /// Fetch the top 5 most-played tracks for an artist, driving the
     /// "Top Tracks" section on the artist detail screen (#229). Backed by
     /// `/Items?ArtistIds=<id>&SortBy=PlayCount,SortName&SortOrder=Descending,Ascending`
@@ -1879,26 +1964,30 @@ final class AppModel {
     /// core's FFI doesn't yet surface playlist-entry ids — see #128).
     ///
     /// Applied optimistically: rows disappear from `currentPlaylistTracks`
-    /// and `playlistTracks[playlistId]` immediately, and the removed tracks
+    /// and `playlistTracks[playlistId]` immediately, the removed tracks
     /// are stashed on `pendingPlaylistRemoval` so the 10-second undo window
-    /// can put them back via `undoRemoveFromPlaylist` (which routes through
-    /// `core.addToPlaylist`). The real remove call is TODO(core-#128): the
-    /// core doesn't yet expose `remove_from_playlist`, so the server-side
-    /// state drifts until that FFI lands. Track-counts on the in-memory
-    /// `Playlist` are kept consistent so the hero stat doesn't lie.
+    /// can put them back via `undoRemoveFromPlaylist`, and the real
+    /// `DELETE /Playlists/{id}/Items` call is fired off the main actor.
+    /// Track-counts on the in-memory `Playlist` are kept consistent so the
+    /// hero stat doesn't lie.
+    ///
+    /// `entryIds` are track `id`s (the underlying `ItemId`). The server call
+    /// needs `PlaylistItemId`s — we resolve those from
+    /// `currentPlaylistTracks` before firing the request, so every removed
+    /// track must have been loaded with its `playlistItemId` set (i.e.
+    /// fetched via `core.playlistTracks`, not synthesized ad-hoc).
     func removeFromPlaylist(playlistId: String, entryIds: [String]) {
         guard !entryIds.isEmpty else { return }
         let removing = Set(entryIds)
         let removed = currentPlaylistTracks.filter { removing.contains($0.id) }
         guard !removed.isEmpty else { return }
+        let playlistItemIds = removed.compactMap { $0.playlistItemId }
         currentPlaylistTracks.removeAll { removing.contains($0.id) }
         playlistTracks[playlistId] = currentPlaylistTracks
         pendingPlaylistRemoval = PendingRemoval(
             playlistId: playlistId,
             tracks: removed
         )
-        // Keep the cached `Playlist.trackCount` in sync with the optimistic
-        // remove so the hero's stat matches the rendered list length.
         if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
             let p = playlists[idx]
             let newCount = max(0, Int(p.trackCount) - removed.count)
@@ -1910,11 +1999,16 @@ final class AppModel {
                 imageTag: p.imageTag
             )
         }
-        // TODO(core-#128): `core.remove_from_playlist` FFI not yet wired. The
-        // optimistic drop above keeps the UI responsive; the server won't
-        // actually lose the entries until the FFI lands and we replace this
-        // log line with the real call.
-        print("[AppModel] removeFromPlaylist(\(playlistId), \(entryIds.count) tracks) local-only — see core-#128")
+        guard !playlistItemIds.isEmpty else {
+            print("[AppModel] removeFromPlaylist: no PlaylistItemIds on removed tracks — server unchanged; did these come from core.playlistTracks?")
+            return
+        }
+        Task.detached(priority: .userInitiated) { [core] in
+            try? core.removeFromPlaylist(
+                playlistId: playlistId,
+                entryIds: playlistItemIds
+            )
+        }
     }
 
     /// Restore a previously-removed batch by re-adding via `core.addToPlaylist`.
@@ -3368,10 +3462,11 @@ final class AppModel {
 
     /// Remove a selection of tracks from a specific playlist. Used by the
     /// multi-select context menu when scoped to a playlist detail view.
-    /// TODO(#132): `remove_from_playlist` FFI not yet wired.
+    /// Delegates to `removeFromPlaylist(playlistId:entryIds:)` which also
+    /// handles the optimistic UI + server sync.
     func removeTracksFromPlaylist(tracks: [Track], playlist: Playlist) {
-        // TODO(#132): remove_from_playlist FFI not yet wired.
-        print("[AppModel] removeTracksFromPlaylist(\(tracks.count) from \(playlist.name)) not yet wired — see #132")
+        guard !tracks.isEmpty else { return }
+        removeFromPlaylist(playlistId: playlist.id, entryIds: tracks.map(\.id))
     }
 
     /// Toggle favorite across every track in the selection. If every track
@@ -3587,16 +3682,8 @@ final class AppModel {
 
     /// Load lyrics for the currently-playing track and publish them on
     /// `currentLyrics`. Supports both LRC (timestamped) and plain-text
-    /// bodies — the parser detects the shape and `LyricsView` renders the
-    /// right layout. See #91, #273, #287, #288.
-    ///
-    /// TODO(core-#162): wire to `core.track_lyrics(track_id)` once the FFI
-    /// lands. Jellyfin exposes lyrics at `GET /Audio/{id}/Lyrics` (and as
-    /// a `Lyrics` field on the item JSON when requested); the core is the
-    /// right place to decide between the two and return a normalized
-    /// string. Until that ships this method is a stub that clears any
-    /// stale data and returns an empty result so the view renders its
-    /// "No lyrics available" empty state.
+    /// bodies via the core `Lyrics` record — `LyricsView` renders the
+    /// right layout based on `is_synced`. See #91, #273, #287, #288.
     ///
     /// Safe to call repeatedly — short-circuits when the current track
     /// id already matches the last successful fetch. Cleared on track
@@ -3609,17 +3696,35 @@ final class AppModel {
         }
         if currentLyricsForId == track.id { return }
         let id = track.id
-
-        // TODO(core-#162): replace the stub with
-        //   let raw = try core.trackLyrics(itemId: id)
-        //   currentLyrics = LyricLine.parseLRC(raw)
-        // For now we publish an empty array so the Lyrics tab renders
-        // the "No lyrics available" empty state rather than a perpetual
-        // loading spinner — unlocks the surrounding Now Playing UI
-        // without blocking on the core FFI.
-        guard status.currentTrack?.id == id else { return }
-        currentLyrics = []
-        currentLyricsForId = id
+        do {
+            let lyrics = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.lyrics(trackId: id)
+            }.value
+            guard status.currentTrack?.id == id else { return }
+            if let lyrics {
+                // The FFI `LyricLine` has `timeSeconds: Double`; internal
+                // `LyricLine` uses `Double?` for the "untimed" case (plain
+                // text). When the server reports `is_synced == false` the
+                // payload is typically a single line with `time_seconds == 0.0`
+                // — preserve the nil-timestamp convention so LyricsView
+                // doesn't auto-scroll a static blob.
+                currentLyrics = lyrics.lines.enumerated().map { idx, line in
+                    LyricLine(
+                        id: idx,
+                        timestamp: lyrics.isSynced ? line.timeSeconds : nil,
+                        text: line.text
+                    )
+                }
+            } else {
+                currentLyrics = []
+            }
+            currentLyricsForId = id
+        } catch {
+            _ = handleAuthError(error)
+            guard status.currentTrack?.id == id else { return }
+            currentLyrics = []
+            currentLyricsForId = id
+        }
     }
 
     // MARK: - Status polling

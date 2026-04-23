@@ -39,13 +39,15 @@ struct ArtistDetailView: View {
     @State private var topTracks: [Track] = []
     @State private var isLoadingTopTracks = true
     @State private var artistAlbums: [Album] = []
+    @State private var fetchedArtist: Artist?
     @State private var isBioExpanded = false
 
-    /// Resolve the artist from the model's cached list. Missing is an edge
-    /// case (deep link, or the list evicted the artist) and we render a
-    /// gentle placeholder rather than crash.
+    /// Resolve the artist: cached library page first, then whichever
+    /// record the `.task` block fetched on demand. Missing (server
+    /// unreachable or truly deleted) falls through to the gentle
+    /// "Artist not found" placeholder below.
     private var artist: Artist? {
-        model.artists.first { $0.id == artistID }
+        model.artists.first { $0.id == artistID } ?? fetchedArtist
     }
 
     var body: some View {
@@ -63,6 +65,9 @@ struct ArtistDetailView: View {
         .background(Theme.bg)
         .task(id: artistID) {
             isLoadingTopTracks = true
+            if model.artists.first(where: { $0.id == artistID }) == nil {
+                fetchedArtist = await model.resolveArtist(id: artistID)
+            }
             artistAlbums = model.albums.filter { $0.artistId == artistID }
             topTracks = await model.loadArtistTopTracks(artistId: artistID)
             isLoadingTopTracks = false
