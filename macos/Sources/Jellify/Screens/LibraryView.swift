@@ -62,6 +62,10 @@ enum LibraryTab: Hashable, CaseIterable {
 struct LibraryView: View {
     @Environment(AppModel.self) private var model
     @AppStorage("libraryViewMode") private var viewMode: LibraryViewMode = .grid
+    /// Local mirror of `model.libraryTab`. Starts from whatever the sidebar /
+    /// last session left it at, updates the model on chip taps so the sidebar
+    /// selection (and a future back-nav into the library) land on the same
+    /// tab the user last touched.
     @State private var selectedTab: LibraryTab = .albums
     /// Single shared hover ID for the grid. Published via
     /// `.libraryHoverID` env so every cell reads from (and writes to) the same
@@ -94,6 +98,21 @@ struct LibraryView: View {
             \.libraryHoverID,
             LibraryHoverBinding(id: $hoverID, isActive: true)
         )
+        // Sync the local `selectedTab` with `model.libraryTab` so the
+        // sidebar's Albums/Artists/Playlists libRows can deep-link into
+        // a specific chip. `.onAppear` covers the case where the library
+        // is entered fresh; `.onChange` covers the case where the user
+        // is already on the library and the sidebar flips the tab.
+        .onAppear { selectedTab = model.libraryTab }
+        .onChange(of: model.libraryTab) { _, newValue in
+            selectedTab = newValue
+        }
+        .onChange(of: selectedTab) { _, newValue in
+            // Write-back so the sidebar's highlighted chip stays in sync.
+            if model.libraryTab != newValue {
+                model.libraryTab = newValue
+            }
+        }
     }
 
     /// Jellyfin's web UI lives at `/web/` on the server host. Falls back to

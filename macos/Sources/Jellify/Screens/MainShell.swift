@@ -173,7 +173,9 @@ struct MainShell: View {
             if let album = model.albums.first(where: { $0.id == id }) {
                 segments.append(album.name)
             } else {
-                segments.append("Album")
+                // Ellipsis is more informative than a section-name-matching
+                // literal fallback ("Albums > Album") that reads like a bug.
+                segments.append("…")
             }
         case .artist(let id):
             segments.append("Library")
@@ -181,7 +183,7 @@ struct MainShell: View {
             if let artist = model.artists.first(where: { $0.id == id }) {
                 segments.append(artist.name)
             } else {
-                segments.append("Artist")
+                segments.append("…")
             }
         case .playlist(let id):
             segments.append("Library")
@@ -189,7 +191,7 @@ struct MainShell: View {
             if let playlist = model.playlist(id: id) {
                 segments.append(playlist.name)
             } else {
-                segments.append("Playlist")
+                segments.append("…")
             }
         case .nowPlaying:
             segments.append("Now Playing")

@@ -28,6 +28,13 @@ final class AppModel {
     enum Screen: Hashable { case home, discover, library, search, settings, album(String), artist(String), playlist(String), nowPlaying }
     var screen: Screen = .library
 
+    /// Which chip is active on the Library screen. Driven by the sidebar's
+    /// "Albums / Artists / Playlists" libRows so they can deep-link into a
+    /// specific tab rather than always landing on the default. `LibraryView`
+    /// mirrors this into its local `@State` on appear and writes back on
+    /// user-chip-change so the sidebar selection persists across navigation.
+    var libraryTab: LibraryTab = .albums
+
     /// Screen the app was on before the user opened the full Now Playing
     /// view. `NowPlayingView` offers a "Back" affordance that pops to this
     /// value rather than unconditionally routing to `.library`, so a user
@@ -1868,6 +1875,60 @@ final class AppModel {
             trackCount: trackCount,
             runtimeTicks: runtimeTicks,
             genres: genres,
+            imageTag: imageTag
+        )
+    }
+
+    /// Resolve a `Playlist` record by id — cache-first, falling back to
+    /// `core.fetchItem` when the id isn't in the loaded `playlists` page.
+    /// Mirror of `resolveArtist(id:)` / `resolveAlbum(id:)`. Lets
+    /// `PlaylistView` render a hero for deep-linked playlists past the
+    /// first library page. Returns nil on error or missing id.
+    func resolvePlaylist(id: String) async -> Playlist? {
+        if let cached = playlist(id: id) { return cached }
+        do {
+            let json = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.fetchItem(
+                    itemId: id,
+                    fields: ["ChildCount", "RunTimeTicks", "PrimaryImageAspectRatio"]
+                )
+            }.value
+            guard let parsed = Self.parsePlaylist(from: json) else { return nil }
+            // Seed the cache so `model.playlist(id:)` works on the next
+            // call without another FFI round-trip, and so breadcrumbs can
+            // read the name.
+            if !playlists.contains(where: { $0.id == parsed.id }) {
+                playlists.append(parsed)
+            }
+            return parsed
+        } catch {
+            _ = handleAuthError(error)
+            return nil
+        }
+    }
+
+    static func parsePlaylist(from json: String) -> Playlist? {
+        guard let data = json.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+        guard let id = root["Id"] as? String,
+              let name = root["Name"] as? String
+        else { return nil }
+        // Defensive guard against the "Playlists > Playlists" case — if the
+        // server hands back a CollectionFolder / UserView instead of a real
+        // Playlist (id happens to match the library-view id), refuse it so
+        // the UI falls through to "not found" instead of rendering the
+        // folder's children as track rows.
+        let kind = (root["Type"] as? String) ?? ""
+        guard kind == "Playlist" else { return nil }
+        let trackCount = (root["ChildCount"] as? NSNumber)?.uint32Value ?? 0
+        let runtimeTicks = (root["RunTimeTicks"] as? NSNumber)?.uint64Value ?? 0
+        let imageTag = (root["ImageTags"] as? [String: String])?["Primary"]
+        return Playlist(
+            id: id,
+            name: name,
+            trackCount: trackCount,
+            runtimeTicks: runtimeTicks,
             imageTag: imageTag
         )
     }
