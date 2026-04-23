@@ -1368,7 +1368,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
- "gio 0.20.12",
+ "gio 0.22.5",
  "glib 0.20.12",
  "glib-build-tools",
  "gtk4",
