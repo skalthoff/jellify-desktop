@@ -124,6 +124,12 @@ impl JellifyCore {
         username: String,
         password: String,
     ) -> std::result::Result<models::Session, JellifyError> {
+        let username = username.trim().to_string();
+        let password = password.trim().to_string();
+        if username.is_empty() || password.is_empty() {
+            return Err(JellifyError::InvalidCredentials);
+        }
+
         let (device_id, device_name, db) = {
             let inner = self.inner.lock();
             (
@@ -138,8 +144,10 @@ impl JellifyCore {
             .block_on(client.authenticate_by_name(&username, &password))?;
 
         if let Some(server_id) = &session.server.id {
-            let _ =
-                CredentialStore::save_token(server_id, &session.user.name, &session.access_token);
+            CredentialStore::save_token(server_id, &session.user.name, &session.access_token)
+                .map_err(|e| JellifyError::KeyringWrite {
+                    reason: e.to_string(),
+                })?;
         }
         {
             let inner = self.inner.lock();
@@ -175,7 +183,13 @@ impl JellifyCore {
                 None => return Ok(None),
             };
             let username = match inner.db.get_setting("last_username")? {
-                Some(v) => v,
+                Some(v) => {
+                    let v = v.trim().to_string();
+                    if v.is_empty() {
+                        return Err(JellifyError::InvalidCredentials);
+                    }
+                    v
+                }
                 None => return Ok(None),
             };
             let server_id = match inner.db.get_setting("last_server_id")? {

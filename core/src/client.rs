@@ -127,16 +127,31 @@ impl JellyfinClient {
         *self.refresh_cb.lock() = Some(cb);
     }
 
+    /// Strip control characters (`\r`, `\n`, `\0`, and any other C0/C1 code
+    /// point) from a string intended for use inside an HTTP header value,
+    /// then truncate to `max_len` characters. Prevents header-injection
+    /// attacks when a caller-supplied `device_name` contains embedded CRLF
+    /// sequences (see issue #608).
+    fn sanitize_header_field(s: &str, max_len: usize) -> String {
+        let cleaned: String = s.chars().filter(|c| !c.is_control()).collect();
+        if cleaned.len() > max_len {
+            cleaned.chars().take(max_len).collect()
+        } else {
+            cleaned
+        }
+    }
+
     fn auth_header(&self) -> String {
         let token_guard = self.token.lock();
         let token_part = token_guard
             .as_deref()
             .map(|t| format!(", Token=\"{t}\""))
             .unwrap_or_default();
+        let safe_device = Self::sanitize_header_field(&self.device_name, 100);
         format!(
             "MediaBrowser Client=\"{client}\", Device=\"{device}\", DeviceId=\"{device_id}\", Version=\"{version}\"{token}",
             client = CLIENT_NAME,
-            device = self.device_name,
+            device = safe_device,
             device_id = self.device_id,
             version = CLIENT_VERSION,
             token = token_part,
