@@ -1561,7 +1561,14 @@ async fn artists_exposes_total_record_count_and_paging() {
     let q = get.url.query().expect("expected a query string");
     assert!(q.contains("Limit=100"), "query: {q}");
     assert!(q.contains("StartIndex=25"), "query: {q}");
-    assert!(q.contains("IncludeItemTypes=MusicArtist"), "query: {q}");
+    // Deliberately absent: `IncludeItemTypes=MusicArtist`. Live Jellyfin
+    // 10.11 servers return 0 items from this endpoint when the filter is
+    // present (see artists_does_not_send_include_item_types_music_artist
+    // for the regression assertion).
+    assert!(
+        !q.contains("IncludeItemTypes=MusicArtist"),
+        "artists() must NOT send IncludeItemTypes=MusicArtist, got: {q}"
+    );
 }
 
 #[tokio::test]
@@ -3982,7 +3989,14 @@ async fn music_library_id_returns_404_when_no_music_view() {
 }
 
 #[tokio::test]
-async fn playlist_library_id_finds_manual_playlists_folder() {
+async fn playlist_library_id_finds_playlists_user_view() {
+    // Rationale: an earlier implementation hit
+    // `/Items?includeItemTypes=ManualPlaylistsFolder` which returned the
+    // ManualPlaylistsFolder entity's id — but that id is NOT a valid
+    // `ParentId` for `/Items?ParentId=…&IncludeItemTypes=Playlist` on
+    // real servers. The UserView id (the one surfaced by /UserViews) is.
+    // So the canonical resolution goes through /UserViews + CollectionType
+    // filter, same as music_library_id.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/Users/AuthenticateByName"))
@@ -3993,15 +4007,14 @@ async fn playlist_library_id_finds_manual_playlists_folder() {
         .mount(&server)
         .await;
     Mock::given(method("GET"))
-        .and(path("/Items"))
+        .and(path("/UserViews"))
         .and(query_param("userId", "u1"))
-        .and(query_param("includeItemTypes", "ManualPlaylistsFolder"))
-        .and(query_param("excludeItemTypes", "CollectionFolder"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "Items": [
-                { "Id": "lib-pl", "Name": "Playlists", "CollectionType": "playlists" }
+                { "Id": "lib-music", "Name": "Music", "CollectionType": "music", "Type": "CollectionFolder" },
+                { "Id": "lib-pl", "Name": "Playlists", "CollectionType": "playlists", "Type": "UserView" }
             ],
-            "TotalRecordCount": 1
+            "TotalRecordCount": 2
         })))
         .mount(&server)
         .await;
@@ -4011,7 +4024,7 @@ async fn playlist_library_id_finds_manual_playlists_folder() {
     let id = client.playlist_library_id().await.unwrap();
     assert_eq!(id, "lib-pl");
 
-    // Second call is served from the cache.
+    // Second call is served from the cache (no additional /UserViews hit).
     let again = client.playlist_library_id().await.unwrap();
     assert_eq!(again, "lib-pl");
     let get_count = server
@@ -4019,7 +4032,7 @@ async fn playlist_library_id_finds_manual_playlists_folder() {
         .await
         .unwrap()
         .iter()
-        .filter(|r| r.method.as_str() == "GET" && r.url.path() == "/Items")
+        .filter(|r| r.method.as_str() == "GET" && r.url.path() == "/UserViews")
         .count();
     assert_eq!(
         get_count, 1,
@@ -6392,4 +6405,56 @@ async fn playlist_tracks_rejects_non_audio_items() {
     assert_eq!(page.items.len(), 1, "non-Audio rows must be dropped");
     assert_eq!(page.items[0].id, "t1");
     assert_eq!(page.items[0].name, "Real Track");
+}
+
+// ============================================================================
+// artists endpoint — MusicArtist filter regression (UX fix)
+// ============================================================================
+
+/// Regression for the "0 artists" bug. Some Jellyfin 10.11 builds return
+/// zero items from `/Artists/AlbumArtists` when `IncludeItemTypes=MusicArtist`
+/// is supplied — verified live against music.skalthoff.com. The endpoint
+/// already scopes to MusicArtist by path, so the filter is redundant *and*
+/// breaks the server-side query builder's AND-intersection on some configs.
+/// Assert the query no longer carries that parameter.
+#[tokio::test]
+async fn artists_does_not_send_include_item_types_music_artist() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Artists/AlbumArtists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                { "Id": "a1", "Name": "Solo", "Type": "MusicArtist" }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client.artists(crate::Paging::new(0, 50)).await.unwrap();
+    assert_eq!(page.items.len(), 1);
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(
+        !q.contains("IncludeItemTypes=MusicArtist"),
+        "artists() must NOT send IncludeItemTypes=MusicArtist (breaks live Jellyfin 10.11), got: {q}"
+    );
+    // Sanity: all the other fields we depend on are still present.
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("SortBy=SortName"), "query: {q}");
 }

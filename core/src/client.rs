@@ -490,7 +490,14 @@ impl JellyfinClient {
             let mut q = url.query_pairs_mut();
             q.append_pair("userId", user_id);
             q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "MusicArtist");
+            // Deliberate: no `IncludeItemTypes=MusicArtist`. Verified live
+            // against music.skalthoff.com — Jellyfin 10.11 returns 0 items
+            // from `/Artists/AlbumArtists` when `IncludeItemTypes=MusicArtist`
+            // is supplied (the endpoint already scopes to MusicArtist by
+            // path, and the server's query builder AND-intersects against
+            // the type list, which apparently excludes the endpoint's own
+            // inherent type on some configs). Without the filter the
+            // endpoint returns the full artist list.
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
             q.append_pair("SortBy", "SortName");
@@ -1828,44 +1835,38 @@ impl JellyfinClient {
         Ok(id)
     }
 
-    /// Resolve the playlists library's id — the ManualPlaylistsFolder with
-    /// `CollectionType == "playlists"`. Backed by
-    /// `GET /Items?userId={id}&includeItemTypes=ManualPlaylistsFolder&excludeItemTypes=CollectionFolder`
-    /// (the view's own id isn't surfaced by `/UserViews`). Cached on the
-    /// client after the first call; invalidated on
-    /// [`JellyfinClient::set_session`].
+    /// Resolve the playlists library's id — the `UserView` with
+    /// `CollectionType == "playlists"`. Cached on the client after the
+    /// first call; invalidated on [`JellyfinClient::set_session`].
+    ///
+    /// Uses the same `/UserViews` endpoint as [`Self::music_library_id`].
+    /// An earlier implementation hit
+    /// `/Items?includeItemTypes=ManualPlaylistsFolder` on the (documented-
+    /// but-wrong) assumption that the UserView wasn't surfaced. That
+    /// endpoint does surface a playlists-typed item — but with a
+    /// `ManualPlaylistsFolder` id that is **not a valid `ParentId`** for
+    /// `/Items?ParentId=…&IncludeItemTypes=Playlist`. The UserView id is
+    /// the one `/Items` actually scopes to, so that's what callers need.
+    /// Verified live against Jellyfin 10.11.8: `/UserViews` surfaces
+    /// `{ Type: "UserView", CollectionType: "playlists", Id: <viewId> }`
+    /// and that id returns the 78 user playlists when used as `ParentId`.
     ///
     /// Errors with [`JellifyError::NotAuthenticated`] if no session is
     /// active, or [`JellifyError::Server`] with status 404 when the
-    /// server has no playlist library (rare — Jellyfin synthesises one
+    /// server has no playlists library (rare — Jellyfin synthesises one
     /// the first time a playlist is created).
     pub async fn playlist_library_id(&self) -> Result<String> {
         if let Some(id) = self.library_cache.lock().playlist.clone() {
             return Ok(id);
         }
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint("Items")?;
-        {
-            let mut q = url.query_pairs_mut();
-            q.append_pair("userId", user_id);
-            q.append_pair("includeItemTypes", "ManualPlaylistsFolder");
-            q.append_pair("excludeItemTypes", "CollectionFolder");
-        }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
-            .await?;
-        let raw: RawItems<RawLibrary> = resp.json().await?;
-        let id = raw
-            .items
+        let views = self.user_views().await?;
+        let id = views
             .into_iter()
-            .find(|item| item.collection_type.as_deref() == Some("playlists"))
-            .map(|item| item.id)
+            .find(|v| v.collection_type.as_deref() == Some("playlists"))
+            .map(|v| v.id)
             .ok_or_else(|| JellifyError::Server {
                 status: 404,
-                message: "no playlist library found".into(),
+                message: "no playlists library found in user views".into(),
             })?;
         self.library_cache.lock().playlist = Some(id.clone());
         Ok(id)
