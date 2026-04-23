@@ -3568,9 +3568,19 @@ final class AppModel {
     /// engine's view of "what plays next" matches the inspector.
     func moveUpNext(from source: IndexSet, to destination: Int) {
         upNextUserAdded.move(fromOffsets: source, toOffset: destination)
-        // TODO(core-#282): push the reordered slice down to the core queue
-        // once a `reorder_queue` primitive exists. For now, the overlay
-        // drives the inspector and the core keeps its original order.
+        // Sync the reordered user-added list to the Rust core (#565).
+        // Rebuild a flat track array — current track at index 0, then the
+        // reordered Up Next overlay, then the auto-queue tail — and hand it
+        // back to `core.setQueue` with startIndex 0 so the engine keeps
+        // playing the current track while honouring the new order for
+        // everything that follows. The `try?` silences the throw so a core
+        // hiccup (e.g. session not ready) doesn't crash the UI.
+        var allTracks: [Track] = []
+        if let current = status.currentTrack { allTracks.append(current) }
+        allTracks.append(contentsOf: upNextUserAdded.map(\.track))
+        allTracks.append(contentsOf: upNextAutoQueue.map(\.track))
+        guard !allTracks.isEmpty else { return }
+        try? core.setQueue(tracks: allTracks, startIndex: 0)
     }
 
     /// Remove one entry from the user-added "Up Next" list by its stable
@@ -3599,9 +3609,14 @@ final class AppModel {
     func clearQueue() {
         upNextUserAdded.removeAll()
         upNextAutoQueue.removeAll()
-        // TODO(core-#282): when a `truncate_queue` primitive exists, also
-        // drop the engine-side queue tail so auto-advance stops at the end
-        // of the current track.
+        // Pause playback immediately so no phantom track continues (#567).
+        // AVPlayer still has the current item loaded after the queue arrays
+        // are cleared — pausing is the robust fix since stop() tears down
+        // the player item and would break resumption. We then zero out the
+        // core queue so auto-advance has nothing left to play; `try?`
+        // silences the throw in edge cases (e.g. no active session).
+        audio.pause()
+        try? core.setQueue(tracks: [], startIndex: 0)
     }
 
     /// Serialize the current queue (currently-playing + user-added + auto
