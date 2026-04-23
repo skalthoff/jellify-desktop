@@ -820,8 +820,13 @@ impl JellyfinClient {
         {
             let mut q = url.query_pairs_mut();
             q.append_pair("ParentId", album_id);
+            q.append_pair("Recursive", "true");
+            q.append_pair("IncludeItemTypes", "Audio");
+            // Three sort fields → three parallel SortOrder values (Jellyfin
+            // requires SortBy and SortOrder to be comma-separated arrays of
+            // equal length).  Fixes #571.
             q.append_pair("SortBy", "ParentIndexNumber,IndexNumber,SortName");
-            q.append_pair("SortOrder", "Ascending");
+            q.append_pair("SortOrder", "Ascending,Ascending,Ascending");
             q.append_pair(
                 "Fields",
                 "MediaSources,UserData,ProductionYear,PrimaryImageAspectRatio",

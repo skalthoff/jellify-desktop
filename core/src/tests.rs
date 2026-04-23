@@ -204,6 +204,64 @@ async fn album_tracks_parses() {
     assert!((t.duration_seconds() - 222.0).abs() < 0.001);
 }
 
+/// Asserts the query parameters sent by `album_tracks` (#570, #571):
+/// - `Recursive=true` so multi-disc child items are returned
+/// - `SortBy` and `SortOrder` are parallel comma-separated arrays (3 fields
+///   each) so track ordering is well-defined on Jellyfin
+#[tokio::test]
+async fn album_tracks_query_params() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "user", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [],
+            "TotalRecordCount": 0
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("user", "pw").await.unwrap();
+    let _ = client.album_tracks("album-42").await.unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+
+    // #570 — must traverse child items for multi-disc albums
+    assert!(
+        q.contains("Recursive=true"),
+        "missing Recursive=true, got: {q}"
+    );
+
+    // #571 — SortBy and SortOrder must be parallel arrays of equal length.
+    // URL encoding: ',' → '%2C'.
+    assert!(
+        q.contains("SortBy=ParentIndexNumber%2CIndexNumber%2CSortName"),
+        "unexpected SortBy, got: {q}"
+    );
+    assert!(
+        q.contains("SortOrder=Ascending%2CAscending%2CAscending"),
+        "SortOrder must have one entry per SortBy field, got: {q}"
+    );
+
+    assert!(
+        q.contains("ParentId=album-42"),
+        "missing ParentId, got: {q}"
+    );
+}
+
 /// Covers the Artist "Top Tracks" endpoint wired for #229. Asserts the
 /// query shape (ArtistIds, IncludeItemTypes=Audio, SortBy=PlayCount,
 /// SortOrder=Descending, Limit) and that the parsed tracks carry the
