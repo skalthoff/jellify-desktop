@@ -108,19 +108,19 @@ struct JellifyCommands: Commands {
     @Bindable var model: AppModel
 
     var body: some Commands {
-        // MARK: - File menu additions (New Playlist alongside system New Window)
+        // MARK: File (⌘N for New Playlist)
         //
-        // SwiftUI's `WindowGroup` auto-provides File > New Window (⌘N) and
-        // Close Window (⌘W). We append a "New Playlist…" entry after the
-        // built-in new-item block so both show up together under File > New.
-        CommandGroup(after: .newItem) {
-            Button("New Playlist…") {
-                // TODO(#131 / #234): wire to `core.createPlaylist(name:itemIds:)`
-                // once the FFI lands. For now this is a menu placeholder so the
-                // shortcut is reserved and discoverable.
-                model.errorMessage = "Creating playlists isn't wired yet — see #131."
+        // Replaces SwiftUI's default "New Window" item so ⌘N creates a
+        // playlist (matching Spotify / Apple Music conventions) rather
+        // than spawning a duplicate app window. Wired into
+        // `AppModel.beginNewPlaylist`, which flips the sidebar into edit
+        // mode on a fresh placeholder row. See BATCH-06b / #71.
+        CommandGroup(replacing: .newItem) {
+            Button("New Playlist") {
+                model.screen = .library
+                model.beginNewPlaylist()
             }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
+            .keyboardShortcut("n", modifiers: .command)
             .disabled(model.session == nil)
         }
 
