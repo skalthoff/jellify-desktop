@@ -1,0 +1,34 @@
+---
+source: core/tests/contract.rs
+expression: tracks
+---
+- id: track-001
+  name: Intro
+  album_id: album-abc
+  album_name: Test Album
+  artist_name: Test Artist
+  artist_id: artist-xyz
+  index_number: 1
+  disc_number: 1
+  year: 2022
+  runtime_ticks: 2100000000
+  is_favorite: false
+  play_count: 3
+  container: flac
+  bitrate: 900000
+  image_tag: tag-001
+- id: track-002
+  name: Verse
+  album_id: album-abc
+  album_name: Test Album
+  artist_name: Test Artist
+  artist_id: artist-xyz
+  index_number: 2
+  disc_number: 1
+  year: 2022
+  runtime_ticks: 3500000000
+  is_favorite: true
+  play_count: 7
+  container: flac
+  bitrate: 850000
+  image_tag: tag-002

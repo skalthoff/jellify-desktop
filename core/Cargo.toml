@@ -53,6 +53,7 @@ wiremock.workspace = true
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
+insta.workspace = true
 
 [build-dependencies]
 uniffi = { workspace = true, features = ["build"] }

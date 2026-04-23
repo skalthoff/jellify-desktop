@@ -1,0 +1,12 @@
+---
+source: core/tests/contract.rs
+expression: refs
+---
+- id: album-111
+  name: Alike Album
+  kind: MusicAlbum
+  image_tag: tag-111
+- id: artist-222
+  name: Related Artist
+  kind: MusicArtist
+  image_tag: ~

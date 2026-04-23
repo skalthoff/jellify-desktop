@@ -1,0 +1,40 @@
+---
+source: core/tests/contract.rs
+expression: results
+---
+artists:
+  - id: artist-001
+    name: The Searchables
+    album_count: 0
+    song_count: 0
+    genres:
+      - Pop
+    image_tag: img-a01
+albums:
+  - id: album-001
+    name: Searchable Record
+    artist_name: The Searchables
+    artist_id: artist-001
+    year: 2021
+    track_count: 0
+    runtime_ticks: 0
+    genres:
+      - Pop
+    image_tag: img-al1
+tracks:
+  - id: track-001
+    name: Searchable Song
+    album_id: album-001
+    album_name: Searchable Record
+    artist_name: The Searchables
+    artist_id: artist-001
+    index_number: 1
+    disc_number: 1
+    year: 2021
+    runtime_ticks: 2400000000
+    is_favorite: false
+    play_count: 1
+    container: mp3
+    bitrate: 320000
+    image_tag: img-tr1
+total_record_count: 3
