@@ -129,6 +129,14 @@ if [[ -d "$SPARKLE_SRC" ]]; then
     # Sparkle.framework after we drop it under Contents/Frameworks.
     install_name_tool -add_rpath "@executable_path/../Frameworks" \
         "$APP/Contents/MacOS/Jellify" 2>/dev/null || true
+
+    # install_name_tool rewrote load commands in page 0 of __TEXT, invalidating
+    # the ad-hoc signature swift-build stamped on the executable. macOS 26's
+    # kernel refuses to map pages whose hashes don't match the embedded seal
+    # and kills the process on launch with "CODESIGNING Invalid Page" before
+    # main runs. Re-seal ad-hoc here so dev builds launch; sign.sh supersedes
+    # this with a real Developer ID signature for distribution.
+    codesign --force --sign - "$APP/Contents/MacOS/Jellify"
 fi
 
 # Drop the template into the bundle, then patch $VERSION / $BUILD in place.
