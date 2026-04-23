@@ -4,6 +4,7 @@
 //! MediaPlayer on Windows, GStreamer on Linux). The core only tracks what
 //! *should* be playing; the platform reports back via status updates.
 
+use crate::error::{JellifyError, Result};
 use crate::models::Track;
 use parking_lot::Mutex;
 
@@ -117,10 +118,25 @@ impl Player {
         }
     }
 
-    pub fn set_queue(&self, tracks: Vec<Track>, start_index: u32) {
+    /// Set the queue and mark `tracks[start_index]` as the current track.
+    ///
+    /// Returns `Err(JellifyError::InvalidIndex)` when `start_index` is
+    /// out-of-bounds for the supplied `tracks` slice, so callers learn about
+    /// the bad index instead of silently playing the wrong track. An empty
+    /// `tracks` vec is also rejected because there is no valid index into it.
+    pub fn set_queue(&self, tracks: Vec<Track>, start_index: u32) -> Result<()> {
+        let idx = start_index as usize;
+        if idx >= tracks.len() {
+            return Err(JellifyError::InvalidIndex {
+                index: idx,
+                len: tracks.len(),
+            });
+        }
         let mut s = self.shared.lock();
+        s.current = tracks.get(idx).cloned();
         s.queue = tracks;
-        s.queue_index = (start_index as usize).min(s.queue.len().saturating_sub(1));
+        s.queue_index = idx;
+        Ok(())
     }
 
     pub fn current_in_queue(&self) -> Option<Track> {
@@ -128,21 +144,31 @@ impl Player {
         s.queue.get(s.queue_index).cloned()
     }
 
+    /// Advance to the next track in the queue. Returns `Some(track)` on
+    /// success and updates `current` so that `status()` immediately reflects
+    /// the new track. Returns `None` when already at the end of the queue.
     pub fn skip_next(&self) -> Option<Track> {
         let mut s = self.shared.lock();
         if s.queue_index + 1 < s.queue.len() {
             s.queue_index += 1;
-            s.queue.get(s.queue_index).cloned()
+            let track = s.queue.get(s.queue_index).cloned();
+            s.current = track.clone();
+            track
         } else {
             None
         }
     }
 
+    /// Step back to the previous track in the queue. Returns `Some(track)` on
+    /// success and updates `current` so that `status()` immediately reflects
+    /// the new track. Returns `None` when already at the start of the queue.
     pub fn skip_previous(&self) -> Option<Track> {
         let mut s = self.shared.lock();
         if s.queue_index > 0 {
             s.queue_index -= 1;
-            s.queue.get(s.queue_index).cloned()
+            let track = s.queue.get(s.queue_index).cloned();
+            s.current = track.clone();
+            track
         } else {
             None
         }
@@ -256,10 +282,110 @@ mod tests {
         let player = Player::new();
         player.set_shuffle(true);
         player.set_repeat_mode(RepeatMode::All);
-        player.set_queue(vec![track("a"), track("b")], 0);
+        player.set_queue(vec![track("a"), track("b")], 0).unwrap();
         let status = player.status();
         assert!(status.shuffle);
         assert_eq!(status.repeat_mode, RepeatMode::All);
         assert_eq!(status.queue_length, 2);
+    }
+
+    // ---- #591: set_queue OOB start_index ----
+
+    #[test]
+    fn set_queue_rejects_out_of_bounds_start_index() {
+        use crate::error::JellifyError;
+        let player = Player::new();
+        let result = player.set_queue(vec![track("a"), track("b")], 5);
+        match result {
+            Err(JellifyError::InvalidIndex { index: 5, len: 2 }) => {}
+            other => panic!("expected InvalidIndex {{ 5, 2 }}, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_queue_rejects_empty_queue() {
+        use crate::error::JellifyError;
+        let player = Player::new();
+        let result = player.set_queue(vec![], 0);
+        match result {
+            Err(JellifyError::InvalidIndex { .. }) => {}
+            other => panic!("expected InvalidIndex for empty queue, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_queue_valid_index_sets_current() {
+        let player = Player::new();
+        player
+            .set_queue(vec![track("a"), track("b"), track("c")], 1)
+            .unwrap();
+        let status = player.status();
+        assert_eq!(status.current_track.unwrap().id, "b");
+        assert_eq!(status.queue_position, 1);
+    }
+
+    // ---- #604: skip_next / skip_previous update current ----
+
+    #[test]
+    fn skip_next_updates_current_on_status() {
+        let player = Player::new();
+        player
+            .set_queue(vec![track("a"), track("b"), track("c")], 0)
+            .unwrap();
+
+        let next = player.skip_next().expect("should return next track");
+        assert_eq!(next.id, "b");
+
+        let status = player.status();
+        assert_eq!(
+            status.current_track.unwrap().id,
+            "b",
+            "status().current_track must reflect the track after skip_next"
+        );
+        assert_eq!(status.queue_position, 1);
+    }
+
+    #[test]
+    fn skip_previous_updates_current_on_status() {
+        let player = Player::new();
+        player
+            .set_queue(vec![track("a"), track("b"), track("c")], 2)
+            .unwrap();
+
+        let prev = player
+            .skip_previous()
+            .expect("should return previous track");
+        assert_eq!(prev.id, "b");
+
+        let status = player.status();
+        assert_eq!(
+            status.current_track.unwrap().id,
+            "b",
+            "status().current_track must reflect the track after skip_previous"
+        );
+        assert_eq!(status.queue_position, 1);
+    }
+
+    #[test]
+    fn skip_next_at_end_returns_none_and_leaves_current_unchanged() {
+        let player = Player::new();
+        player.set_queue(vec![track("a"), track("b")], 1).unwrap();
+
+        let result = player.skip_next();
+        assert!(result.is_none(), "skip_next at end should return None");
+        assert_eq!(player.status().current_track.unwrap().id, "b");
+    }
+
+    #[test]
+    fn skip_previous_at_start_returns_none_and_leaves_current_unchanged() {
+        let player = Player::new();
+        player.set_queue(vec![track("a"), track("b")], 0).unwrap();
+
+        let result = player.skip_previous();
+        assert!(
+            result.is_none(),
+            "skip_previous at start should return None"
+        );
+        assert_eq!(player.status().current_track.unwrap().id, "a");
     }
 }

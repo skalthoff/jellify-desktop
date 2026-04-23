@@ -40,6 +40,9 @@ pub enum JellifyError {
     #[error("invalid input: {0}")]
     InvalidInput(String),
 
+    #[error("queue index {index} is out of bounds (queue length: {len})")]
+    InvalidIndex { index: usize, len: usize },
+
     #[error("{0}")]
     Other(String),
 }
