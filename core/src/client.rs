@@ -335,7 +335,10 @@ impl JellyfinClient {
                         tokio::time::sleep(delay).await;
                         continue;
                     }
-                    return Err(JellifyError::Network(err.to_string()));
+                    // Route through `From<reqwest::Error>` so cert-validation
+                    // failures are mapped to `JellifyError::SelfSignedCertificate`
+                    // rather than the generic `Network` variant.
+                    return Err(err.into());
                 }
             }
         }
