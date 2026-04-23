@@ -120,7 +120,7 @@ public final class AudioEngine: NSObject {
     // MARK: - Public
 
     public func play(track: Track) throws {
-        let urlString = try core.streamUrl(trackId: track.id)
+        let urlString = try core.streamUrl(trackId: track.id, mediaSourceId: nil, playSessionId: nil)
         guard let url = URL(string: urlString) else {
             throw AudioEngineError.invalidURL(urlString)
         }
@@ -241,7 +241,7 @@ public final class AudioEngine: NSObject {
     public func preloadNextTrack(_ track: Track) throws {
         guard let player else { return }
 
-        let urlString = try core.streamUrl(trackId: track.id)
+        let urlString = try core.streamUrl(trackId: track.id, mediaSourceId: nil, playSessionId: nil)
         guard let url = URL(string: urlString) else {
             throw AudioEngineError.invalidURL(urlString)
         }
