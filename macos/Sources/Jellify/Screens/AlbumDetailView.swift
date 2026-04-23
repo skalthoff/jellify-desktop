@@ -20,10 +20,16 @@ struct AlbumDetailView: View {
     @State private var tracks: [Track] = []
     @State private var isLoading = true
     @State private var detail: AlbumDetail = AlbumDetail(label: nil, releaseDate: nil, people: [])
+    @State private var fetchedAlbum: Album?
     @State private var showAddToPlaylist = false
 
+    /// Cache-first lookup against the paged `albums` list, then fall
+    /// back to the record the `.task` block fetched. Missing after both
+    /// resolves means the id really isn't in the user's library — the
+    /// hero silently skips rendering rather than showing "Album not
+    /// found"; the tracklist section still renders if it loaded.
     private var album: Album? {
-        model.albums.first { $0.id == albumID }
+        model.albums.first { $0.id == albumID } ?? fetchedAlbum
     }
 
     var body: some View {
@@ -38,6 +44,9 @@ struct AlbumDetailView: View {
         .background(Theme.bg)
         .task(id: albumID) {
             isLoading = true
+            if model.albums.first(where: { $0.id == albumID }) == nil {
+                fetchedAlbum = await model.resolveAlbum(id: albumID)
+            }
             tracks = await model.loadTracks(forAlbum: albumID)
             isLoading = false
             detail = await model.loadAlbumDetail(albumId: albumID)
