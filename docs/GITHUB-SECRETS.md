@@ -11,14 +11,7 @@ See `.env.example` for the local-dev counterpart of these values.
 
 Target: [`.github/workflows/e2e.yml`](../.github/workflows/e2e.yml). Runs on every push / PR / nightly cron against `https://music.skalthoff.com` as user `test`.
 
-| Secret | What it is | How to get it |
-|---|---|---|
-| `JELLIFY_E2E_PASS` | Password for the `test` user on `music.skalthoff.com`. | You set this in Jellyfin. |
-
-```bash
-gh secret set JELLIFY_E2E_PASS
-# Paste the password and hit Enter. `gh` reads from stdin without echoing.
-```
+**No secret needed.** The `test` account has no password — the workflow passes an empty string, which Jellyfin accepts for passwordless accounts. If you later set a password on the account, add a `JELLIFY_E2E_PASS` secret and wire it into `e2e.yml`'s `env:` block.
 
 ---
 
@@ -100,7 +93,6 @@ No action needed — these are always available to workflows:
 After you have the values in hand, paste into a fresh terminal:
 
 ```bash
-gh secret set JELLIFY_E2E_PASS
 gh secret set APPLE_DEVELOPER_ID_CERT_P12 < <(base64 -i /path/to/DeveloperID.p12)
 gh secret set APPLE_DEVELOPER_ID_CERT_P12_PASSWORD
 gh secret set APPLE_DEVELOPER_ID_IDENTITY

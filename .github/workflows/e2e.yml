@@ -18,6 +18,7 @@ env:
   RUST_BACKTRACE: 1
   JELLIFY_E2E_URL: https://music.skalthoff.com
   JELLIFY_E2E_USER: test
+  JELLIFY_E2E_PASS: ""
 
 jobs:
   rust-core:
@@ -30,14 +31,12 @@ jobs:
         with:
           key: e2e-rust-core
       - name: cargo test --test e2e_live
-        env:
-          JELLIFY_E2E_PASS: ${{ secrets.JELLIFY_E2E_PASS }}
         run: cargo test --package jellify_core --test e2e_live -- --nocapture --test-threads=1
       - name: jellify-cli smoke (login + list)
         env:
           JELLYFIN_URL: ${{ env.JELLIFY_E2E_URL }}
           JELLYFIN_USER: ${{ env.JELLIFY_E2E_USER }}
-          JELLYFIN_PASS: ${{ secrets.JELLIFY_E2E_PASS }}
+          JELLYFIN_PASS: ${{ env.JELLIFY_E2E_PASS }}
         run: echo "" | cargo run --package jellify-cli --bin jellify-cli
 
   macos-app:
@@ -76,7 +75,7 @@ jobs:
         env:
           JELLYFIN_URL: ${{ env.JELLIFY_E2E_URL }}
           JELLYFIN_USER: ${{ env.JELLIFY_E2E_USER }}
-          JELLYFIN_PASS: ${{ secrets.JELLIFY_E2E_PASS }}
+          JELLYFIN_PASS: ${{ env.JELLIFY_E2E_PASS }}
         run: |
           set +e
           ./.build/arm64-apple-macosx/debug/SmokeTest > /tmp/smoke.log 2>&1
