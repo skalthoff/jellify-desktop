@@ -1794,7 +1794,11 @@ async fn user_playlists_returns_every_playlist_in_library_view() {
         .await
         .unwrap();
 
-    assert_eq!(page.items.len(), 2, "should return every playlist, not apply a /data/ filter");
+    assert_eq!(
+        page.items.len(),
+        2,
+        "should return every playlist, not apply a /data/ filter"
+    );
     assert_eq!(page.total_count, 2);
     assert_eq!(page.items[0].id, "p1");
     assert_eq!(page.items[0].name, "My Mix");
@@ -1852,7 +1856,11 @@ async fn public_playlists_mirrors_user_playlists_until_split_lands() {
         .await
         .unwrap();
 
-    assert_eq!(page.items.len(), 3, "public_playlists mirrors user_playlists today");
+    assert_eq!(
+        page.items.len(),
+        3,
+        "public_playlists mirrors user_playlists today"
+    );
     assert_eq!(page.total_count, 3);
     let ids: Vec<&str> = page.items.iter().map(|p| p.id.as_str()).collect();
     assert!(ids.contains(&"p1"));
@@ -6339,7 +6347,10 @@ async fn albums_by_artist_clamps_zero_limit_to_one() {
         .find(|r| r.method.as_str() == "GET")
         .expect("expected a GET request");
     let q = get.url.query().expect("expected a query string");
-    assert!(q.contains("Limit=1"), "zero limit should clamp to 1, got: {q}");
+    assert!(
+        q.contains("Limit=1"),
+        "zero limit should clamp to 1, got: {q}"
+    );
 }
 
 // ============================================================================
@@ -6457,4 +6468,100 @@ async fn artists_does_not_send_include_item_types_music_artist() {
     // Sanity: all the other fields we depend on are still present.
     assert!(q.contains("Recursive=true"), "query: {q}");
     assert!(q.contains("SortBy=SortName"), "query: {q}");
+}
+
+// ============================================================================
+// with_client releases `Inner` before HTTP I/O — main-thread unblocking
+// ============================================================================
+
+/// When one thread is mid-`list_albums` (holding a 400ms HTTP round-trip), a
+/// concurrent `image_url` call on another thread must NOT wait for that HTTP
+/// to complete. Before the fix, `with_client` held `Inner` across
+/// `runtime.block_on(...)`, so every main-thread FFI (auth_header, image_url,
+/// or a second network call) serialized behind whichever background
+/// pagination fetch was in flight. That's what caused the UI beach-balls.
+#[tokio::test]
+async fn with_client_releases_inner_lock_before_http() {
+    install_mock_keyring();
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "tok",
+            "ServerId": "server-lock-release",
+            "ServerName": "S",
+            "User": {
+                "Id": "u1", "Name": "n",
+                "ServerId": "server-lock-release",
+                "PrimaryImageTag": null
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    // Slow enough that we get a clear signal if the test thread serializes
+    // behind it, but not so slow that CI runs glacially.
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_json(json!({ "Items": [], "TotalRecordCount": 0 }))
+                .set_delay(std::time::Duration::from_millis(400)),
+        )
+        .mount(&server)
+        .await;
+
+    let server_url = server.uri();
+    tokio::task::spawn_blocking(move || {
+        let core = std::sync::Arc::new(
+            JellifyCore::new(CoreConfig {
+                data_dir: String::new(),
+                device_name: "Test".into(),
+            })
+            .unwrap(),
+        );
+        core.login(server_url, "lockrel-user".into(), "pw".into())
+            .expect("login should succeed");
+
+        // Thread A: fires the slow list_albums. Pre-fix, its FFI held
+        // `Inner` for the full 400ms HTTP round-trip.
+        let core_a = core.clone();
+        let a = std::thread::spawn(move || {
+            let start = std::time::Instant::now();
+            let _ = core_a.list_albums(0, 10);
+            start.elapsed()
+        });
+
+        // Give Thread A a head start so it's genuinely mid-flight when
+        // Thread B runs.
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        // Thread B: image_url is pure URL math — no network. It goes
+        // through `with_client`, so before the fix it blocked on Inner
+        // for the remainder of Thread A's HTTP.
+        let start = std::time::Instant::now();
+        core.image_url("item-1".into(), Some("tag-1".into()), 400)
+            .expect("image_url should succeed");
+        let b_elapsed = start.elapsed();
+
+        let a_elapsed = a.join().expect("thread A panicked");
+
+        // The 400ms mock delay minus the 50ms head start leaves ~350ms
+        // of block-time pre-fix; 200ms is a comfortable regression cap
+        // that still absorbs CI jitter.
+        assert!(
+            b_elapsed < std::time::Duration::from_millis(200),
+            "image_url blocked for {b_elapsed:?} while list_albums held the \
+             mutex (list_albums took {a_elapsed:?}); Inner must be released \
+             before HTTP I/O"
+        );
+        // Sanity: the slow mock really did delay Thread A.
+        assert!(
+            a_elapsed >= std::time::Duration::from_millis(300),
+            "slow list_albums mock should have taken >= 300ms; was {a_elapsed:?}"
+        );
+    })
+    .await
+    .expect("spawn_blocking panicked");
 }

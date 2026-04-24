@@ -58,15 +58,18 @@ pub struct JellifyCore {
 }
 
 struct Inner {
-    /// Wrapped in `Arc` so the heartbeat scheduler and the 401 interceptor
-    /// can both hold a reference to the live client without going through
-    /// `inner`'s `Mutex` — necessary because those two paths run concurrently
-    /// while `with_client` holds the lock.
+    /// Wrapped in `Arc` so callers (`with_client`, the heartbeat scheduler,
+    /// the 401 interceptor) can hold a handle to the live client without
+    /// keeping `Inner`'s `Mutex` locked across HTTP I/O. Every synchronous
+    /// FFI entry point clones this `Arc` under the lock, then drops the
+    /// guard before `tokio::block_on`, so in-flight requests do not stall
+    /// concurrent main-thread FFIs.
     client: Option<Arc<JellyfinClient>>,
     /// Wrapped in `Arc` so the HTTP client's 401 interceptor can close over
     /// a standalone handle (see [`JellyfinClient::set_refresh_callback`])
-    /// without needing to re-lock `inner` — which it can't, since retry
-    /// callbacks fire while `with_client` already holds that lock.
+    /// without needing to re-lock `Inner`. Keeping the refresh path off the
+    /// `Inner` mutex sidesteps any risk of recursion or contention with
+    /// whichever thread kicked off the 401-returning request.
     db: Arc<Database>,
     device_id: String,
     device_name: String,
@@ -1119,13 +1122,31 @@ impl JellifyCore {
 }
 
 impl JellifyCore {
+    /// Run `f` with a reference to the live HTTP client, releasing the
+    /// `Inner` mutex before the closure executes.
+    ///
+    /// The `Arc` clone keeps the lock window to a handful of instructions
+    /// (just long enough to bump the refcount). Crucially, the closure —
+    /// which typically calls `self.runtime.block_on(c.some_http_call())`
+    /// — runs *without* `Inner` held, so concurrent main-thread FFIs like
+    /// `auth_header` or `image_url` don't beach-ball while an HTTP request
+    /// is in flight on another thread.
+    ///
+    /// The closure must not touch `self.inner`; every existing caller
+    /// satisfies that by only calling methods on the client or the
+    /// runtime.
     fn with_client<T, F>(&self, f: F) -> std::result::Result<T, JellifyError>
     where
         F: FnOnce(&JellyfinClient) -> std::result::Result<T, JellifyError>,
     {
-        let inner = self.inner.lock();
-        let client = inner.client.as_ref().ok_or(JellifyError::NoSession)?;
-        f(client)
+        let client = self
+            .inner
+            .lock()
+            .client
+            .as_ref()
+            .ok_or(JellifyError::NoSession)?
+            .clone();
+        f(&client)
     }
 
     /// Clone the live client handle (if one exists) so background tasks can
@@ -1139,10 +1160,9 @@ impl JellifyCore {
     /// through the UI.
     ///
     /// The callback only holds an `Arc` to [`Database`] — never to `Inner`
-    /// — because it fires from inside an in-flight request, and by that
-    /// point `with_client` is already holding the `parking_lot::Mutex` on
-    /// `Inner`. Re-locking it here would deadlock (parking_lot mutexes are
-    /// non-reentrant).
+    /// — so it can fetch a refreshed token without touching the `Inner`
+    /// mutex. Keeps the refresh path reentrant-safe regardless of which
+    /// thread is currently executing an FFI entry point.
     fn install_refresh_callback(client: &JellyfinClient, db: &Arc<Database>) {
         let db = db.clone();
         client.set_refresh_callback(Arc::new(move || storage::refresh_token_from_keyring(&db)));

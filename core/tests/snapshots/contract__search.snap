@@ -1,5 +1,6 @@
 ---
 source: core/tests/contract.rs
+assertion_line: 140
 expression: results
 ---
 artists:
@@ -37,4 +38,5 @@ tracks:
     container: mp3
     bitrate: 320000
     image_tag: img-tr1
+    playlist_item_id: ~
 total_record_count: 3

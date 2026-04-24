@@ -1,5 +1,6 @@
 ---
 source: core/tests/contract.rs
+assertion_line: 91
 expression: tracks
 ---
 - id: track-001
@@ -17,6 +18,7 @@ expression: tracks
   container: flac
   bitrate: 900000
   image_tag: tag-001
+  playlist_item_id: ~
 - id: track-002
   name: Verse
   album_id: album-abc
@@ -32,3 +34,4 @@ expression: tracks
   container: flac
   bitrate: 850000
   image_tag: tag-002
+  playlist_item_id: ~
