@@ -146,6 +146,14 @@ cp "$INFO_TEMPLATE" "$TMP_PLIST"
 plutil -replace CFBundleShortVersionString -string "$VERSION" "$TMP_PLIST"
 plutil -replace CFBundleVersion            -string "$BUILD"   "$TMP_PLIST"
 
+# Substitute Sparkle's public Ed25519 key. The template ships the literal
+# placeholder `@@SPARKLE_PUBLIC_ED_KEY@@`; release builds replace it with
+# the real key from $SPARKLE_PUBLIC_ED_KEY. Local dev runs typically leave
+# it unset — we replace with an empty string so Sparkle silently disables
+# auto-update at launch instead of failing its key-length check and taking
+# the app down before main runs.
+plutil -replace SUPublicEDKey -string "${SPARKLE_PUBLIC_ED_KEY:-}" "$TMP_PLIST"
+
 # Fail loudly if the template drifted into something Core Foundation can't
 # parse — this is the check issue #177 asks for.
 plutil -lint "$TMP_PLIST" >/dev/null

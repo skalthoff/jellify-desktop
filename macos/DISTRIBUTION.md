@@ -5,6 +5,51 @@ that passes Gatekeeper and launches cleanly on a fresh Mac.
 
 ---
 
+## First-release operator checklist
+
+The rest of this doc is reference material. If you're setting things up
+for the first time, work through this list top to bottom — every step is
+mandatory for a tag push to produce a signed, notarized DMG.
+
+- [ ] **Apple Developer Program enrolled** (below → "Apple Developer
+      Program enrollment"). Individual enrollment is $99/yr; can take
+      ~24h to approve.
+- [ ] **Developer ID Application certificate** in your Mac's login
+      keychain (same section). Verify with
+      `security find-identity -v -p codesigning | grep "Developer ID Application"`.
+- [ ] **Team ID recorded** (10 chars, from the Membership page).
+- [ ] **`.p12` exported** (cert + private key together) and
+      `base64 -i cert.p12 | pbcopy`'d for the `APPLE_DEVELOPER_ID_CERT_P12`
+      secret.
+- [ ] **App-specific password** created at <https://appleid.apple.com>
+      → Sign-In and Security → App-Specific Passwords. Label it
+      "Jellify notarization".
+- [ ] **Sparkle keypair generated** (below → "Sparkle key generation").
+      Store both halves in your password manager before closing the
+      terminal.
+- [ ] **All 9 GitHub secrets set** under Settings → Secrets and
+      variables → Actions (below → "Required GitHub Actions secrets").
+      The workflow fails fast on the first missing one.
+- [ ] **`gh-pages` branch bootstrapped** (below → "First-ever gh-pages
+      bootstrap"). Skipping this makes the appcast publish step blow up
+      on the first tag.
+- [ ] **Local dry run done** (optional but strongly recommended — below
+      → "Running the first release manually"). Confirms your secrets
+      are shaped right before committing to a tag.
+- [ ] **First tag pushed**:
+      ```bash
+      git tag -s v0.1.0 -m "Jellify 0.1.0"
+      git push origin v0.1.0
+      ```
+      `.github/workflows/macos-release.yml` picks it up, builds for
+      ~20 min on macos-14, uploads the DMG to the release, and
+      regenerates the appcast on `gh-pages`.
+
+If a step fails, the "Troubleshooting" section at the bottom covers the
+usual suspects.
+
+---
+
 ## **MANUAL PREREQUISITE — Apple Developer Program enrollment (issue #175)**
 
 **This step is a multi-day, non-engineering task. The engineering pipeline
