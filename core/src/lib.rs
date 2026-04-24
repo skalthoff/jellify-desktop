@@ -11,14 +11,18 @@
 //! play them and calls back with status updates.
 
 pub mod client;
+pub mod enums;
 pub mod error;
 pub mod models;
 pub mod player;
+pub mod query;
 pub mod storage;
 
+pub use enums::{ImageType, ItemField, ItemKind, ItemSortBy, SortOrder};
 pub use error::{JellifyError, Result};
 pub use models::*;
 pub use player::{PlaybackState, Player, PlayerStatus, RepeatMode};
+pub use query::ItemsQuery;
 
 use crate::client::{JellyfinClient, PublicSystemInfo};
 use crate::storage::{CredentialStore, Database};

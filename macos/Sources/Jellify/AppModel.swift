@@ -878,26 +878,24 @@ final class AppModel {
         authExpired = true
     }
 
-    /// Inspect an error from a core call and, if it looks like a 401 or the
-    /// core's `NotAuthenticated` variant, mark the session expired and return
-    /// `true` so the caller knows to skip its generic error surfacing.
+    /// Inspect an error from a core call and, if it's the core's
+    /// `NotAuthenticated` / `Auth` variant (both meaning the token's dead
+    /// or never existed), mark the session expired and return `true` so the
+    /// caller knows to skip its generic error surfacing.
     ///
-    /// `JellifyError` is a `flat_error` in uniffi, so on the Swift side we
-    /// only get the `thiserror` Display string. The variants we care about
-    /// are:
-    /// - `NotAuthenticated` → `"not logged in"`
-    /// - `AuthExpired` → `"authentication expired — please sign in again"`
-    /// - `Auth(...)` → `"authentication failed: ..."`
-    /// - `Server { status: 401, .. }` → `"server returned an error: 401 ..."`
+    /// Post-BATCH-24 the Rust `JellifyError` is a typed enum split by HTTP
+    /// class — 401 responses surface as `Auth`, the retry-layer fallback is
+    /// `AuthExpired`, and a missing token is `NotAuthenticated` — so we can
+    /// match variants directly instead of parsing the Display message.
     private func handleAuthError(_ error: Error) -> Bool {
-        let description = error.localizedDescription
-        let isNotAuthenticated = description.contains("not logged in")
-        let isAuthExpired = description.contains("authentication expired")
-        let isAuthFailed = description.contains("authentication failed")
-        let isServer401 = description.contains("server returned an error: 401")
-        guard isNotAuthenticated || isAuthExpired || isAuthFailed || isServer401 else { return false }
-        markAuthExpired()
-        return true
+        guard let err = error as? JellifyError else { return false }
+        switch err {
+        case .NotAuthenticated, .Auth, .AuthExpired:
+            markAuthExpired()
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Library
@@ -1675,6 +1673,10 @@ final class AppModel {
                let primary = tags["Primary"], !primary.isEmpty { return primary }
             return nil
         }()
+        // `user_data` landed on `Album` in BATCH-24 — clients that build
+        // Albums from a local `BaseItemDto` can pass `nil` to reproduce the
+        // old behaviour; callers that have a richer `UserData` projection
+        // should populate the struct directly.
         return Album(
             id: id,
             name: name,
@@ -1684,7 +1686,8 @@ final class AppModel {
             trackCount: trackCount,
             runtimeTicks: runtimeTicks,
             genres: genres,
-            imageTag: imageTag
+            imageTag: imageTag,
+            userData: nil
         )
     }
 
@@ -1755,6 +1758,8 @@ final class AppModel {
                let primary = tags["Primary"], !primary.isEmpty { return primary }
             return nil
         }()
+        // `user_data` landed on `Track` in BATCH-24 — see `albumFromDTO`
+        // above for the same pattern.
         return Track(
             id: id,
             name: name,
@@ -1771,7 +1776,8 @@ final class AppModel {
             container: container,
             bitrate: bitrate,
             imageTag: imageTag,
-            playlistItemId: nil
+            playlistItemId: nil,
+            userData: nil
         )
     }
 
@@ -1814,7 +1820,8 @@ final class AppModel {
                 albumCount: 0,
                 songCount: 0,
                 genres: detail.genres,
-                imageTag: detail.imageTag
+                imageTag: detail.imageTag,
+                userData: nil
             )
         } catch {
             _ = handleAuthError(error)
@@ -1875,7 +1882,8 @@ final class AppModel {
             trackCount: trackCount,
             runtimeTicks: runtimeTicks,
             genres: genres,
-            imageTag: imageTag
+            imageTag: imageTag,
+            userData: nil
         )
     }
 

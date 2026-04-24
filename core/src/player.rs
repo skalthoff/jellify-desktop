@@ -266,6 +266,7 @@ mod tests {
             bitrate: None,
             image_tag: None,
             playlist_item_id: None,
+            user_data: None,
         }
     }
 
