@@ -1794,7 +1794,11 @@ async fn user_playlists_returns_every_playlist_in_library_view() {
         .await
         .unwrap();
 
-    assert_eq!(page.items.len(), 2, "should return every playlist, not apply a /data/ filter");
+    assert_eq!(
+        page.items.len(),
+        2,
+        "should return every playlist, not apply a /data/ filter"
+    );
     assert_eq!(page.total_count, 2);
     assert_eq!(page.items[0].id, "p1");
     assert_eq!(page.items[0].name, "My Mix");
@@ -1852,7 +1856,11 @@ async fn public_playlists_mirrors_user_playlists_until_split_lands() {
         .await
         .unwrap();
 
-    assert_eq!(page.items.len(), 3, "public_playlists mirrors user_playlists today");
+    assert_eq!(
+        page.items.len(),
+        3,
+        "public_playlists mirrors user_playlists today"
+    );
     assert_eq!(page.total_count, 3);
     let ids: Vec<&str> = page.items.iter().map(|p| p.id.as_str()).collect();
     assert!(ids.contains(&"p1"));
@@ -6339,7 +6347,10 @@ async fn albums_by_artist_clamps_zero_limit_to_one() {
         .find(|r| r.method.as_str() == "GET")
         .expect("expected a GET request");
     let q = get.url.query().expect("expected a query string");
-    assert!(q.contains("Limit=1"), "zero limit should clamp to 1, got: {q}");
+    assert!(
+        q.contains("Limit=1"),
+        "zero limit should clamp to 1, got: {q}"
+    );
 }
 
 // ============================================================================
