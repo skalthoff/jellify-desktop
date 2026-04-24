@@ -597,9 +597,13 @@ final class AppModel {
             id: "queue.clear",
             title: "Clear Queue",
             symbol: "trash",
-            run: {
-                // TODO(#282): wire to a core `clear_queue` primitive.
-                print("[AppModel] Clear Queue — not yet wired (see #282)")
+            run: { [weak self] in
+                // #282: wipe the queue but keep the currently playing track
+                // as a single-item queue so playback doesn't stop.
+                self?.core.clearQueue()
+                if let core = self?.core {
+                    self?.status = core.status()
+                }
             }
         ))
         actions.append(PaletteAction(
@@ -2718,26 +2722,41 @@ final class AppModel {
     }
 
     /// Insert an album's tracks immediately after the currently-playing track.
-    /// TODO: #282 — proper Up Next vs Auto Queue separation. For now, the core
-    /// queue is replaced on every `setQueue`, so until we grow an `insertNext`
-    /// primitive this falls back to appending behaviour.
+    /// Uses the `core.playNext` primitive wired in for #282. When nothing is
+    /// currently playing, falls back to `play(album:)` so the album actually
+    /// starts instead of silently queueing into an empty player.
     func playNext(album: Album) {
-        // TODO: #282 — queue "Up Next" insertion; for now, surface a log.
-        print("[AppModel] playNext(album:) not yet wired — see #282")
         Task {
             let tracks = await loadTracks(forAlbum: album.id)
             guard !tracks.isEmpty else { return }
-            play(tracks: tracks, startIndex: 0)
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.playNext(tracks: tracks)
+            }.value
+            self.status = core.status()
         }
     }
 
-    /// Append an album's tracks to the end of the queue.
-    /// TODO: #282 — the core lacks an `appendToQueue` primitive, so this is a
-    /// stub that plays the album outright for now.
+    /// Append an album's tracks to the end of the queue. Uses the
+    /// `core.addToQueue` primitive wired in for #282; when nothing is playing
+    /// falls back to `play(album:)` so we don't end up with a loaded queue
+    /// but no playhead.
     func addToQueue(album: Album) {
-        // TODO: #282 — queue append. Currently behaves like `play`.
-        print("[AppModel] addToQueue(album:) not yet wired — see #282")
-        play(album: album)
+        Task {
+            let tracks = await loadTracks(forAlbum: album.id)
+            guard !tracks.isEmpty else { return }
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.addToQueue(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
     /// In-memory favorite flag keyed by item id (album/track/artist/playlist).
@@ -3144,22 +3163,40 @@ final class AppModel {
     }
 
     /// Insert a playlist's tracks immediately after the currently-playing track.
-    /// TODO: #282 — proper Up Next vs Auto Queue separation. For now, the core
-    /// queue is replaced on every `setQueue`, so until we grow an `insertNext`
-    /// primitive this falls back to replace-and-play behaviour.
+    /// Wired to `core.playNext` for #282. Falls back to `play(playlist:)`
+    /// when nothing is currently playing so the menu item still does the
+    /// obvious thing.
     func playNext(playlist: Playlist) {
-        // TODO: #282 — queue "Up Next" insertion; for now, replace-and-play.
-        print("[AppModel] playNext(playlist:) not yet wired — see #282")
-        play(playlist: playlist)
+        Task {
+            let tracks = await loadPlaylistTracks(playlist: playlist)
+            guard !tracks.isEmpty else { return }
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.playNext(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
-    /// Append a playlist's tracks to the end of the queue.
-    /// TODO: #282 — the core lacks an `appendToQueue` primitive, so this is a
-    /// stub that plays the playlist outright for now.
+    /// Append a playlist's tracks to the end of the queue. Wired to
+    /// `core.addToQueue` for #282. Falls back to `play(playlist:)` when
+    /// nothing is currently playing.
     func addToQueue(playlist: Playlist) {
-        // TODO: #282 — queue append. Currently behaves like `play`.
-        print("[AppModel] addToQueue(playlist:) not yet wired — see #282")
-        play(playlist: playlist)
+        Task {
+            let tracks = await loadPlaylistTracks(playlist: playlist)
+            guard !tracks.isEmpty else { return }
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.addToQueue(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
     /// Toggle the favorite flag for a playlist on the Jellyfin server.
@@ -3550,24 +3587,37 @@ final class AppModel {
     // editor #96).
 
     /// Insert a selection of tracks immediately after the currently-playing
-    /// track.
-    /// TODO(#282): queue "Up Next" insertion primitive. For now, behaves
-    /// like `play(tracks:)` so the menu item does something.
+    /// track. Wired to `core.playNext` for #282; when nothing is playing
+    /// falls back to `play(tracks:)` so the menu item always does something.
     func playNext(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        // TODO(#282): queue "Up Next" insertion not yet wired.
-        print("[AppModel] playNext(tracks:) not yet wired — see #282")
-        play(tracks: tracks, startIndex: 0)
+        if status.currentTrack == nil {
+            play(tracks: tracks, startIndex: 0)
+            return
+        }
+        Task {
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.playNext(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
-    /// Append a selection of tracks to the end of the queue.
-    /// TODO(#282): queue append primitive. For now, replaces the queue via
-    /// `play(tracks:)` so the menu item has a landing pad.
+    /// Append a selection of tracks to the end of the queue. Wired to
+    /// `core.addToQueue` for #282; when nothing is playing falls back to
+    /// `play(tracks:)`.
     func addToQueue(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        // TODO(#282): queue append not yet wired.
-        print("[AppModel] addToQueue(tracks:) not yet wired — see #282")
-        play(tracks: tracks, startIndex: 0)
+        if status.currentTrack == nil {
+            play(tracks: tracks, startIndex: 0)
+            return
+        }
+        Task {
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.addToQueue(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
     /// Kick off an Instant Mix ("song radio") seeded by a single track.
