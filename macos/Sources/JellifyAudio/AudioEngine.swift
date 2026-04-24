@@ -141,6 +141,88 @@ public final class AudioEngine: NSObject {
         return (info.mediaSources.first?.id, info.playSessionId)
     }
 
+    /// The currently-reporting session, captured at the last
+    /// `reportPlaybackStarted` call. Held so `stop` / track-change can emit a
+    /// matching `reportPlaybackStopped` with the same `itemId` + source +
+    /// session triple — Jellyfin requires those to line up server-side.
+    private var reportingItemId: String?
+    private var reportingMediaSourceId: String?
+    private var reportingPlaySessionId: String?
+
+    private func positionTicks() -> Int64 {
+        guard let player, let item = player.currentItem else { return 0 }
+        let seconds = CMTimeGetSeconds(item.currentTime())
+        guard seconds.isFinite, seconds >= 0 else { return 0 }
+        return Int64(seconds * 10_000_000)
+    }
+
+    /// Fire `POST /Sessions/Playing` for the track that just became the
+    /// AVQueuePlayer's `currentItem`. Best-effort — Jellyfin accepts the
+    /// stream regardless of whether the session-begin report landed, so we
+    /// swallow errors rather than surfacing them to the UI.
+    private func reportStarted(
+        trackId: String,
+        mediaSourceId: String?,
+        playSessionId: String?,
+        playMethod: String?
+    ) {
+        let info = PlaybackStartInfo(
+            itemId: trackId,
+            sessionId: nil,
+            mediaSourceId: mediaSourceId,
+            audioStreamIndex: nil,
+            playSessionId: playSessionId,
+            playMethod: playMethod,
+            positionTicks: 0
+        )
+        try? core.reportPlaybackStarted(info: info)
+        reportingItemId = trackId
+        reportingMediaSourceId = mediaSourceId
+        reportingPlaySessionId = playSessionId
+    }
+
+    /// Fire `POST /Sessions/Playing/Stopped` for the previously-reported
+    /// session, then clear the reporting triple. Safe to call when nothing
+    /// is active — it no-ops when `reportingItemId` is `nil`.
+    private func reportStopped() {
+        guard let itemId = reportingItemId else { return }
+        let info = PlaybackStopInfo(
+            itemId: itemId,
+            failed: false,
+            positionTicks: positionTicks(),
+            mediaSourceId: reportingMediaSourceId,
+            playSessionId: reportingPlaySessionId,
+            sessionId: nil
+        )
+        try? core.reportPlaybackStopped(info: info)
+        reportingItemId = nil
+        reportingMediaSourceId = nil
+        reportingPlaySessionId = nil
+    }
+
+    /// Fire a single `PlaybackProgressInfo` report — used on pause / resume /
+    /// seek transitions so the server sees state changes promptly rather
+    /// than waiting for the next heartbeat tick. Best-effort: swallow
+    /// errors, the periodic heartbeat (if running) will catch up.
+    private func reportProgressSnapshot(isPaused: Bool) {
+        guard let itemId = reportingItemId else { return }
+        let info = PlaybackProgressInfo(
+            itemId: itemId,
+            failed: false,
+            isPaused: isPaused,
+            isMuted: false,
+            positionTicks: positionTicks(),
+            mediaSourceId: reportingMediaSourceId,
+            playSessionId: reportingPlaySessionId,
+            playMethod: nil,
+            volumeLevel: nil,
+            playbackRate: nil,
+            audioStreamIndex: nil,
+            sessionId: nil
+        )
+        try? core.reportPlaybackProgress(info: info)
+    }
+
     // MARK: - Public
 
     public func play(track: Track) throws {
@@ -189,6 +271,11 @@ public final class AudioEngine: NSObject {
 
         attachPlayerObservers(to: newPlayer, item: item)
 
+        // Any previous session needs a matching Stopped report before we
+        // start the new one — Jellyfin keys sessions by PlaySessionId and
+        // leaks a transcode job otherwise.
+        reportStopped()
+
         core.markTrackStarted(track: track)
         core.markState(state: .playing)
         newPlayer.play()
@@ -196,6 +283,22 @@ public final class AudioEngine: NSObject {
         // reads the current position via its delegate, so `core.markState`
         // must run first so the snapshot is up to date. See issue #29.
         mediaSession?.trackChanged(track)
+
+        // POST /Sessions/Playing so Jellyfin shows "Now Playing on macOS"
+        // on other clients and the heartbeat has a session to report against.
+        reportStarted(
+            trackId: track.id,
+            mediaSourceId: mediaSourceId,
+            playSessionId: playSessionId,
+            playMethod: nil
+        )
+
+        // (Re)start the 5s heartbeat against the new PlaySessionId so
+        // Jellyfin's "last seen" timer for this session stays fresh and the
+        // server's resume-from-position store follows playback. Calling
+        // start_heartbeat on every play is intentional — the core cancels
+        // any prior interval before installing the new one.
+        core.startHeartbeat(intervalSecs: 5, playSessionId: playSessionId)
     }
 
     public func pause() {
@@ -206,16 +309,22 @@ public final class AudioEngine: NSObject {
         // sync within the same run loop turn for responsiveness. Duplicate
         // calls are cheap: MediaSession.rateChanged is idempotent.
         mediaSession?.rateChanged(isPlaying: false)
+        reportProgressSnapshot(isPaused: true)
     }
 
     public func resume() {
         player?.play()
         core.markState(state: .playing)
         mediaSession?.rateChanged(isPlaying: true)
+        reportProgressSnapshot(isPaused: false)
     }
 
     public func stop() {
         cancelStallWatchdog()
+        // Emit Stopped BEFORE draining the queue so positionTicks still
+        // reflects the last known playback position.
+        reportStopped()
+        core.stopHeartbeat()
         player?.pause()
         // removeAllItems() drains the AVQueuePlayer's item list (including any
         // pre-loaded next-track entry) and implicitly nulls currentItem — the
@@ -251,6 +360,12 @@ public final class AudioEngine: NSObject {
             Task { @MainActor in
                 guard let self, self.seekGeneration == generation else { return }
                 self.mediaSession?.seeked(to: seconds)
+                // Fire a PlaybackProgressInfo post-seek so the server's
+                // "last position" reflects the scrub immediately rather
+                // than waiting for the next heartbeat tick — this is what
+                // powers resume-from-position on other clients.
+                let paused = self.player?.rate == 0
+                self.reportProgressSnapshot(isPaused: paused)
             }
         }
     }
