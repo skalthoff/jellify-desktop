@@ -11,10 +11,11 @@ import AppKit
 struct EmptyLibraryState: View {
     let serverUrl: URL?
 
-    private let headline = "No music yet"
-    private let subtitle =
-        "Your Jellyfin server doesn't have any music in its library, " +
-        "or it's still being indexed. Add a library on the server, then refresh."
+    /// Resolved copy for the a11y-combine label. We pull the catalog values
+    /// once here so the composite `Text` uses the same phrasing the rest of
+    /// the view renders.
+    private var headline: String { String(localized: "empty.library.title", bundle: .main) }
+    private var subtitle: String { String(localized: "empty.library.subtitle", bundle: .main) }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -27,10 +28,10 @@ struct EmptyLibraryState: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 6) {
-                Text(headline)
+                Text("empty.library.title")
                     .font(Theme.font(22, weight: .black, italic: true))
                     .foregroundStyle(Theme.ink)
-                Text(subtitle)
+                Text("empty.library.subtitle")
                     .font(Theme.font(13, weight: .medium))
                     .foregroundStyle(Theme.ink2)
                     .multilineTextAlignment(.center)
@@ -43,7 +44,7 @@ struct EmptyLibraryState: View {
                     NSWorkspace.shared.open(serverUrl)
                 } label: {
                     HStack(spacing: 8) {
-                        Text("Open Jellyfin web")
+                        Text("empty.library.open_web")
                             .font(Theme.font(13, weight: .bold))
                         Image(systemName: "arrow.up.right.square")
                             .font(.system(size: 12, weight: .bold))
@@ -61,7 +62,7 @@ struct EmptyLibraryState: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Open Jellyfin web")
+                .accessibilityLabel("empty.library.open_web")
             }
         }
         .padding(.vertical, 56)

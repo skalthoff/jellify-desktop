@@ -291,10 +291,16 @@ private struct ConnectStep: View {
             && !password.isEmpty
     }
 
+    /// Generic error banner. Since `AppModel.login` now surfaces errors
+    /// through `JellifyErrorPresenter`, any 401 is already translated to
+    /// the shared `error.auth.expired` copy. We still want the onboarding
+    /// flow to replace that specific message with the form-specific
+    /// "Wrong username or password" hint.
     private var visibleError: String? {
         guard let err = model.errorMessage else { return nil }
-        if err.contains("401") {
-            return "Wrong username or password"
+        let authExpiredCopy = String(localized: "error.auth.expired", bundle: .main)
+        if err == authExpiredCopy {
+            return String(localized: "error.wrong_credentials", bundle: .main)
         }
         return err
     }
@@ -302,11 +308,12 @@ private struct ConnectStep: View {
     private func submit() {
         guard canSubmit, !model.isLoggingIn else { return }
         let previous = model.errorMessage
+        let authExpiredCopy = String(localized: "error.auth.expired", bundle: .main)
         Task {
             await model.login(url: url, username: username, password: password)
-            if let err = model.errorMessage, err != previous, err.contains("401") {
+            if let err = model.errorMessage, err != previous, err == authExpiredCopy {
                 shakeAttempts += 1
-                model.errorMessage = "Wrong username or password"
+                model.errorMessage = String(localized: "error.wrong_credentials", bundle: .main)
             }
         }
     }
