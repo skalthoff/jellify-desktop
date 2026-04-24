@@ -82,16 +82,21 @@ jobs:
       # ------------------------------------------------------------------
       - name: Build universal xcframework
         working-directory: macos
-        env:
-          # The existing build-core.sh builds arm64-only. For release we
-          # want a universal static library; the flag is picked up by the
-          # M4 universal build work landing alongside this workflow.
-          JELLIFY_UNIVERSAL: "1"
+        # build-core.sh produces an arm64 + x86_64 lipo-fused static lib by
+        # default; --release selects the release profile.
         run: ./Scripts/build-core.sh --release
 
-      - name: Swift build (release)
+      - name: Swift build (release, universal)
         working-directory: macos
-        run: swift build -c release
+        # --arch arm64 --arch x86_64 routes the build through
+        # .build/apple/Products/Release/, which make-bundle.sh --universal
+        # consumes. A bare `swift build` on macos-14 (Apple Silicon) emits
+        # arm64-only binaries and silently breaks Intel users.
+        run: swift build -c release --arch arm64 --arch x86_64
+
+      - name: Install create-dmg
+        # Required by make-dmg.sh. Not preinstalled on macos-14.
+        run: brew install create-dmg
 
       - name: Make app icon
         working-directory: macos
@@ -100,11 +105,12 @@ jobs:
       - name: Bundle .app
         working-directory: macos
         env:
-          JELLIFY_BUILD_CONFIG: "release"
-          JELLIFY_VERSION: ${{ steps.version.outputs.version }}
-          JELLIFY_BUILD: ${{ steps.version.outputs.build }}
+          # make-bundle.sh reads $VERSION and $BUILD directly; $SPARKLE_PUBLIC_ED_KEY
+          # is substituted into Info.plist via plutil -replace SUPublicEDKey.
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
-        run: ./Scripts/make-bundle.sh
+        run: ./Scripts/make-bundle.sh --release --universal
 
       # ------------------------------------------------------------------
       # Sign + notarize. The individual scripts (sign.sh, notarize.sh,
@@ -146,24 +152,42 @@ jobs:
       - name: Sign .app
         working-directory: macos
         env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_DEVELOPER_ID_IDENTITY: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
-        run: ./Scripts/sign.sh
+          # sign.sh reads $DEVELOPER_ID (the cert's common name).
+          DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
+        run: ./Scripts/sign.sh build/Jellify.app
 
       - name: Make DMG
         working-directory: macos
         env:
-          JELLIFY_VERSION: ${{ steps.version.outputs.version }}
+          # make-dmg.sh reads $VERSION and $DEVELOPER_ID. Without the
+          # identity the DMG ships unsigned and notarization rejects it.
+          VERSION: ${{ steps.version.outputs.version }}
+          DEVELOPER_ID: ${{ secrets.APPLE_DEVELOPER_ID_IDENTITY }}
         run: ./Scripts/make-dmg.sh
 
-      - name: Notarize DMG
-        working-directory: macos
+      - name: Bootstrap notarytool keychain profile
+        # notarize.sh calls `xcrun notarytool submit --keychain-profile`,
+        # which requires the profile to already exist in a keychain on
+        # the default search list. We write it into the ephemeral
+        # keychain imported above; the runner is disposable so no cleanup.
         env:
           APPLE_NOTARY_PROFILE: ${{ secrets.APPLE_NOTARY_PROFILE }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: ./Scripts/notarize.sh
+        run: |
+          xcrun notarytool store-credentials "$APPLE_NOTARY_PROFILE" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --keychain "$KEYCHAIN"
+
+      - name: Notarize DMG
+        working-directory: macos
+        env:
+          # notarize.sh reads $NOTARY_PROFILE and takes the DMG path as $1.
+          NOTARY_PROFILE: ${{ secrets.APPLE_NOTARY_PROFILE }}
+        run: ./Scripts/notarize.sh "build/Jellify-${{ steps.version.outputs.version }}.dmg"
 
       # ------------------------------------------------------------------
       # Publish the release.
