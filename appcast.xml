@@ -1,0 +1,27 @@
+<?xml version="1.0" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Jellify</title>
+        <item>
+            <title>0.2.0-rc9</title>
+            <pubDate>Sat, 25 Apr 2026 11:20:56 +0000</pubDate>
+            <link>https://skalthoff.github.io/jellify-desktop/</link>
+            <sparkle:version>202604251111</sparkle:version>
+            <sparkle:shortVersionString>0.2.0-rc9</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify-0.2.0-rc9.dmg" length="6841918" type="application/octet-stream" sparkle:edSignature="0dcz6+KrXkj0sVuuc+i9kz8qob3D0vd7owmnk0xdvdspduUFC2HbPf/xFcZD9HfmvtSWYv7PuQx+jMrLduZtBA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604251111-202604241956.delta" sparkle:deltaFrom="202604241956" length="1856486" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="5fQJVqSvtx1o/QocRcLA0kiWiVgxL4cRLaoCEJYVZse18Q53GKi0sopM1vs4D0aITViuJJlf+PhYdvF7HEg+Ag=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
+            <title>0.1.0</title>
+            <pubDate>Sat, 25 Apr 2026 11:20:56 +0000</pubDate>
+            <link>https://skalthoff.github.io/jellify-desktop/</link>
+            <sparkle:version>202604241956</sparkle:version>
+            <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify-0.1.0.dmg" length="6993998" type="application/octet-stream" sparkle:edSignature="iWyvyXwibwwDRTdXWYHuN333IJzMoHe9h1Ln1/wuOp2F/uWHKtx6BD06aTxdAAyN6240fdC3us9Mm8Vr8FTqCQ=="/>
+        </item>
+    </channel>
+</rss>
