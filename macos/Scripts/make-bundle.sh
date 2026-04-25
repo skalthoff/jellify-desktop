@@ -120,9 +120,16 @@ cp "$EXE" "$APP/Contents/MacOS/Jellify"
 # Bundle.main, so no Swift-side change for the i18n path.
 RES_SRC="$MACOS/Sources/Jellify/Resources"
 if [[ -d "$RES_SRC" ]]; then
-    # Localizable.xcstrings sits at the root of Resources/.
-    if [[ -f "$RES_SRC/Localizable.xcstrings" ]]; then
-        cp "$RES_SRC/Localizable.xcstrings" "$APP/Contents/Resources/"
+    # Localizable.xcstrings is the source format. SwiftUI's
+    # LocalizedStringKey can't read xcstrings directly — it looks for
+    # compiled `<lang>.lproj/Localizable.strings` files. Compile via
+    # xcstringstool so the .app gets the runtime layout SwiftUI expects.
+    # Without this step, every LocalizedStringKey site falls through to
+    # rendering its lookup key (`auth.sign_in`, `app.name`, etc.).
+    if [[ -f "$RES_SRC/Localizable.xcstrings" ]] && command -v xcrun >/dev/null 2>&1; then
+        xcrun xcstringstool compile "$RES_SRC/Localizable.xcstrings" \
+            -o "$APP/Contents/Resources/" 2>/dev/null || \
+            cp "$RES_SRC/Localizable.xcstrings" "$APP/Contents/Resources/"
     fi
     # Fonts/*.otf — flatten into Contents/Resources/ so Bundle.main
     # finds them with `url(forResource: "Figtree-Bold", withExtension:
