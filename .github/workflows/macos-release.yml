@@ -28,7 +28,12 @@ permissions:
 jobs:
   build:
     name: Build, sign, notarize, publish
-    runs-on: macos-14
+    # macos-15 (Sequoia) ships Xcode 26.x which compiles Nuke 13.0.2
+    # cleanly. macos-14 only has up to Xcode 16.2, where dependency
+    # builds trip Sendable errors in Nuke 13. Regular CI's macOS job
+    # already runs on macos-15, so this keeps the release path on the
+    # same image as PR builds.
+    runs-on: macos-15
     env:
       # Resolve the tag from either push or workflow_dispatch. `github.ref_name`
       # for a tag push is the tag; for dispatch we take the input.
