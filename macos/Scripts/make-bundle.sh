@@ -104,24 +104,33 @@ mkdir -p "$APP/Contents/Resources"
 
 cp "$EXE" "$APP/Contents/MacOS/Jellify"
 
-# Copy SPM-processed resources (fonts + Localizable.xcstrings) into the
-# .app. SwiftPM's generated `resource_bundle_accessor.swift` resolves
-# the bundle via
-#   Bundle.main.bundleURL.appendingPathComponent("Jellify_Jellify.bundle")
-# For a .app, `Bundle.main.bundleURL` IS the .app directory itself, so
-# the resource bundle has to sit at the .app's TOP LEVEL — not inside
-# Contents/Resources/, which is the normal macOS convention. SwiftPM's
-# only fallback is the build-time location (e.g.
-# /Users/runner/.../Jellify_Jellify.bundle), which exists on the build
-# machine but not on any user's machine. Without the top-level copy the
-# app boots, hits resource_bundle_accessor.swift, and crashes with
-#   Fatal error: could not load resource bundle: from
-#   /Applications/Jellify.app/Jellify_Jellify.bundle or <runner path>
-# Keep AppIcon.icns under Contents/Resources/ (the macOS convention is
-# fine for that); only the SPM-generated bundle has to live at the root.
-BUNDLE="$BUILD_DIR/Jellify_Jellify.bundle"
-if [[ -d "$BUNDLE" ]]; then
-    cp -R "$BUNDLE" "$APP/"
+# Copy our resources straight into Contents/Resources/. We deliberately
+# do NOT use SPM's resource processing (`resources: [.process(...)]` in
+# Package.swift) because its generated accessor expects the bundle at
+# the .app top level, which violates macOS .app structure rules:
+#
+#   codesign refuses with "unsealed contents present in the bundle root"
+#   when anything other than Contents/ sits at the .app root.
+#
+# So `Sources/Jellify/Resources/{Fonts,Localizable.xcstrings,...}` ends
+# up under `Contents/Resources/` directly. Code that needs them reads
+# via `Bundle.main.url(forResource:withExtension:)` — see
+# `FontRegistration.register()` in Theme.swift. SwiftUI's
+# `LocalizedStringKey` auto-discovers Localizable.xcstrings in
+# Bundle.main, so no Swift-side change for the i18n path.
+RES_SRC="$MACOS/Sources/Jellify/Resources"
+if [[ -d "$RES_SRC" ]]; then
+    # Localizable.xcstrings sits at the root of Resources/.
+    if [[ -f "$RES_SRC/Localizable.xcstrings" ]]; then
+        cp "$RES_SRC/Localizable.xcstrings" "$APP/Contents/Resources/"
+    fi
+    # Fonts/*.otf — flatten into Contents/Resources/ so Bundle.main
+    # finds them with `url(forResource: "Figtree-Bold", withExtension:
+    # "otf")`. The pattern matches our existing CTFontManager call site
+    # which doesn't hunt subdirectories.
+    if [[ -d "$RES_SRC/Fonts" ]]; then
+        find "$RES_SRC/Fonts" -type f -name "*.otf" -exec cp {} "$APP/Contents/Resources/" \;
+    fi
 fi
 
 # Copy the app icon if it has been produced. This is intentionally soft:
@@ -150,6 +159,7 @@ if [[ -d "$SPARKLE_SRC" ]]; then
     # and kills the process on launch with "CODESIGNING Invalid Page" before
     # main runs. Re-seal ad-hoc here so dev builds launch; sign.sh supersedes
     # this with a real Developer ID signature for distribution.
+    #
     codesign --force --sign - "$APP/Contents/MacOS/Jellify"
 fi
 
