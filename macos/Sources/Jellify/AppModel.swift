@@ -589,10 +589,7 @@ final class AppModel {
             }
         ))
 
-        // Queue + download verbs. Both are placeholders today — the core
-        // lacks a `clear_queue` primitive and the download engine hasn't
-        // landed (#70). Kept in the roster so the discovery affordance
-        // surfaces them; the closures are no-ops for now.
+        // Queue verb — wired via core.clearQueue (#282).
         actions.append(PaletteAction(
             id: "queue.clear",
             title: "Clear Queue",
@@ -606,16 +603,18 @@ final class AppModel {
                 }
             }
         ))
-        actions.append(PaletteAction(
-            id: "download.current",
-            title: "Download Current",
-            symbol: "arrow.down.circle",
-            run: { [weak self] in
-                guard self?.status.currentTrack != nil else { return }
-                // TODO(#70): wire to the download engine once it lands.
-                print("[AppModel] Download Current — not yet wired (see #70)")
-            }
-        ))
+        if supportsDownloads {
+            actions.append(PaletteAction(
+                id: "download.current",
+                title: "Download Current",
+                symbol: "arrow.down.circle",
+                run: { [weak self] in
+                    guard self?.status.currentTrack != nil else { return }
+                    // TODO(#70): wire to the download engine once it lands.
+                    print("[AppModel] Download Current — not yet wired (see #70)")
+                }
+            ))
+        }
 
         return actions
     }

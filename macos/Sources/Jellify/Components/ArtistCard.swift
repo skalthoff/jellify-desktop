@@ -51,23 +51,25 @@ struct ArtistCard: View {
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
 
-                    Button { model.playAll(artist: artist) } label: {
-                        Image(systemName: "play.fill")
-                            .foregroundStyle(.white)
-                            .font(.system(size: 16))
-                            .frame(width: 40, height: 40)
-                            .background(Circle().fill(Theme.primary))
-                            .shadow(color: Theme.primary.opacity(0.5), radius: 10, y: 4)
+                    if model.supportsArtistPlayShuffle {
+                        Button { model.playAll(artist: artist) } label: {
+                            Image(systemName: "play.fill")
+                                .foregroundStyle(.white)
+                                .font(.system(size: 16))
+                                .frame(width: 40, height: 40)
+                                .background(Circle().fill(Theme.primary))
+                                .shadow(color: Theme.primary.opacity(0.5), radius: 10, y: 4)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
+                        .opacity(isHovering ? 1 : 0)
+                        .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
+                        // Hover overlay doesn't show for a non-mouse user, so
+                        // make sure VoiceOver can find the play affordance by
+                        // name. See #331.
+                        .accessibilityLabel("Play all tracks by \(artist.name)")
                     }
-                    .buttonStyle(.plain)
-                    .padding(8)
-                    .opacity(isHovering ? 1 : 0)
-                    .offset(y: reduceMotion ? 0 : (isHovering ? 0 : 8))
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isHovering)
-                    // Hover overlay doesn't show for a non-mouse user, so
-                    // make sure VoiceOver can find the play affordance by
-                    // name. See #331.
-                    .accessibilityLabel("Play all tracks by \(artist.name)")
                 }
 
                 VStack(alignment: .leading, spacing: 2) {

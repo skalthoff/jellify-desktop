@@ -162,7 +162,7 @@ struct SearchView: View {
     private var scopeRow: some View {
         @Bindable var model = model
         HStack(spacing: 8) {
-            ForEach(SearchScope.allCases, id: \.self) { scope in
+            ForEach(visibleScopes, id: \.self) { scope in
                 Chip(
                     label: scope.label,
                     isActive: model.activeSearchScope == scope,
@@ -282,8 +282,11 @@ struct SearchView: View {
     @ViewBuilder
     private var sectionedResults: some View {
         VStack(alignment: .leading, spacing: 28) {
+            let allScopes: [SearchScope] = model.supportsGenreActions
+                ? [.artists, .albums, .tracks, .playlists, .genres]
+                : [.artists, .albums, .tracks, .playlists]
             let scopes = model.activeSearchScope == .all
-                ? [SearchScope.artists, .albums, .tracks, .playlists, .genres]
+                ? allScopes
                 : [model.activeSearchScope]
             ForEach(scopes, id: \.self) { scope in
                 SectionView(
@@ -296,6 +299,16 @@ struct SearchView: View {
                 )
             }
         }
+    }
+
+    /// Scope chips to render in the chip row. Drops `.genres` when the
+    /// genre actions feature is hidden so users can't navigate to a scope
+    /// where every action is a stub.
+    private var visibleScopes: [SearchScope] {
+        if model.supportsGenreActions {
+            return SearchScope.allCases
+        }
+        return SearchScope.allCases.filter { $0 != .genres }
     }
 
     private func bucket(for scope: SearchScope) -> [SearchItem] {

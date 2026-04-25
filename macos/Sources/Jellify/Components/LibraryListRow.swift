@@ -45,7 +45,7 @@ struct LibraryListRow: View {
                         size: 40,
                         radius: artworkRadius
                     )
-                    if isHovering {
+                    if isHovering, showPlayHover {
                         Button(action: playPrimary) {
                             Image(systemName: "play.fill")
                                 .foregroundStyle(.white)
@@ -250,6 +250,16 @@ struct LibraryListRow: View {
             model.playAll(artist: artist)
         case .playlist(let playlist):
             model.play(playlist: playlist)
+        }
+    }
+
+    /// Hide the inline hover-play button when the row's primary action would
+    /// hit a stub (artist rows depend on `supportsArtistPlayShuffle`).
+    /// Album / Playlist rows always show it.
+    private var showPlayHover: Bool {
+        switch payload {
+        case .album, .playlist: return true
+        case .artist: return model.supportsArtistPlayShuffle
         }
     }
 

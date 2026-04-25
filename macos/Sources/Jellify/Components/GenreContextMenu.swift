@@ -23,20 +23,25 @@ struct GenreContextMenu: View {
     let genre: String
 
     var body: some View {
-        Button("Browse genre", systemImage: "square.grid.2x2") {
-            model.browseGenre(genre: genre)
-        }
-        Button("Start genre radio", systemImage: "dot.radiowaves.left.and.right") {
-            model.startGenreRadio(genre: genre)
-        }
-        Button("Shuffle genre", systemImage: "shuffle") {
-            model.shuffleGenre(genre: genre)
-        }
+        // Every entry in this menu is gated on FFIs that don't ship in 0.2
+        // (#144 / #248 / #318). When `supportsGenreActions` flips on per
+        // feature these will come back individually.
+        if model.supportsGenreActions {
+            Button("Browse genre", systemImage: "square.grid.2x2") {
+                model.browseGenre(genre: genre)
+            }
+            Button("Start genre radio", systemImage: "dot.radiowaves.left.and.right") {
+                model.startGenreRadio(genre: genre)
+            }
+            Button("Shuffle genre", systemImage: "shuffle") {
+                model.shuffleGenre(genre: genre)
+            }
 
-        Divider()
+            Divider()
 
-        Button("Pin to Home", systemImage: "pin") {
-            model.pinGenreToHome(genre: genre)
+            Button("Pin to Home", systemImage: "pin") {
+                model.pinGenreToHome(genre: genre)
+            }
         }
     }
 }

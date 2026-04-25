@@ -220,11 +220,14 @@ struct AlbumDetailView: View {
         .accessibilityLabel("Start album radio")
     }
 
+    @ViewBuilder
     private var downloadButton: some View {
-        secondaryCTA(icon: "arrow.down.circle", label: "Download") {
-            if let album = album { model.enqueueDownload(album: album) }
+        if model.supportsDownloads {
+            secondaryCTA(icon: "arrow.down.circle", label: "Download") {
+                if let album = album { model.enqueueDownload(album: album) }
+            }
+            .accessibilityLabel("Download album")
         }
-        .accessibilityLabel("Download album")
     }
 
     private var favouriteButton: some View {
