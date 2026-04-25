@@ -91,7 +91,7 @@ struct PlayerBar: View {
             .accessibilityLabel("Now Playing: \(track.name) by \(track.artistName)")
             .accessibilityHint("Shows track details")
         } else {
-            Text("Nothing playing")
+            Text("player.nothing_playing")
                 .font(Theme.font(12, weight: .medium))
                 .foregroundStyle(Theme.ink3)
         }

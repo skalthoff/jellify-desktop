@@ -25,12 +25,14 @@ struct Sidebar: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(LinearGradient(colors: [Theme.teal, Theme.primary], startPoint: .topLeading, endPoint: .bottomTrailing))
                     .frame(width: 30, height: 30)
-                    .overlay(Text("🪼").font(.system(size: 16)))
+                    // Emoji rendered verbatim — a jellyfish is a jellyfish in
+                    // every locale; no catalog entry needed.
+                    .overlay(Text(verbatim: "🪼").font(.system(size: 16)))
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Jellify")
+                    Text("app.name")
                         .font(Theme.font(15, weight: .black, italic: true))
                         .foregroundStyle(Theme.ink)
-                    Text("DESKTOP")
+                    Text("app.subtitle.desktop")
                         .font(Theme.font(9, weight: .bold))
                         .foregroundStyle(Theme.ink3)
                         .tracking(1.5)
@@ -43,24 +45,24 @@ struct Sidebar: View {
 
             // Primary nav
             VStack(alignment: .leading, spacing: 2) {
-                navItem("house", label: "Home", screen: .home)
-                navItem("music.note.list", label: "Library", screen: .library)
-                navItem("magnifyingglass", label: "Search", screen: .search)
+                navItem("house", label: "sidebar.nav.home", screen: .home)
+                navItem("music.note.list", label: "sidebar.nav.library", screen: .library)
+                navItem("magnifyingglass", label: "sidebar.nav.search", screen: .search)
             }
             .padding(.horizontal, 10)
 
             // Stats header. Keep the aggregate "Albums / Artists / Playlists"
             // summary rows above the playlist list so the count glance stays
             // in place; the playlist list lives as its own section below.
-            sectionHeader("Your Library")
+            sectionHeader("sidebar.section.your_library")
             VStack(alignment: .leading, spacing: 2) {
                 // "Favorites" has no dedicated surface yet — route to the
                 // library's default tab for now so the row isn't a dead
                 // click (follow-up: dedicated favorites tab, #133).
-                libRow("heart", label: "Favorites", count: nil, tab: .albums)
-                libRow("square.stack", label: "Albums", count: UInt32(model.albums.count), tab: .albums)
-                libRow("person.crop.circle", label: "Artists", count: UInt32(model.artists.count), tab: .artists)
-                libRow("music.note.list", label: "Playlists", count: UInt32(model.playlists.count), tab: .playlists)
+                libRow("heart", label: "sidebar.stats.favorites", count: nil, tab: .albums)
+                libRow("square.stack", label: "sidebar.stats.albums", count: UInt32(model.albums.count), tab: .albums)
+                libRow("person.crop.circle", label: "sidebar.stats.artists", count: UInt32(model.artists.count), tab: .artists)
+                libRow("music.note.list", label: "sidebar.stats.playlists", count: UInt32(model.playlists.count), tab: .playlists)
             }
             .padding(.horizontal, 10)
 
@@ -253,7 +255,7 @@ struct Sidebar: View {
     }
 
     @ViewBuilder
-    private func navItem(_ icon: String, label: String, screen: AppModel.Screen) -> some View {
+    private func navItem(_ icon: String, label: LocalizedStringKey, screen: AppModel.Screen) -> some View {
         let active = model.screen == screen
         Button { model.screen = screen } label: {
             HStack(spacing: 10) {
@@ -292,7 +294,12 @@ struct Sidebar: View {
     }
 
     @ViewBuilder
-    private func libRow(_ icon: String, label: String, count: UInt32?, tab: LibraryTab) -> some View {
+    private func libRow(
+        _ icon: String,
+        label: LocalizedStringKey,
+        count: UInt32?,
+        tab: LibraryTab
+    ) -> some View {
         Button {
             // Set the requested library tab before flipping the screen so the
             // Library view reads the right chip on its first render. See
@@ -323,13 +330,18 @@ struct Sidebar: View {
         // Combine icon + label + count into one VoiceOver utterance so the
         // row reads as "Albums, 42" rather than three separate fragments.
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(count.map { "\(label), \($0)" } ?? label)
+        .accessibilityLabel(label)
         .accessibilityAddTraits(.isButton)
     }
 
     @ViewBuilder
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title.uppercased())
+    private func sectionHeader(_ title: LocalizedStringKey) -> some View {
+        // The header reads as uppercase in the rendered frame via the heavy
+        // tracking + smallcap feel; we no longer force `.uppercased()` here
+        // because doing so would mangle non-Latin scripts (Arabic, CJK)
+        // that have no case distinction. The catalog entries already ship
+        // the English label in uppercase.
+        Text(title)
             .font(Theme.font(10, weight: .bold))
             .foregroundStyle(Theme.ink3)
             .tracking(1.5)

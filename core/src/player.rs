@@ -183,6 +183,57 @@ impl Player {
         }
     }
 
+    /// Insert `tracks` into the queue immediately after the currently-playing
+    /// entry without disturbing what's already playing. "Play Next" semantics,
+    /// matching Apple Music / Spotify. No-op when the queue is empty — the
+    /// caller should fall back to [`Player::set_queue`] for that case so the
+    /// playhead actually starts.
+    ///
+    /// Returns the new queue length. Closes #282 for the Play Next flows
+    /// (album / playlist / track context menu, Up Next panel drag-drop).
+    pub fn insert_next(&self, tracks: Vec<Track>) -> u32 {
+        let mut s = self.shared.lock();
+        if s.queue.is_empty() || tracks.is_empty() {
+            // Nothing currently playing — the caller is better served by
+            // `set_queue` which also primes `current`. Return the queue's
+            // untouched length so the caller can detect the no-op.
+            return s.queue.len() as u32;
+        }
+        let insert_at = (s.queue_index + 1).min(s.queue.len());
+        s.queue.splice(insert_at..insert_at, tracks);
+        s.queue.len() as u32
+    }
+
+    /// Append `tracks` to the end of the queue without touching the playhead.
+    /// "Add to Queue" semantics. No-op when `tracks` is empty.
+    ///
+    /// Returns the new queue length. Closes #282 for Add-to-Queue flows.
+    pub fn append_to_queue(&self, tracks: Vec<Track>) -> u32 {
+        let mut s = self.shared.lock();
+        if tracks.is_empty() {
+            return s.queue.len() as u32;
+        }
+        s.queue.extend(tracks);
+        s.queue.len() as u32
+    }
+
+    /// Replace the queue with an empty vec. Distinct from [`Player::clear`]
+    /// (which only wipes the active-playback bookkeeping) so the UI can offer
+    /// a "Clear Up Next" action without stopping playback of the current
+    /// track. Leaves the currently playing track intact as a single-item
+    /// queue so subsequent `skip_next` correctly reports `None` rather than
+    /// falling off a zero-length vec.
+    pub fn clear_queue(&self) {
+        let mut s = self.shared.lock();
+        if let Some(current) = s.current.clone() {
+            s.queue = vec![current];
+            s.queue_index = 0;
+        } else {
+            s.queue.clear();
+            s.queue_index = 0;
+        }
+    }
+
     pub fn set_current(&self, track: Track) {
         let mut s = self.shared.lock();
         s.current = Some(track);
@@ -266,6 +317,7 @@ mod tests {
             bitrate: None,
             image_tag: None,
             playlist_item_id: None,
+            user_data: None,
         }
     }
 
@@ -411,5 +463,106 @@ mod tests {
             "skip_previous at start should return None"
         );
         assert_eq!(player.status().current_track.unwrap().id, "a");
+    }
+
+    // ---- #282: insert_next / append_to_queue / clear_queue ----
+
+    #[test]
+    fn insert_next_puts_tracks_right_after_current() {
+        let player = Player::new();
+        player
+            .set_queue(vec![track("a"), track("b"), track("c")], 0)
+            .unwrap();
+
+        let new_len = player.insert_next(vec![track("x"), track("y")]);
+
+        assert_eq!(new_len, 5, "queue length after insert_next");
+        // Current stays on "a"; skip_next should now land on "x", then "y",
+        // then the original "b".
+        assert_eq!(player.status().current_track.unwrap().id, "a");
+        assert_eq!(player.skip_next().unwrap().id, "x");
+        assert_eq!(player.skip_next().unwrap().id, "y");
+        assert_eq!(player.skip_next().unwrap().id, "b");
+    }
+
+    #[test]
+    fn insert_next_at_end_appends_after_current_and_allows_skip_next() {
+        let player = Player::new();
+        player.set_queue(vec![track("a")], 0).unwrap();
+        let new_len = player.insert_next(vec![track("x")]);
+        assert_eq!(new_len, 2);
+        assert_eq!(player.skip_next().unwrap().id, "x");
+    }
+
+    #[test]
+    fn insert_next_on_empty_queue_is_noop() {
+        let player = Player::new();
+        let new_len = player.insert_next(vec![track("x")]);
+        assert_eq!(new_len, 0, "no current track => insert_next must no-op");
+        assert!(player.status().current_track.is_none());
+    }
+
+    #[test]
+    fn insert_next_with_empty_tracks_is_noop() {
+        let player = Player::new();
+        player.set_queue(vec![track("a"), track("b")], 0).unwrap();
+        let new_len = player.insert_next(vec![]);
+        assert_eq!(new_len, 2);
+        assert_eq!(player.skip_next().unwrap().id, "b");
+    }
+
+    #[test]
+    fn append_to_queue_adds_at_end_without_disturbing_current() {
+        let player = Player::new();
+        player.set_queue(vec![track("a"), track("b")], 0).unwrap();
+
+        let new_len = player.append_to_queue(vec![track("x"), track("y")]);
+
+        assert_eq!(new_len, 4);
+        assert_eq!(player.status().current_track.unwrap().id, "a");
+        assert_eq!(player.skip_next().unwrap().id, "b");
+        assert_eq!(player.skip_next().unwrap().id, "x");
+        assert_eq!(player.skip_next().unwrap().id, "y");
+    }
+
+    #[test]
+    fn append_to_queue_on_empty_queue_just_extends() {
+        let player = Player::new();
+        let new_len = player.append_to_queue(vec![track("x"), track("y")]);
+        // `append_to_queue` does not prime `current`; that's `set_queue`'s job.
+        assert_eq!(new_len, 2);
+        assert!(player.status().current_track.is_none());
+    }
+
+    #[test]
+    fn append_to_queue_with_empty_tracks_is_noop() {
+        let player = Player::new();
+        player.set_queue(vec![track("a")], 0).unwrap();
+        let new_len = player.append_to_queue(vec![]);
+        assert_eq!(new_len, 1);
+    }
+
+    #[test]
+    fn clear_queue_keeps_current_track_as_single_entry() {
+        let player = Player::new();
+        player
+            .set_queue(vec![track("a"), track("b"), track("c")], 1)
+            .unwrap();
+        player.clear_queue();
+
+        let status = player.status();
+        assert_eq!(status.current_track.unwrap().id, "b");
+        assert_eq!(status.queue_length, 1);
+        assert_eq!(status.queue_position, 0);
+        // skip_next should now return None — nothing left after "b".
+        assert!(player.skip_next().is_none());
+    }
+
+    #[test]
+    fn clear_queue_on_empty_player_stays_empty() {
+        let player = Player::new();
+        player.clear_queue();
+        assert_eq!(player.status().queue_length, 0);
+        assert!(player.status().current_track.is_none());
     }
 }

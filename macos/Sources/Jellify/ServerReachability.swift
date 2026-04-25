@@ -73,36 +73,24 @@ final class ServerReachability {
 
     /// Decide whether a thrown error should be treated as a server-reachability
     /// failure. Returns `true` for network-level errors (connection refused,
-    /// timeout) and for HTTP 5xx responses from the server. 4xx responses are
-    /// *not* treated as reachability failures — they signal a client/auth
-    /// problem, not that the endpoint is down.
+    /// timeout), HTTP 5xx responses from the server, and 429 rate-limit
+    /// responses. 401/403/404 responses are *not* treated as reachability
+    /// failures — they signal a client/auth problem, not that the endpoint
+    /// is down.
+    ///
+    /// Post-BATCH-24 the Rust `JellifyError` is a typed enum split by HTTP
+    /// class, so we no longer need to parse the legacy
+    /// `"server returned an error: <status> <body>"` message to recover the
+    /// status code. `Server` now carries only 5xx / unclassified failures
+    /// (401/403/404/429 have their own variants).
     static func shouldCount(error: Error) -> Bool {
         guard let err = error as? JellifyError else { return false }
         switch err {
-        case .Network:
+        case .Network, .Server, .RateLimit:
             return true
-        case .Server(let message):
-            return is5xx(message: message)
         default:
             return false
         }
-    }
-
-    /// Parse a server error message of the form
-    /// `"server returned an error: <status> <body>"` and return `true` when
-    /// `<status>` is in the 500–599 range.
-    private static func is5xx(message: String) -> Bool {
-        // The Rust side formats `Server` via
-        // `#[error("server returned an error: {status} {message}")]`, so the
-        // status lives as the first token after the fixed prefix.
-        let prefix = "server returned an error: "
-        guard let range = message.range(of: prefix) else {
-            return false
-        }
-        let tail = message[range.upperBound...]
-        let statusToken = tail.prefix { !$0.isWhitespace }
-        guard let status = Int(statusToken) else { return false }
-        return (500...599).contains(status)
     }
 }
 

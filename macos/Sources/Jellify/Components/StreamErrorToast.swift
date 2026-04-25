@@ -62,7 +62,7 @@ struct StreamErrorToast: View {
             Spacer(minLength: 12)
 
             Button(action: onRetry) {
-                Text("Retry")
+                Text("common.retry")
                     .font(Theme.font(12, weight: .bold))
                     .foregroundStyle(Theme.ink)
                     .padding(.horizontal, 12)
@@ -77,17 +77,17 @@ struct StreamErrorToast: View {
                     )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Retry playing \(trackName)")
+            .accessibilityLabel("stream.error.retry.a11y")
 
             Button(action: onGoToTrack) {
-                Text("Go to track")
+                Text("stream.error.go_to_track")
                     .font(Theme.font(12, weight: .semibold))
                     .foregroundStyle(Theme.ink2)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Go to \(trackName)")
+            .accessibilityLabel(Text("stream.error.go_to_track"))
 
             if let onDismiss {
                 Button(action: onDismiss) {
@@ -97,7 +97,7 @@ struct StreamErrorToast: View {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Dismiss")
+                .accessibilityLabel("common.dismiss.a11y")
             }
         }
         .padding(.horizontal, 16)

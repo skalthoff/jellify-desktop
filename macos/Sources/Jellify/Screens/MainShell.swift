@@ -45,7 +45,7 @@ struct MainShell: View {
         // (SwiftUI elides hidden buttons from the responder chain), so the
         // button has a 1×1 clear frame that stays non-interactive.
         .background(
-            Button("Toggle Queue Inspector") { model.toggleQueueInspector() }
+            Button("menu.view.toggle_queue") { model.toggleQueueInspector() }
                 .keyboardShortcut("q", modifiers: [.command, .option])
                 .frame(width: 0, height: 0)
                 .opacity(0)
@@ -73,10 +73,17 @@ struct MainShell: View {
             titleVisibility: .visible,
             presenting: model.playlistPendingDelete
         ) { _ in
-            Button("Delete", role: .destructive) { model.performDeletePending() }
-            Button("Cancel", role: .cancel) { model.cancelDeletePending() }
+            Button("common.delete", role: .destructive) { model.performDeletePending() }
+            Button("common.cancel", role: .cancel) { model.cancelDeletePending() }
         } message: { playlist in
-            Text("This will permanently delete \"\(playlist.name)\". This action cannot be undone.")
+            // Playlist name is user data — interpolate without attempting to
+            // localize it. The surrounding "This will permanently delete … "
+            // scaffolding lives in the catalog under `playlist.delete.message`;
+            // we prepend the name in quotes so the dialog still echoes which
+            // playlist is about to be deleted, then show the localized
+            // explainer on the next line.
+            Text(verbatim: "\u{201C}\(playlist.name)\u{201D}\n")
+                + Text("playlist.delete.message")
         }
     }
 

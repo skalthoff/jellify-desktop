@@ -1,5 +1,7 @@
+use crate::enums::{self, ImageType, ItemField, ItemKind, ItemSortBy, SortOrder};
 use crate::error::{JellifyError, Result};
 use crate::models::*;
+use crate::query::ItemsQuery;
 use parking_lot::Mutex;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use reqwest::{Client as HttpClient, RequestBuilder, Response, StatusCode};
@@ -8,6 +10,17 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use url::Url;
+
+/// A generic paginated wrapper used by [`ItemsQuery`] before the raw items
+/// are mapped to a concrete model type. Mirrors the shape of the per-model
+/// `PaginatedAlbums` / `PaginatedArtists` / etc. records, but generic over
+/// the element type so the query layer doesn't need to know which model
+/// the caller wants.
+#[derive(Clone, Debug)]
+pub struct PaginatedItems<T> {
+    pub items: Vec<T>,
+    pub total_count: u32,
+}
 
 const CLIENT_NAME: &str = "Jellify Desktop";
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -176,7 +189,7 @@ impl JellyfinClient {
         Ok(headers)
     }
 
-    fn endpoint(&self, path: &str) -> Result<Url> {
+    pub(crate) fn endpoint(&self, path: &str) -> Result<Url> {
         let trimmed = path.trim_start_matches('/');
         self.base_url.join(trimmed).map_err(Into::into)
     }
@@ -193,16 +206,15 @@ impl JellyfinClient {
     }
 
     async fn check(resp: Response) -> Result<Response> {
-        let status = resp.status();
-        if status.is_success() {
-            Ok(resp)
-        } else {
-            let message = resp.text().await.unwrap_or_default();
-            Err(JellifyError::Server {
-                status: status.as_u16(),
-                message,
-            })
-        }
+        check_response(resp).await
+    }
+
+    /// Build and issue a raw [`ItemsQuery`] against this client. Convenience
+    /// passthrough for [`ItemsQuery::execute`] so callers can write
+    /// `client.query().item_types(...).limit(...).execute().await` without
+    /// importing the query module directly.
+    pub fn query(&self) -> ItemsQuery {
+        ItemsQuery::new()
     }
 
     /// Is the HTTP status worth retrying?
@@ -395,6 +407,15 @@ impl JellyfinClient {
         Self::check(resp).await
     }
 
+    /// GET the given URL through the retry + silent re-auth pipeline, returning
+    /// the successful response. Used by [`crate::query::ItemsQuery::execute`]
+    /// so builder-driven calls participate in the same 401 refresh and backoff
+    /// semantics as the per-endpoint methods in this file.
+    pub(crate) async fn send_get(&self, url: Url) -> Result<Response> {
+        self.send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
+            .await
+    }
+
     /// Silent re-auth hook. Invokes the registered [`RefreshTokenFn`] (if
     /// any) and, on success, swaps the client's in-memory token so the
     /// next attempt picks it up via [`Self::auth_header`].
@@ -485,6 +506,11 @@ impl JellyfinClient {
             .user_id
             .as_ref()
             .ok_or(JellifyError::NotAuthenticated)?;
+        // `Artists/AlbumArtists` is a dedicated endpoint, not a standard
+        // `/Items` query, so we issue the request directly rather than
+        // going through [`ItemsQuery::execute`]. We still format the params
+        // via the typed enum helpers so the set of allowed values lives in
+        // one place.
         let mut url = self.endpoint("Artists/AlbumArtists")?;
         {
             let mut q = url.query_pairs_mut();
@@ -500,9 +526,15 @@ impl JellyfinClient {
             // endpoint returns the full artist list.
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("SortBy", "SortName");
-            q.append_pair("SortOrder", "Ascending");
-            q.append_pair("Fields", "Genres,PrimaryImageAspectRatio");
+            q.append_pair("SortBy", ItemSortBy::SortName.as_str());
+            q.append_pair("SortOrder", SortOrder::Ascending.as_str());
+            q.append_pair(
+                "Fields",
+                &enums::csv(
+                    &[ItemField::Genres, ItemField::PrimaryImageAspectRatio],
+                    ItemField::as_str,
+                ),
+            );
             q.append_pair("EnableUserData", "true");
             q.append_pair("EnableImages", "true");
             q.append_pair("ImageTypeLimit", "1");
@@ -518,35 +550,24 @@ impl JellyfinClient {
     }
 
     pub async fn albums(&self, paging: Paging) -> Result<PaginatedAlbums> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "MusicAlbum");
-            q.append_pair("Limit", &paging.limit.max(1).to_string());
-            q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("SortBy", "SortName");
-            q.append_pair("SortOrder", "Ascending");
-            q.append_pair(
-                "Fields",
-                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
-            );
-            q.append_pair("EnableUserData", "true");
-            q.append_pair("EnableImages", "true");
-            q.append_pair("ImageTypeLimit", "1");
-        }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
-            .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
-        Ok(PaginatedAlbums {
-            items: raw.items.into_iter().map(Album::from).collect(),
-            total_count: raw.total_record_count,
-        })
+        // Thin wrapper over the typed `ItemsQuery` builder — kept for
+        // backwards compatibility with existing call sites. New code should
+        // prefer `client.query().item_types(...).fetch_albums(...)` directly.
+        ItemsQuery::new()
+            .recursive()
+            .item_types(vec![ItemKind::MusicAlbum])
+            .limit(paging.limit)
+            .offset(paging.offset)
+            .sort(ItemSortBy::SortName, SortOrder::Ascending)
+            .fields(vec![
+                ItemField::Genres,
+                ItemField::ProductionYear,
+                ItemField::ChildCount,
+                ItemField::PrimaryImageAspectRatio,
+            ])
+            .enable_user_data()
+            .fetch_albums(self)
+            .await
     }
 
     /// Every album where the given artist is the primary (album) artist,
@@ -568,36 +589,22 @@ impl JellyfinClient {
         artist_id: &str,
         paging: Paging,
     ) -> Result<PaginatedAlbums> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            q.append_pair("AlbumArtistIds", artist_id);
-            q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "MusicAlbum");
-            q.append_pair("Limit", &paging.limit.max(1).to_string());
-            q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("SortBy", "SortName");
-            q.append_pair("SortOrder", "Ascending");
-            q.append_pair(
-                "Fields",
-                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
-            );
-            q.append_pair("EnableUserData", "true");
-            q.append_pair("EnableImages", "true");
-            q.append_pair("ImageTypeLimit", "1");
-        }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
-            .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
-        Ok(PaginatedAlbums {
-            items: raw.items.into_iter().map(Album::from).collect(),
-            total_count: raw.total_record_count,
-        })
+        ItemsQuery::new()
+            .recursive()
+            .album_artist(artist_id)
+            .item_types(vec![ItemKind::MusicAlbum])
+            .limit(paging.limit)
+            .offset(paging.offset)
+            .sort(ItemSortBy::SortName, SortOrder::Ascending)
+            .fields(vec![
+                ItemField::Genres,
+                ItemField::ProductionYear,
+                ItemField::ChildCount,
+                ItemField::PrimaryImageAspectRatio,
+            ])
+            .enable_user_data()
+            .fetch_albums(self)
+            .await
     }
 
     /// Fetch the most recently added albums in a library, respecting the
@@ -641,12 +648,20 @@ impl JellyfinClient {
             let mut q = url.query_pairs_mut();
             q.append_pair("UserId", user_id);
             q.append_pair("ParentId", library_id);
-            q.append_pair("IncludeItemTypes", "MusicAlbum");
+            q.append_pair("IncludeItemTypes", ItemKind::MusicAlbum.as_str());
             q.append_pair("Limit", &server_limit.to_string());
             q.append_pair("GroupItems", "true");
             q.append_pair(
                 "Fields",
-                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
+                &enums::csv(
+                    &[
+                        ItemField::Genres,
+                        ItemField::ProductionYear,
+                        ItemField::ChildCount,
+                        ItemField::PrimaryImageAspectRatio,
+                    ],
+                    ItemField::as_str,
+                ),
             );
             q.append_pair("EnableUserData", "true");
             q.append_pair("EnableImages", "true");
@@ -687,38 +702,25 @@ impl JellyfinClient {
         music_library_id: Option<&str>,
         paging: Paging,
     ) -> Result<PaginatedTracks> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            if let Some(parent) = music_library_id {
-                q.append_pair("ParentId", parent);
-            }
-            q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "Audio");
-            q.append_pair("Limit", &paging.limit.max(1).to_string());
-            q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("SortBy", "SortName");
-            q.append_pair("SortOrder", "Ascending");
-            q.append_pair(
-                "Fields",
-                "ParentId,AlbumId,AlbumArtist,Artists,ProductionYear,RunTimeTicks",
-            );
-            q.append_pair("EnableUserData", "true");
-            q.append_pair("EnableImages", "true");
-            q.append_pair("ImageTypeLimit", "1");
+        let mut q = ItemsQuery::new()
+            .recursive()
+            .item_types(vec![ItemKind::Audio])
+            .limit(paging.limit)
+            .offset(paging.offset)
+            .sort(ItemSortBy::SortName, SortOrder::Ascending)
+            .fields(vec![
+                ItemField::ParentId,
+                ItemField::AlbumId,
+                ItemField::AlbumArtist,
+                ItemField::Artists,
+                ItemField::ProductionYear,
+                ItemField::RunTimeTicks,
+            ])
+            .enable_user_data();
+        if let Some(parent) = music_library_id {
+            q = q.parent(parent);
         }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
-            .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
-        Ok(PaginatedTracks {
-            items: raw.items.into_iter().map(Track::from).collect(),
-            total_count: raw.total_record_count,
-        })
+        q.fetch_tracks(self).await
     }
 
     /// Recently played audio tracks for the current user, sorted by
@@ -734,38 +736,24 @@ impl JellyfinClient {
         music_library_id: Option<&str>,
         paging: Paging,
     ) -> Result<PaginatedTracks> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            if let Some(parent) = music_library_id {
-                q.append_pair("ParentId", parent);
-            }
-            q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "Audio");
-            q.append_pair("Limit", &paging.limit.max(1).to_string());
-            q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("SortBy", "DatePlayed");
-            q.append_pair("SortOrder", "Descending");
-            q.append_pair(
-                "Fields",
-                "ParentId,MediaSources,UserData,ProductionYear,PrimaryImageAspectRatio",
-            );
-            q.append_pair("EnableUserData", "true");
-            q.append_pair("EnableImages", "true");
-            q.append_pair("ImageTypeLimit", "1");
+        let mut q = ItemsQuery::new()
+            .recursive()
+            .item_types(vec![ItemKind::Audio])
+            .limit(paging.limit)
+            .offset(paging.offset)
+            .sort(ItemSortBy::DatePlayed, SortOrder::Descending)
+            .fields(vec![
+                ItemField::ParentId,
+                ItemField::MediaSources,
+                ItemField::UserData,
+                ItemField::ProductionYear,
+                ItemField::PrimaryImageAspectRatio,
+            ])
+            .enable_user_data();
+        if let Some(parent) = music_library_id {
+            q = q.parent(parent);
         }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
-            .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
-        Ok(PaginatedTracks {
-            items: raw.items.into_iter().map(Track::from).collect(),
-            total_count: raw.total_record_count,
-        })
+        q.fetch_tracks(self).await
     }
 
     /// Fetch every playlist visible to the current user under the given
@@ -825,6 +813,11 @@ impl JellyfinClient {
         playlist_library_id: &str,
         paging: Paging,
     ) -> Result<RawItems<RawItem>> {
+        // Like `playlist_tracks`, this endpoint pins the bare `/Items` path
+        // with an explicit `UserId` query param (rather than
+        // `/Users/{id}/Items`) so we issue the request directly rather than
+        // through `ItemsQuery::execute`. Field names still come from the
+        // typed enums.
         let user_id = self
             .user_id
             .as_ref()
@@ -834,10 +827,13 @@ impl JellyfinClient {
             let mut q = url.query_pairs_mut();
             q.append_pair("ParentId", playlist_library_id);
             q.append_pair("UserId", user_id);
-            q.append_pair("IncludeItemTypes", "Playlist");
+            q.append_pair("IncludeItemTypes", ItemKind::Playlist.as_str());
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("Fields", "ChildCount,Path");
+            q.append_pair(
+                "Fields",
+                &enums::csv(&[ItemField::ChildCount, ItemField::Path], ItemField::as_str),
+            );
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -870,6 +866,17 @@ impl JellyfinClient {
         playlist_id: &str,
         paging: Paging,
     ) -> Result<PaginatedTracks> {
+        // Note: we intentionally do NOT pass `SortBy`/`SortOrder` here —
+        // playlists are ordered collections and Jellyfin returns items in
+        // their stored order when no sort is specified. The test asserts on
+        // the absence of those params.
+        //
+        // Also note: the original call site used the bare `/Items` endpoint
+        // with an explicit `UserId=...` query param rather than the
+        // `/Users/{id}/Items` form `ItemsQuery::execute` dispatches to.
+        // We preserve that by hand-rolling the URL here so the test that
+        // pins `query_param("ParentId", ...)` against the bare `/Items`
+        // path keeps matching.
         let user_id = self
             .user_id
             .as_ref()
@@ -879,12 +886,21 @@ impl JellyfinClient {
             let mut q = url.query_pairs_mut();
             q.append_pair("ParentId", playlist_id);
             q.append_pair("UserId", user_id);
-            q.append_pair("IncludeItemTypes", "Audio");
+            q.append_pair("IncludeItemTypes", ItemKind::Audio.as_str());
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
             q.append_pair(
                 "Fields",
-                "MediaSources,ParentId,Path,PlaylistItemId,SortName",
+                &enums::csv(
+                    &[
+                        ItemField::MediaSources,
+                        ItemField::ParentId,
+                        ItemField::Path,
+                        ItemField::PlaylistItemId,
+                        ItemField::SortName,
+                    ],
+                    ItemField::as_str,
+                ),
             );
         }
         let resp = self
@@ -945,6 +961,13 @@ impl JellyfinClient {
     }
 
     pub async fn album_tracks(&self, album_id: &str) -> Result<Vec<Track>> {
+        // `album_tracks` returns the flat `Vec<Track>` the callers expect
+        // (no total count — album children fit in a single page), so we
+        // don't use `fetch_tracks`. `SortBy=ParentIndexNumber,IndexNumber,
+        // SortName` is hand-built because `ItemSortBy` doesn't have a
+        // `ParentIndexNumber`/`IndexNumber` variant — those are shape-less
+        // numeric index fields specific to albums, not general `ItemFields`
+        // the server advertises as sort columns.
         let user_id = self
             .user_id
             .as_ref()
@@ -959,10 +982,29 @@ impl JellyfinClient {
             // requires SortBy and SortOrder to be comma-separated arrays of
             // equal length).  Fixes #571.
             q.append_pair("SortBy", "ParentIndexNumber,IndexNumber,SortName");
-            q.append_pair("SortOrder", "Ascending,Ascending,Ascending");
+            // Three sort fields → three parallel SortOrder values. Fixes #571.
+            q.append_pair(
+                "SortOrder",
+                &enums::csv(
+                    &[
+                        SortOrder::Ascending,
+                        SortOrder::Ascending,
+                        SortOrder::Ascending,
+                    ],
+                    SortOrder::as_str,
+                ),
+            );
             q.append_pair(
                 "Fields",
-                "MediaSources,UserData,ProductionYear,PrimaryImageAspectRatio",
+                &enums::csv(
+                    &[
+                        ItemField::MediaSources,
+                        ItemField::UserData,
+                        ItemField::ProductionYear,
+                        ItemField::PrimaryImageAspectRatio,
+                    ],
+                    ItemField::as_str,
+                ),
             );
         }
         let resp = self
@@ -986,29 +1028,24 @@ impl JellyfinClient {
     /// Requires an authenticated session; returns
     /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
     pub async fn artist_top_tracks(&self, artist_id: &str, limit: u32) -> Result<Vec<Track>> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            q.append_pair("ArtistIds", artist_id);
-            q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "Audio");
-            q.append_pair("Limit", &limit.max(1).to_string());
-            q.append_pair("SortBy", "PlayCount,SortName");
-            q.append_pair("SortOrder", "Descending,Ascending");
-            q.append_pair(
-                "Fields",
-                "MediaSources,UserData,ParentId,ProductionYear,PrimaryImageAspectRatio",
-            );
-        }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
+        let page = ItemsQuery::new()
+            .artist(artist_id)
+            .recursive()
+            .item_types(vec![ItemKind::Audio])
+            .limit(limit)
+            .sort_by(vec![ItemSortBy::PlayCount, ItemSortBy::SortName])
+            .sort_order(vec![SortOrder::Descending, SortOrder::Ascending])
+            .fields(vec![
+                ItemField::MediaSources,
+                ItemField::UserData,
+                ItemField::ParentId,
+                ItemField::ProductionYear,
+                ItemField::PrimaryImageAspectRatio,
+            ])
+            .enable_user_data()
+            .fetch_tracks(self)
             .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
-        Ok(raw.items.into_iter().map(Track::from).collect())
+        Ok(page.items)
     }
 
     /// Seed a station around any item — track, album, artist, playlist, or
@@ -1035,7 +1072,16 @@ impl JellyfinClient {
             q.append_pair("Limit", &limit.max(1).to_string());
             q.append_pair(
                 "Fields",
-                "MediaSources,UserData,ParentId,ProductionYear,PrimaryImageAspectRatio",
+                &enums::csv(
+                    &[
+                        ItemField::MediaSources,
+                        ItemField::UserData,
+                        ItemField::ParentId,
+                        ItemField::ProductionYear,
+                        ItemField::PrimaryImageAspectRatio,
+                    ],
+                    ItemField::as_str,
+                ),
             );
             q.append_pair("EnableUserData", "true");
         }
@@ -1065,7 +1111,10 @@ impl JellyfinClient {
         {
             let mut q = url.query_pairs_mut();
             q.append_pair("UserId", user_id);
-            q.append_pair("IncludeItemTypes", "Audio,MusicAlbum");
+            q.append_pair(
+                "IncludeItemTypes",
+                &enums::csv(&[ItemKind::Audio, ItemKind::MusicAlbum], ItemKind::as_str),
+            );
             q.append_pair("Limit", &limit.max(1).to_string());
             q.append_pair("EnableUserData", "true");
         }
@@ -1090,7 +1139,13 @@ impl JellyfinClient {
             let mut q = url.query_pairs_mut();
             q.append_pair("UserId", user_id);
             q.append_pair("Limit", &limit.max(1).to_string());
-            q.append_pair("Fields", "Genres,PrimaryImageAspectRatio");
+            q.append_pair(
+                "Fields",
+                &enums::csv(
+                    &[ItemField::Genres, ItemField::PrimaryImageAspectRatio],
+                    ItemField::as_str,
+                ),
+            );
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -1113,7 +1168,15 @@ impl JellyfinClient {
             q.append_pair("Limit", &limit.max(1).to_string());
             q.append_pair(
                 "Fields",
-                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
+                &enums::csv(
+                    &[
+                        ItemField::Genres,
+                        ItemField::ProductionYear,
+                        ItemField::ChildCount,
+                        ItemField::PrimaryImageAspectRatio,
+                    ],
+                    ItemField::as_str,
+                ),
             );
         }
         let resp = self
@@ -1162,28 +1225,23 @@ impl JellyfinClient {
     /// with no play history will fall back to the server's `SortName`
     /// tiebreaker (every row at `PlayCount = 0`).
     pub async fn frequently_played_tracks(&self, limit: u32) -> Result<Vec<Track>> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "Audio");
-            q.append_pair("Limit", &limit.max(1).to_string());
-            q.append_pair("SortBy", "PlayCount,SortName");
-            q.append_pair("SortOrder", "Descending,Ascending");
-            q.append_pair(
-                "Fields",
-                "MediaSources,UserData,ParentId,ProductionYear,PrimaryImageAspectRatio",
-            );
-        }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
+        let page = ItemsQuery::new()
+            .recursive()
+            .item_types(vec![ItemKind::Audio])
+            .limit(limit)
+            .sort_by(vec![ItemSortBy::PlayCount, ItemSortBy::SortName])
+            .sort_order(vec![SortOrder::Descending, SortOrder::Ascending])
+            .fields(vec![
+                ItemField::MediaSources,
+                ItemField::UserData,
+                ItemField::ParentId,
+                ItemField::ProductionYear,
+                ItemField::PrimaryImageAspectRatio,
+            ])
+            .enable_user_data()
+            .fetch_tracks(self)
             .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
-        Ok(raw.items.into_iter().map(Track::from).collect())
+        Ok(page.items)
     }
 
     /// All music genres in the user's library, paginated. Backed by
@@ -1202,9 +1260,15 @@ impl JellyfinClient {
             q.append_pair("IncludeItemTypes", "Audio,MusicAlbum,MusicArtist");
             q.append_pair("Limit", &paging.limit.max(1).to_string());
             q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("SortBy", "SortName");
-            q.append_pair("SortOrder", "Ascending");
-            q.append_pair("Fields", "ItemCounts,PrimaryImageAspectRatio");
+            q.append_pair("SortBy", ItemSortBy::SortName.as_str());
+            q.append_pair("SortOrder", SortOrder::Ascending.as_str());
+            q.append_pair(
+                "Fields",
+                &enums::csv(
+                    &[ItemField::ItemCounts, ItemField::PrimaryImageAspectRatio],
+                    ItemField::as_str,
+                ),
+            );
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
@@ -1224,33 +1288,22 @@ impl JellyfinClient {
     /// [`JellyfinClient::albums`] / `artists` / `list_tracks` using
     /// `GenreIds` (a future refactor; see Issue 38).
     pub async fn items_by_genre(&self, genre_id: &str, paging: Paging) -> Result<PaginatedAlbums> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            q.append_pair("GenreIds", genre_id);
-            q.append_pair("Recursive", "true");
-            q.append_pair("IncludeItemTypes", "MusicAlbum");
-            q.append_pair("Limit", &paging.limit.max(1).to_string());
-            q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair("SortBy", "SortName");
-            q.append_pair("SortOrder", "Ascending");
-            q.append_pair(
-                "Fields",
-                "Genres,ProductionYear,ChildCount,PrimaryImageAspectRatio",
-            );
-        }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
-            .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
-        Ok(PaginatedAlbums {
-            items: raw.items.into_iter().map(Album::from).collect(),
-            total_count: raw.total_record_count,
-        })
+        ItemsQuery::new()
+            .genre(genre_id)
+            .recursive()
+            .item_types(vec![ItemKind::MusicAlbum])
+            .limit(paging.limit)
+            .offset(paging.offset)
+            .sort(ItemSortBy::SortName, SortOrder::Ascending)
+            .fields(vec![
+                ItemField::Genres,
+                ItemField::ProductionYear,
+                ItemField::ChildCount,
+                ItemField::PrimaryImageAspectRatio,
+            ])
+            .enable_user_data()
+            .fetch_albums(self)
+            .await
     }
 
     /// Full artist record with biography, backdrops, and external links —
@@ -1272,7 +1325,18 @@ impl JellyfinClient {
             q.append_pair("userId", user_id);
             q.append_pair(
                 "Fields",
-                "Overview,Genres,Tags,ProviderIds,ExternalUrls,BackdropImageTags,PrimaryImageAspectRatio",
+                &enums::csv(
+                    &[
+                        ItemField::Overview,
+                        ItemField::Genres,
+                        ItemField::Tags,
+                        ItemField::ProviderIds,
+                        ItemField::ExternalUrls,
+                        ItemField::BackdropImageTags,
+                        ItemField::PrimaryImageAspectRatio,
+                    ],
+                    ItemField::as_str,
+                ),
             );
         }
         let resp = self
@@ -1283,10 +1347,7 @@ impl JellyfinClient {
             .items
             .into_iter()
             .next()
-            .ok_or_else(|| JellifyError::Server {
-                status: 404,
-                message: format!("artist not found: {artist_id}"),
-            })?;
+            .ok_or_else(|| JellifyError::NotFound(format!("artist not found: {artist_id}")))?;
         Ok(ArtistDetail::from(first))
     }
 
@@ -1351,10 +1412,7 @@ impl JellyfinClient {
                 JellifyError::Decode("fetch_item: response missing Items array".into())
             })?;
         if items.is_empty() {
-            return Err(JellifyError::Server {
-                status: 404,
-                message: format!("item not found: {item_id}"),
-            });
+            return Err(JellifyError::NotFound(format!("item not found: {item_id}")));
         }
         Ok(items.swap_remove(0))
     }
@@ -1552,37 +1610,36 @@ impl JellyfinClient {
     /// requests via [`JellyfinClient::albums`] / `artists` etc. with
     /// `SearchTerm` — a follow-up once the UI grows that affordance.
     pub async fn search(&self, query: &str, paging: Paging) -> Result<SearchResults> {
-        let user_id = self
-            .user_id
-            .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
-        let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
-        {
-            let mut q = url.query_pairs_mut();
-            q.append_pair("Recursive", "true");
-            q.append_pair("SearchTerm", query);
-            q.append_pair("IncludeItemTypes", "MusicArtist,MusicAlbum,Audio");
-            q.append_pair("Limit", &paging.limit.max(1).to_string());
-            q.append_pair("StartIndex", &paging.offset.to_string());
-            q.append_pair(
-                "Fields",
-                "Genres,ProductionYear,PrimaryImageAspectRatio,UserData,MediaSources,AlbumId",
-            );
-            q.append_pair("EnableUserData", "true");
-        }
-        let resp = self
-            .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
+        let page = ItemsQuery::new()
+            .recursive()
+            .search(query)
+            .item_types(vec![
+                ItemKind::MusicArtist,
+                ItemKind::MusicAlbum,
+                ItemKind::Audio,
+            ])
+            .limit(paging.limit)
+            .offset(paging.offset)
+            .fields(vec![
+                ItemField::Genres,
+                ItemField::ProductionYear,
+                ItemField::PrimaryImageAspectRatio,
+                ItemField::UserData,
+                ItemField::MediaSources,
+                ItemField::AlbumId,
+            ])
+            .enable_user_data()
+            .execute(self)
             .await?;
-        let raw: RawItems<RawItem> = resp.json().await?;
 
         let mut artists = Vec::new();
         let mut albums = Vec::new();
         let mut tracks = Vec::new();
-        for item in raw.items {
+        for item in page.items {
             match item.kind.as_deref() {
-                Some("MusicArtist") => artists.push(Artist::from(item)),
-                Some("MusicAlbum") => albums.push(Album::from(item)),
-                Some("Audio") => tracks.push(Track::from(item)),
+                Some(s) if s == ItemKind::MusicArtist.as_str() => artists.push(Artist::from(item)),
+                Some(s) if s == ItemKind::MusicAlbum.as_str() => albums.push(Album::from(item)),
+                Some(s) if s == ItemKind::Audio.as_str() => tracks.push(Track::from(item)),
                 _ => {}
             }
         }
@@ -1590,7 +1647,7 @@ impl JellyfinClient {
             artists,
             albums,
             tracks,
-            total_record_count: raw.total_record_count,
+            total_record_count: page.total_count,
         })
     }
 
@@ -1827,10 +1884,7 @@ impl JellyfinClient {
             .into_iter()
             .find(|v| v.collection_type.as_deref() == Some("music"))
             .map(|v| v.id)
-            .ok_or_else(|| JellifyError::Server {
-                status: 404,
-                message: "no music library found in user views".into(),
-            })?;
+            .ok_or_else(|| JellifyError::NotFound("no music library found in user views".into()))?;
         self.library_cache.lock().music = Some(id.clone());
         Ok(id)
     }
@@ -1864,9 +1918,8 @@ impl JellyfinClient {
             .into_iter()
             .find(|v| v.collection_type.as_deref() == Some("playlists"))
             .map(|v| v.id)
-            .ok_or_else(|| JellifyError::Server {
-                status: 404,
-                message: "no playlists library found in user views".into(),
+            .ok_or_else(|| {
+                JellifyError::NotFound("no playlists library found in user views".into())
             })?;
         self.library_cache.lock().playlist = Some(id.clone());
         Ok(id)
@@ -2104,6 +2157,32 @@ impl JellyfinClient {
     }
 }
 
+/// Classify a [`reqwest::Response`] as success or a structured
+/// [`JellifyError`] variant. Shared between [`JellyfinClient::check`] and
+/// the query-layer helpers in [`crate::query`].
+///
+/// On non-2xx responses this reads the `Retry-After` header (for 429
+/// rate-limit responses) and the body text (for the general `Server`
+/// variant), and dispatches via [`JellifyError::from_status`] so the caller
+/// can match on the narrow error kind rather than parsing a message.
+pub(crate) async fn check_response(resp: Response) -> Result<Response> {
+    let status = resp.status();
+    if status.is_success() {
+        return Ok(resp);
+    }
+    let retry_after = resp
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    let body = resp.text().await.unwrap_or_default();
+    Err(JellifyError::from_status(
+        status.as_u16(),
+        body,
+        retry_after,
+    ))
+}
+
 // ============================================================================
 // Wire types (Jellyfin's JSON shapes)
 // ============================================================================
@@ -2176,11 +2255,11 @@ struct RawUser {
 }
 
 #[derive(Debug, Deserialize)]
-struct RawItems<T> {
+pub(crate) struct RawItems<T> {
     #[serde(rename = "Items", default)]
-    items: Vec<T>,
+    pub(crate) items: Vec<T>,
     #[serde(rename = "TotalRecordCount", default)]
-    total_record_count: u32,
+    pub(crate) total_record_count: u32,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -2264,8 +2343,32 @@ impl From<RawLibrary> for Library {
 pub struct RawUserData {
     #[serde(rename = "IsFavorite", default)]
     pub is_favorite: bool,
+    #[serde(rename = "Played", default)]
+    pub played: bool,
     #[serde(rename = "PlayCount", default)]
     pub play_count: u32,
+    #[serde(rename = "PlaybackPositionTicks", default)]
+    pub playback_position_ticks: i64,
+    #[serde(rename = "LastPlayedDate", default)]
+    pub last_played_date: Option<String>,
+    #[serde(rename = "Likes", default)]
+    pub likes: Option<bool>,
+    #[serde(rename = "Rating", default)]
+    pub rating: Option<f64>,
+}
+
+impl From<RawUserData> for UserItemData {
+    fn from(r: RawUserData) -> Self {
+        UserItemData {
+            is_favorite: r.is_favorite,
+            played: r.played,
+            play_count: r.play_count,
+            playback_position_ticks: r.playback_position_ticks,
+            last_played_at: r.last_played_date,
+            likes: r.likes,
+            rating: r.rating,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -2347,6 +2450,7 @@ impl From<RawSearchHint> for SearchHint {
 
 impl From<RawItem> for Artist {
     fn from(r: RawItem) -> Self {
+        let user_data = r.user_data.map(UserItemData::from);
         Artist {
             id: r.id,
             name: r.name,
@@ -2354,6 +2458,7 @@ impl From<RawItem> for Artist {
             song_count: 0,
             genres: r.genres,
             image_tag: r.image_tags.get("Primary").cloned(),
+            user_data,
         }
     }
 }
@@ -2369,6 +2474,7 @@ impl From<RawItem> for Album {
             .album_artist_id
             .clone()
             .or_else(|| r.artist_items.first().map(|a| a.id.clone()));
+        let user_data = r.user_data.map(UserItemData::from);
         Album {
             id: r.id,
             name: r.name,
@@ -2379,6 +2485,7 @@ impl From<RawItem> for Album {
             runtime_ticks: r.runtime_ticks,
             genres: r.genres,
             image_tag: r.image_tags.get("Primary").cloned(),
+            user_data,
         }
     }
 }
@@ -2406,7 +2513,18 @@ impl From<RawItem> for Track {
             .album_artist_id
             .clone()
             .or_else(|| r.artist_items.first().map(|a| a.id.clone()));
-        let user_data = r.user_data.unwrap_or_default();
+        // Preserve the pre-refactor convenience fields on Track even when
+        // the server didn't send `UserData` — `is_favorite`/`play_count`
+        // default to `false`/`0` the same way they did before the
+        // `user_data: Option<UserItemData>` field landed. Callers that need
+        // the full payload (including last-played-at, position ticks,
+        // thumbs rating) read `user_data`.
+        let raw_user = r.user_data;
+        let (is_fav, play_count) = raw_user
+            .as_ref()
+            .map(|u| (u.is_favorite, u.play_count))
+            .unwrap_or((false, 0));
+        let user_data = raw_user.map(UserItemData::from);
         Track {
             id: r.id,
             name: r.name,
@@ -2418,12 +2536,13 @@ impl From<RawItem> for Track {
             disc_number: r.parent_index_number,
             year: r.production_year,
             runtime_ticks: r.runtime_ticks,
-            is_favorite: user_data.is_favorite,
-            play_count: user_data.play_count,
+            is_favorite: is_fav,
+            play_count,
             container: r.container,
             bitrate: r.bitrate,
             image_tag: r.image_tags.get("Primary").cloned(),
             playlist_item_id: r.playlist_item_id,
+            user_data,
         }
     }
 }

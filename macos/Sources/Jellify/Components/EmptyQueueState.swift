@@ -9,8 +9,18 @@ import SwiftUI
 struct EmptyQueueState: View {
     /// SF Symbol rendered above the headline.
     var systemImage: String = "text.line.first.and.arrowtriangle.forward"
-    var title: String = "Queue is empty"
-    var subtitle: String = "Play something to start a queue."
+    /// Optional overrides — when `nil`, the catalog-backed defaults load from
+    /// `Localizable.xcstrings`. Passing explicit copy is still supported for
+    /// places that want a surface-specific phrasing.
+    var title: String? = nil
+    var subtitle: String? = nil
+
+    private var resolvedTitle: String {
+        title ?? String(localized: "empty.queue.title", bundle: .main)
+    }
+    private var resolvedSubtitle: String {
+        subtitle ?? String(localized: "empty.queue.subtitle", bundle: .main)
+    }
 
     var body: some View {
         VStack(spacing: 12) {
@@ -20,12 +30,12 @@ struct EmptyQueueState: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 4) {
-                Text(title)
+                Text(resolvedTitle)
                     .font(Theme.font(18, weight: .bold))
                     .foregroundStyle(Theme.ink2)
                     .multilineTextAlignment(.center)
 
-                Text(subtitle)
+                Text(resolvedSubtitle)
                     .font(Theme.font(13, weight: .medium))
                     .foregroundStyle(Theme.ink3)
                     .multilineTextAlignment(.center)
@@ -35,7 +45,7 @@ struct EmptyQueueState: View {
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title). \(subtitle)")
+        .accessibilityLabel("\(resolvedTitle). \(resolvedSubtitle)")
         .accessibilityAddTraits(.isStaticText)
     }
 }

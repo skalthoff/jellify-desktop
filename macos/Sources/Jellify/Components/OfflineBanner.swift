@@ -26,11 +26,16 @@ struct OfflineBanner: View {
         self.onRetry = onRetry
     }
 
+    /// Resolved copy for the banner. The named-server variant interpolates
+    /// the user-supplied host verbatim — it's user data, not a translatable
+    /// phrase, so only the surrounding scaffolding comes from the catalog.
+    /// The generic fallback goes through `Localizable.xcstrings` via the
+    /// `offline.generic` key.
     private var message: String {
         if let host, !host.isEmpty {
             return "Can't reach \(host). Trying again\u{2026}"
         }
-        return "You're offline. Playing from downloaded tracks only."
+        return String(localized: "offline.generic", bundle: .main)
     }
 
     var body: some View {
@@ -49,7 +54,7 @@ struct OfflineBanner: View {
             Spacer(minLength: 12)
 
             Button(action: onRetry) {
-                Text("Retry")
+                Text("common.retry")
                     .font(Theme.font(12, weight: .bold))
                     .foregroundStyle(Theme.ink)
                     .padding(.horizontal, 12)
@@ -64,7 +69,7 @@ struct OfflineBanner: View {
                     )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Retry network connection")
+            .accessibilityLabel("offline.retry.a11y")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)

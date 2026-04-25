@@ -597,9 +597,13 @@ final class AppModel {
             id: "queue.clear",
             title: "Clear Queue",
             symbol: "trash",
-            run: {
-                // TODO(#282): wire to a core `clear_queue` primitive.
-                print("[AppModel] Clear Queue — not yet wired (see #282)")
+            run: { [weak self] in
+                // #282: wipe the queue but keep the currently playing track
+                // as a single-item queue so playback doesn't stop.
+                self?.core.clearQueue()
+                if let core = self?.core {
+                    self?.status = core.status()
+                }
             }
         ))
         actions.append(PaletteAction(
@@ -684,7 +688,7 @@ final class AppModel {
             startPolling()
             await refreshLibrary()
         } catch {
-            self.errorMessage = "Login failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .login)
         }
     }
 
@@ -878,26 +882,28 @@ final class AppModel {
         authExpired = true
     }
 
-    /// Inspect an error from a core call and, if it looks like a 401 or the
-    /// core's `NotAuthenticated` variant, mark the session expired and return
-    /// `true` so the caller knows to skip its generic error surfacing.
+    /// Inspect an error from a core call and, if it's the core's
+    /// `NotAuthenticated` / `Auth` variant (both meaning the token's dead
+    /// or never existed), mark the session expired and return `true` so the
+    /// caller knows to skip its generic error surfacing.
     ///
-    /// `JellifyError` is a `flat_error` in uniffi, so on the Swift side we
-    /// only get the `thiserror` Display string. The variants we care about
-    /// are:
-    /// - `NotAuthenticated` → `"not logged in"`
-    /// - `AuthExpired` → `"authentication expired — please sign in again"`
-    /// - `Auth(...)` → `"authentication failed: ..."`
-    /// - `Server { status: 401, .. }` → `"server returned an error: 401 ..."`
+    /// Post-BATCH-24 the Rust `JellifyError` is a typed enum split by HTTP
+    /// class — 401 responses surface as `Auth`, the retry-layer fallback is
+    /// `AuthExpired`, and a missing token is `NotAuthenticated` — so we can
+    /// match variants directly instead of parsing the Display message.
+    ///
+    /// Call-sites that do NOT match auth go on to call
+    /// `JellifyErrorPresenter.message(for:context:)` (see #351) to turn the
+    /// raw Display string into localized banner copy.
     private func handleAuthError(_ error: Error) -> Bool {
-        let description = error.localizedDescription
-        let isNotAuthenticated = description.contains("not logged in")
-        let isAuthExpired = description.contains("authentication expired")
-        let isAuthFailed = description.contains("authentication failed")
-        let isServer401 = description.contains("server returned an error: 401")
-        guard isNotAuthenticated || isAuthExpired || isAuthFailed || isServer401 else { return false }
-        markAuthExpired()
-        return true
+        guard let err = error as? JellifyError else { return false }
+        switch err {
+        case .NotAuthenticated, .Auth, .AuthExpired:
+            markAuthExpired()
+            return true
+        default:
+            return false
+        }
     }
 
     // MARK: - Library
@@ -944,7 +950,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Albums load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
         do {
             let artists = try await artistsPage
@@ -956,7 +962,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Artists load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
         do {
             let tracks = try await tracksPage
@@ -968,7 +974,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Tracks load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
         if anySucceeded {
             serverReachability.noteSuccess()
@@ -1008,7 +1014,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -1032,7 +1038,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -1053,7 +1059,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -1077,7 +1083,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Library load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .libraryLoad)
         }
     }
 
@@ -1171,7 +1177,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            self.errorMessage = "Playlists load failed: \(error.localizedDescription)"
+            self.errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistsLoad)
         }
     }
 
@@ -1231,7 +1237,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Playlist load failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistLoad)
         }
         return all
     }
@@ -1675,6 +1681,10 @@ final class AppModel {
                let primary = tags["Primary"], !primary.isEmpty { return primary }
             return nil
         }()
+        // `user_data` landed on `Album` in BATCH-24 — clients that build
+        // Albums from a local `BaseItemDto` can pass `nil` to reproduce the
+        // old behaviour; callers that have a richer `UserData` projection
+        // should populate the struct directly.
         return Album(
             id: id,
             name: name,
@@ -1684,7 +1694,12 @@ final class AppModel {
             trackCount: trackCount,
             runtimeTicks: runtimeTicks,
             genres: genres,
-            imageTag: imageTag
+            imageTag: imageTag,
+            // DTO parser doesn't request `Fields=UserData`, so the
+            // server-authoritative projection is absent here. Favourite /
+            // play-count consumers read the legacy convenience mirrors
+            // (`isFavorite` / `playCount`) where those are set.
+            userData: nil
         )
     }
 
@@ -1755,6 +1770,8 @@ final class AppModel {
                let primary = tags["Primary"], !primary.isEmpty { return primary }
             return nil
         }()
+        // `user_data` landed on `Track` in BATCH-24 — see `albumFromDTO`
+        // above for the same pattern.
         return Track(
             id: id,
             name: name,
@@ -1771,7 +1788,12 @@ final class AppModel {
             container: container,
             bitrate: bitrate,
             imageTag: imageTag,
-            playlistItemId: nil
+            playlistItemId: nil,
+            // DTO parser doesn't request `Fields=UserData`, so the
+            // server-authoritative projection is absent. Legacy mirrors
+            // `isFavorite` / `playCount` are populated above from whatever
+            // the BaseItemDto carried.
+            userData: nil
         )
     }
 
@@ -1789,7 +1811,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Album tracks failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .albumTracks)
             return []
         }
     }
@@ -1814,7 +1836,8 @@ final class AppModel {
                 albumCount: 0,
                 songCount: 0,
                 genres: detail.genres,
-                imageTag: detail.imageTag
+                imageTag: detail.imageTag,
+                userData: nil
             )
         } catch {
             _ = handleAuthError(error)
@@ -1875,7 +1898,8 @@ final class AppModel {
             trackCount: trackCount,
             runtimeTicks: runtimeTicks,
             genres: genres,
-            imageTag: imageTag
+            imageTag: imageTag,
+            userData: nil
         )
     }
 
@@ -2017,7 +2041,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Playlist tracks failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistTracks)
             return []
         }
     }
@@ -2055,7 +2079,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Playlist tracks failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistTracks)
         }
     }
 
@@ -2295,7 +2319,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2345,7 +2369,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2512,7 +2536,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2554,7 +2578,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Search failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .search)
         }
     }
 
@@ -2676,7 +2700,7 @@ final class AppModel {
             errorMessage = nil
         } catch {
             if handleAuthError(error) { return }
-            errorMessage = "Couldn't start playback: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playback)
         }
     }
 
@@ -2698,26 +2722,41 @@ final class AppModel {
     }
 
     /// Insert an album's tracks immediately after the currently-playing track.
-    /// TODO: #282 — proper Up Next vs Auto Queue separation. For now, the core
-    /// queue is replaced on every `setQueue`, so until we grow an `insertNext`
-    /// primitive this falls back to appending behaviour.
+    /// Uses the `core.playNext` primitive wired in for #282. When nothing is
+    /// currently playing, falls back to `play(album:)` so the album actually
+    /// starts instead of silently queueing into an empty player.
     func playNext(album: Album) {
-        // TODO: #282 — queue "Up Next" insertion; for now, surface a log.
-        print("[AppModel] playNext(album:) not yet wired — see #282")
         Task {
             let tracks = await loadTracks(forAlbum: album.id)
             guard !tracks.isEmpty else { return }
-            play(tracks: tracks, startIndex: 0)
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.playNext(tracks: tracks)
+            }.value
+            self.status = core.status()
         }
     }
 
-    /// Append an album's tracks to the end of the queue.
-    /// TODO: #282 — the core lacks an `appendToQueue` primitive, so this is a
-    /// stub that plays the album outright for now.
+    /// Append an album's tracks to the end of the queue. Uses the
+    /// `core.addToQueue` primitive wired in for #282; when nothing is playing
+    /// falls back to `play(album:)` so we don't end up with a loaded queue
+    /// but no playhead.
     func addToQueue(album: Album) {
-        // TODO: #282 — queue append. Currently behaves like `play`.
-        print("[AppModel] addToQueue(album:) not yet wired — see #282")
-        play(album: album)
+        Task {
+            let tracks = await loadTracks(forAlbum: album.id)
+            guard !tracks.isEmpty else { return }
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.addToQueue(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
     /// In-memory favorite flag keyed by item id (album/track/artist/playlist).
@@ -2779,7 +2818,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Favorite failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .favorite)
         }
     }
 
@@ -2827,7 +2866,7 @@ final class AppModel {
             if ServerReachability.shouldCount(error: error) {
                 serverReachability.noteFailure()
             }
-            errorMessage = "Add to playlist failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playlistAdd)
             return false
         }
     }
@@ -3124,22 +3163,40 @@ final class AppModel {
     }
 
     /// Insert a playlist's tracks immediately after the currently-playing track.
-    /// TODO: #282 — proper Up Next vs Auto Queue separation. For now, the core
-    /// queue is replaced on every `setQueue`, so until we grow an `insertNext`
-    /// primitive this falls back to replace-and-play behaviour.
+    /// Wired to `core.playNext` for #282. Falls back to `play(playlist:)`
+    /// when nothing is currently playing so the menu item still does the
+    /// obvious thing.
     func playNext(playlist: Playlist) {
-        // TODO: #282 — queue "Up Next" insertion; for now, replace-and-play.
-        print("[AppModel] playNext(playlist:) not yet wired — see #282")
-        play(playlist: playlist)
+        Task {
+            let tracks = await loadPlaylistTracks(playlist: playlist)
+            guard !tracks.isEmpty else { return }
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.playNext(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
-    /// Append a playlist's tracks to the end of the queue.
-    /// TODO: #282 — the core lacks an `appendToQueue` primitive, so this is a
-    /// stub that plays the playlist outright for now.
+    /// Append a playlist's tracks to the end of the queue. Wired to
+    /// `core.addToQueue` for #282. Falls back to `play(playlist:)` when
+    /// nothing is currently playing.
     func addToQueue(playlist: Playlist) {
-        // TODO: #282 — queue append. Currently behaves like `play`.
-        print("[AppModel] addToQueue(playlist:) not yet wired — see #282")
-        play(playlist: playlist)
+        Task {
+            let tracks = await loadPlaylistTracks(playlist: playlist)
+            guard !tracks.isEmpty else { return }
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.addToQueue(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
     /// Toggle the favorite flag for a playlist on the Jellyfin server.
@@ -3530,24 +3587,37 @@ final class AppModel {
     // editor #96).
 
     /// Insert a selection of tracks immediately after the currently-playing
-    /// track.
-    /// TODO(#282): queue "Up Next" insertion primitive. For now, behaves
-    /// like `play(tracks:)` so the menu item does something.
+    /// track. Wired to `core.playNext` for #282; when nothing is playing
+    /// falls back to `play(tracks:)` so the menu item always does something.
     func playNext(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        // TODO(#282): queue "Up Next" insertion not yet wired.
-        print("[AppModel] playNext(tracks:) not yet wired — see #282")
-        play(tracks: tracks, startIndex: 0)
+        if status.currentTrack == nil {
+            play(tracks: tracks, startIndex: 0)
+            return
+        }
+        Task {
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.playNext(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
-    /// Append a selection of tracks to the end of the queue.
-    /// TODO(#282): queue append primitive. For now, replaces the queue via
-    /// `play(tracks:)` so the menu item has a landing pad.
+    /// Append a selection of tracks to the end of the queue. Wired to
+    /// `core.addToQueue` for #282; when nothing is playing falls back to
+    /// `play(tracks:)`.
     func addToQueue(tracks: [Track]) {
         guard !tracks.isEmpty else { return }
-        // TODO(#282): queue append not yet wired.
-        print("[AppModel] addToQueue(tracks:) not yet wired — see #282")
-        play(tracks: tracks, startIndex: 0)
+        if status.currentTrack == nil {
+            play(tracks: tracks, startIndex: 0)
+            return
+        }
+        Task {
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.addToQueue(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
     /// Kick off an Instant Mix ("song radio") seeded by a single track.
@@ -3750,7 +3820,7 @@ final class AppModel {
             try audio.play(track: track)
         } catch {
             if handleAuthError(error) { return }
-            errorMessage = "Playback failed: \(error.localizedDescription)"
+            errorMessage = JellifyErrorPresenter.message(for: error, context: .playback)
         }
     }
 

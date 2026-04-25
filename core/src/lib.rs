@@ -11,14 +11,18 @@
 //! play them and calls back with status updates.
 
 pub mod client;
+pub mod enums;
 pub mod error;
 pub mod models;
 pub mod player;
+pub mod query;
 pub mod storage;
 
+pub use enums::{ImageType, ItemField, ItemKind, ItemSortBy, SortOrder};
 pub use error::{JellifyError, Result};
 pub use models::*;
 pub use player::{PlaybackState, Player, PlayerStatus, RepeatMode};
+pub use query::ItemsQuery;
 
 use crate::client::{JellyfinClient, PublicSystemInfo};
 use crate::storage::{CredentialStore, Database};
@@ -807,6 +811,30 @@ impl JellifyCore {
     ) -> std::result::Result<Option<Track>, JellifyError> {
         self.player.set_queue(tracks, start_index)?;
         Ok(self.player.current_in_queue())
+    }
+
+    /// Insert `tracks` immediately after the currently-playing entry.
+    /// "Play Next" semantics, per #282. Returns the new queue length.
+    ///
+    /// No-op when either the queue is empty or `tracks` is empty — callers
+    /// that want to prime the queue with the new tracks should fall back to
+    /// [`Self::set_queue`] when the queue length stays at zero.
+    pub fn play_next(&self, tracks: Vec<Track>) -> u32 {
+        self.player.insert_next(tracks)
+    }
+
+    /// Append `tracks` to the end of the queue. "Add to Queue" semantics,
+    /// per #282. Returns the new queue length. No-op when `tracks` is empty.
+    pub fn add_to_queue(&self, tracks: Vec<Track>) -> u32 {
+        self.player.append_to_queue(tracks)
+    }
+
+    /// Remove every entry from the queue except the currently playing track
+    /// (which stays as a single-item queue so skip_next correctly reports
+    /// `None`). Exposed so the UI's "Clear Up Next" action doesn't require
+    /// stopping playback to reset the queue.
+    pub fn clear_queue(&self) {
+        self.player.clear_queue();
     }
 
     pub fn mark_track_started(&self, track: Track) {
