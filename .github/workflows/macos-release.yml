@@ -45,25 +45,21 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          # Pin to Xcode 15.4 — last stable in the Swift 5.10 line that
-          # accepts Nuke 13.0.2 without forcing strict-concurrency
-          # checking. The macos-14 runner currently exposes 15.0.1 /
-          # 15.1 / 15.2 / 15.3 / 15.4 / 16.1 / 16.2; on Xcode 16.x the
-          # multi-arch xcodebuild path fails compiling Nuke with
-          # Sendable errors even though the toolchain default is still
-          # Swift 5. Our own targets opt in via `swiftLanguageVersions:
-          # [.v5]` in Package.swift, but that pin doesn't propagate to
-          # dependencies built through the multi-arch path.
-          # Revisit when the wider Swift 6 / Sendable cleanup lands.
-          xcode-version: '15.4'
+          # `latest-stable` resolves to Xcode 16.2 on the macos-14 runner
+          # today. Xcode 16.x compiles Nuke 13.0.2 cleanly via single-arch
+          # `swift build` (the regular CI proves this on every PR). The
+          # multi-arch route through xcodebuild trips strict-concurrency
+          # errors in Nuke, so the 0.2 release ships Apple Silicon only —
+          # see the `Swift build` step below. Universal slice returns in
+          # 0.3 alongside the wider Swift 6 / Sendable cleanup.
+          xcode-version: latest-stable
 
-      - name: Install Rust (universal)
+      - name: Install Rust (Apple Silicon)
         uses: dtolnay/rust-toolchain@stable
         with:
-          # Universal binary: both Apple Silicon and Intel. Intel still
-          # matters for the long tail of 2019-2020 MacBook Pros that
-          # aren't upgrading to Apple Silicon anytime soon.
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          # 0.2 ships Apple Silicon only; the x86_64 slice is deferred to
+          # 0.3 once Nuke / strict-concurrency on multi-arch is sorted.
+          targets: aarch64-apple-darwin
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
@@ -88,21 +84,23 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------
-      # Build the universal Rust xcframework and the Swift app.
+      # Build the Rust xcframework and the Swift app.
+      # 0.2 ships arm64 only — see the `Select Xcode` comment above for the
+      # multi-arch tradeoff. Restore `--release` (no `--arm64-only`) and
+      # `swift build --arch arm64 --arch x86_64` once 0.3's Swift 6 cleanup
+      # lands.
       # ------------------------------------------------------------------
-      - name: Build universal xcframework
+      - name: Build xcframework (arm64)
         working-directory: macos
-        # build-core.sh produces an arm64 + x86_64 lipo-fused static lib by
-        # default; --release selects the release profile.
-        run: ./Scripts/build-core.sh --release
+        run: ./Scripts/build-core.sh --release --arm64-only
 
-      - name: Swift build (release, universal)
+      - name: Swift build (release, arm64)
         working-directory: macos
-        # --arch arm64 --arch x86_64 routes the build through
-        # .build/apple/Products/Release/, which make-bundle.sh --universal
-        # consumes. A bare `swift build` on macos-14 (Apple Silicon) emits
-        # arm64-only binaries and silently breaks Intel users.
-        run: swift build -c release --arch arm64 --arch x86_64
+        # Native single-arch build on the macos-14 (Apple Silicon) runner
+        # — emits arm64 binaries from `.build/release/`. Avoids xcodebuild
+        # routing that the multi-arch flag triggers, so deps compile in
+        # the same lenient mode as regular CI.
+        run: swift build -c release
 
       - name: Install create-dmg
         # Required by make-dmg.sh. Not preinstalled on macos-14.
@@ -120,7 +118,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           BUILD: ${{ steps.version.outputs.build }}
           SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
-        run: ./Scripts/make-bundle.sh --release --universal
+        run: ./Scripts/make-bundle.sh --release
 
       # ------------------------------------------------------------------
       # Sign + notarize. The individual scripts (sign.sh, notarize.sh,
