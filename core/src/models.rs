@@ -214,7 +214,7 @@ pub struct ArtistDetail {
     pub overview: Option<String>,
     /// `BackdropImageTags` from the server — one entry per backdrop image.
     /// Pass the index to [`crate::JellyfinClient::image_url_of_type`] with
-    /// [`ImageType::Backdrop`] to build per-backdrop URLs.
+    /// [`crate::ImageType::Backdrop`] to build per-backdrop URLs.
     pub backdrop_image_tags: Vec<String>,
     /// Parallel to `BackdropImageTags`: the underlying item ids that carry
     /// the backdrop tags. When empty, callers should use `id` directly.

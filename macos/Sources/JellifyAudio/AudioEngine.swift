@@ -173,7 +173,14 @@ public final class AudioEngine: NSObject {
             audioStreamIndex: nil,
             playSessionId: playSessionId,
             playMethod: playMethod,
-            positionTicks: 0
+            positionTicks: 0,
+            playbackStartTimeTicks: nil,
+            volumeLevel: nil,
+            playlistIndex: nil,
+            playlistLength: nil,
+            canSeek: true,
+            isPaused: false,
+            isMuted: false
         )
         try? core.reportPlaybackStarted(info: info)
         reportingItemId = trackId

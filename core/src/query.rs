@@ -11,7 +11,7 @@
 //! [`ItemsQuery`] centralises the builder into a single typed fluent
 //! interface. The typed query-parameter enums ([`ItemKind`], [`ItemSortBy`],
 //! [`SortOrder`], [`ItemField`]) replace the string literals, and the
-//! builder's [`Self::execute`] method dispatches to either
+//! builder's [`ItemsQuery::execute`] method dispatches to either
 //! `/Users/{id}/Items` (when `user_id` is set) or `/Items` (when not).
 //!
 //! Existing per-endpoint methods on [`JellyfinClient`] (e.g.

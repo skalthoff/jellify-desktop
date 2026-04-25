@@ -22,7 +22,8 @@
 //! Every enum derives `Serialize` / `Deserialize` with
 //! `#[serde(rename_all = "PascalCase")]`, so building query strings is a
 //! plain `serde_json::to_value` away (or, when writing query strings
-//! directly, [`Self::as_str`] yields the exact server-facing token).
+//! directly, each enum exposes an `as_str(&self) -> &'static str` helper
+//! that yields the exact server-facing token — see [`ItemKind::as_str`]).
 
 use serde::{Deserialize, Serialize};
 
