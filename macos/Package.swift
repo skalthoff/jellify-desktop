@@ -31,18 +31,12 @@ let package = Package(
         .target(
             name: "JellifyCore",
             dependencies: ["JellifyCoreFFI"],
-            path: "Sources/JellifyCore",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
+            path: "Sources/JellifyCore"
         ),
         .target(
             name: "JellifyAudio",
             dependencies: ["JellifyCore"],
-            path: "Sources/JellifyAudio",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ]
+            path: "Sources/JellifyAudio"
         ),
         .executableTarget(
             name: "Jellify",
@@ -56,9 +50,6 @@ let package = Package(
             path: "Sources/Jellify",
             resources: [
                 .process("Resources")
-            ],
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
             ],
             linkerSettings: [
                 .linkedFramework("AudioToolbox"),
@@ -74,9 +65,6 @@ let package = Package(
             name: "SmokeTest",
             dependencies: ["JellifyCore", "JellifyAudio"],
             path: "Sources/SmokeTest",
-            swiftSettings: [
-                .swiftLanguageMode(.v5)
-            ],
             linkerSettings: [
                 .linkedFramework("AudioToolbox"),
                 .linkedFramework("AudioUnit"),
@@ -87,5 +75,14 @@ let package = Package(
                 .linkedFramework("SystemConfiguration"),
             ]
         ),
-    ]
+    ],
+    // Pin Swift 5 language mode at the package level rather than via per-
+    // target `.swiftLanguageMode(.v5)`. The per-target API serialises to
+    // `5` (no `.0`) and xcodebuild on Xcode 26 rejects it (`SWIFT_VERSION
+    // '5' unsupported, supported: 4.0, 4.2, 5.0, 6.0`). The package-level
+    // form serialises through `SWIFT_VERSION = 5.0` so multi-arch
+    // `swift build --arch arm64 --arch x86_64` (which routes through
+    // xcodebuild) accepts it. Stays on Swift 5 mode pending the wider
+    // Sendable / strict-concurrency cleanup tracked across the codebase.
+    swiftLanguageVersions: [.v5]
 )
