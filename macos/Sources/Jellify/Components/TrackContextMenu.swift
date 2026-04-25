@@ -87,10 +87,12 @@ struct TrackContextMenu: View {
                 model.goToArtist(track: track)
             }
             .disabled(track.artistId == nil)
-            Button("Show Track Info", systemImage: "info.circle") {
-                model.showTrackInfo(track: track)
+            if model.supportsTrackInfo {
+                Button("Show Track Info", systemImage: "info.circle") {
+                    model.showTrackInfo(track: track)
+                }
+                .keyboardShortcut("i", modifiers: .command)
             }
-            .keyboardShortcut("i", modifiers: .command)
         }
 
         if let scope = playlistScope {
@@ -105,14 +107,18 @@ struct TrackContextMenu: View {
             favoriteLabel,
             systemImage: allFavorited ? "heart.slash" : "heart"
         ) { model.toggleFavorite(tracks: selection) }
-        Button(
-            downloadLabel,
-            systemImage: "arrow.down.circle"
-        ) { model.toggleDownload(tracks: selection) }
-        Button(
-            markPlayedLabel,
-            systemImage: "checkmark.circle"
-        ) { model.toggleMarkPlayed(tracks: selection) }
+        if model.supportsDownloads {
+            Button(
+                downloadLabel,
+                systemImage: "arrow.down.circle"
+            ) { model.toggleDownload(tracks: selection) }
+        }
+        if model.supportsMarkPlayed {
+            Button(
+                markPlayedLabel,
+                systemImage: "checkmark.circle"
+            ) { model.toggleMarkPlayed(tracks: selection) }
+        }
 
         Divider()
 

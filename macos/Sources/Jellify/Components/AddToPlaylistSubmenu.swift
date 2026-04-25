@@ -25,9 +25,11 @@ struct AddToPlaylistSubmenu: View {
     private let maxPlaylists = 50
 
     var body: some View {
-        Button("New Playlist…", systemImage: "plus") { onNewPlaylist() }
+        if model.supportsNewPlaylistPicker {
+            Button("New Playlist…", systemImage: "plus") { onNewPlaylist() }
+            if !model.playlists.isEmpty { Divider() }
+        }
         if !model.playlists.isEmpty {
-            Divider()
             ForEach(model.playlists.prefix(maxPlaylists), id: \.id) { playlist in
                 Button(playlist.name) { onPick(playlist) }
             }

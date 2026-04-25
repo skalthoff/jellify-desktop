@@ -60,17 +60,23 @@ struct AlbumContextMenu: View {
         Divider()
 
         Button("Favorite Album", systemImage: "heart") { model.toggleFavorite(album: album) }
-        Button("Mark All as Played", systemImage: "checkmark.circle") {
-            model.markAllAsPlayed(album: album)
+        if model.supportsMarkPlayed {
+            Button("Mark All as Played", systemImage: "checkmark.circle") {
+                model.markAllAsPlayed(album: album)
+            }
         }
 
         Divider()
 
-        Button("Download", systemImage: "arrow.down.circle") {
-            model.enqueueDownload(album: album)
+        if model.supportsDownloads {
+            Button("Download", systemImage: "arrow.down.circle") {
+                model.enqueueDownload(album: album)
+            }
         }
-        Button("Edit Album…", systemImage: "pencil") {
-            model.requestEditAlbum(album: album)
+        if model.supportsEditAlbum {
+            Button("Edit Album…", systemImage: "pencil") {
+                model.requestEditAlbum(album: album)
+            }
         }
         Button("Copy Link", systemImage: "link") { model.copyShareLink(album: album) }
             .disabled(model.webURL(for: album) == nil)

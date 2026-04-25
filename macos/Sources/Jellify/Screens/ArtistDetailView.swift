@@ -313,10 +313,12 @@ struct ArtistDetailView: View {
                 .help("Play all tracks")
                 .accessibilityLabel("Play all tracks by \(artist.name)")
 
-                transportSecondary(
-                    icon: "shuffle",
-                    help: "Shuffle all"
-                ) { model.shuffle(artist: artist) }
+                if model.supportsArtistPlayShuffle {
+                    transportSecondary(
+                        icon: "shuffle",
+                        help: "Shuffle all"
+                    ) { model.shuffle(artist: artist) }
+                }
 
                 // Follow — today toggles favorite. The "Follow" vocabulary
                 // is Jellify's; server-side it's `IsFavorite` on the artist

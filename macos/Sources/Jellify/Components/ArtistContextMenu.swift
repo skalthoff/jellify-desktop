@@ -27,8 +27,12 @@ struct ArtistContextMenu: View {
     var showGoToArtist: Bool = true
 
     var body: some View {
-        Button("Play All", systemImage: "play.fill") { model.playAll(artist: artist) }
-        Button("Shuffle All", systemImage: "shuffle") { model.shuffle(artist: artist) }
+        if model.supportsArtistPlayShuffle {
+            Button("Play All", systemImage: "play.fill") { model.playAll(artist: artist) }
+            Button("Shuffle All", systemImage: "shuffle") { model.shuffle(artist: artist) }
+        }
+        // Play Next falls through to top-tracks playback today, so it works
+        // without the artist-tracks FFI.
         Button("Play Next", systemImage: "text.insert") { model.playNextArtist(artist: artist) }
 
         Divider()
