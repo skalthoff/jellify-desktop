@@ -48,9 +48,18 @@ let package = Package(
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             path: "Sources/Jellify",
-            resources: [
-                .process("Resources")
-            ],
+            // Resources are NOT processed by SwiftPM. SwiftPM's generated
+            // `resource_bundle_accessor.swift` resolves the bundle via
+            // `Bundle.main.bundleURL.appendingPathComponent("<Pkg>_<Target>.bundle")`,
+            // so the bundle has to live at the .app's TOP LEVEL — but
+            // macOS .app structure forbids any top-level entry other
+            // than `Contents/` (`codesign` rejects with "unsealed contents
+            // present in the bundle root"). Instead, `make-bundle.sh`
+            // copies `Sources/Jellify/Resources/` contents straight into
+            // `Contents/Resources/`, and code that needs them reads via
+            // `Bundle.main.url(forResource:withExtension:)` (the
+            // standard macOS .app pattern).
+            // resources: [.process("Resources")],
             linkerSettings: [
                 .linkedFramework("AudioToolbox"),
                 .linkedFramework("AudioUnit"),

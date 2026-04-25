@@ -110,7 +110,12 @@ enum FontRegistration {
     static func register() {
         guard !registered else { return }
         registered = true
-        let bundle = Bundle.module
+        // Fonts live in Contents/Resources/ of the .app rather than an
+        // SPM-generated sub-bundle (see Package.swift on the `Jellify`
+        // target). Bundle.main IS the .app, and `make-bundle.sh` copies
+        // Sources/Jellify/Resources/Fonts/*.otf straight into
+        // Contents/Resources/.
+        let bundle = Bundle.main
         for name in [
             "Figtree-Regular", "Figtree-Italic", "Figtree-Medium",
             "Figtree-SemiBold", "Figtree-Bold", "Figtree-ExtraBold",
