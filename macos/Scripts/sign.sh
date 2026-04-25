@@ -94,24 +94,83 @@ sign_one() {
     fi
 }
 
-# 1. Frameworks/*.framework — includes Sparkle once we ship it.
+# 1. Frameworks/*.framework — includes Sparkle.
+#    codesign is inside-out: the seal of an outer bundle references the
+#    seals of inner bundles, so any nested bundle or Mach-O must be
+#    signed BEFORE the bundle that contains it. The earlier flat
+#    "framework first, xpc after" loop signed in the wrong order and
+#    missed Sparkle's nested .app + loose Autoupdate Mach-O entirely.
+#
+#    Sparkle's framework hosts a multi-tier internal layout:
+#       Sparkle.framework/Versions/B/Sparkle           (framework binary)
+#       Sparkle.framework/Versions/B/Autoupdate        (loose Mach-O)
+#       Sparkle.framework/Versions/B/Updater.app/...   (nested .app)
+#       Sparkle.framework/Versions/B/XPCServices/      (.xpc bundles)
+#    Notary rejects the build if any fragment arrives unsigned. See
+#    https://sparkle-project.org/documentation/sandboxing/ — we
+#    implement the non-sandboxed recipe.
 if [[ -d "$APP/Contents/Frameworks" ]]; then
     while IFS= read -r -d '' fw; do
-        echo "    -> framework: ${fw#"$APP/"}"
+        fw_short="${fw#"$APP/"}"
+
+        # 1a. Nested .xpc bundles inside the framework. Sort
+        #     deepest-first so a nested-inside-nested arrangement still
+        #     signs in dep order.
+        while IFS= read -r -d '' xpc; do
+            echo "    -> xpc:        ${xpc#"$APP/"}"
+            sign_one "$xpc" no
+        done < <(find "$fw" -type d -name "*.xpc" -print0 2>/dev/null | sort -rz)
+
+        # 1b. Nested .app bundles inside the framework (Sparkle's
+        #     Updater.app). Same deepest-first ordering.
+        while IFS= read -r -d '' nested_app; do
+            echo "    -> nested-app: ${nested_app#"$APP/"}"
+            sign_one "$nested_app" no
+        done < <(find "$fw" -type d -name "*.app" -print0 2>/dev/null | sort -rz)
+
+        # 1c. Loose Mach-O binaries directly under Versions/*/ that
+        #     aren't part of any nested bundle (Sparkle's Autoupdate).
+        if [[ -d "$fw/Versions" ]]; then
+            fw_basename="$(basename "$fw" .framework)"
+            while IFS= read -r -d '' bin; do
+                # Skip files that live inside a nested bundle (already
+                # signed in 1a/1b) or in a known non-binary subdir.
+                case "$bin" in
+                    */*.app/*|*/*.xpc/*|*/*.framework/*) continue ;;
+                    */Headers/*|*/Resources/*|*/Modules/*) continue ;;
+                esac
+                [[ -f "$bin" && -x "$bin" ]] || continue
+                file -b "$bin" 2>/dev/null | grep -q "Mach-O" || continue
+                # The framework's own main binary is named after the
+                # framework; signing the outer framework in 1d covers it.
+                [[ "$(basename "$bin")" == "$fw_basename" ]] && continue
+                echo "    -> fw-bin:     ${bin#"$APP/"}"
+                sign_one "$bin" no
+            done < <(find "$fw/Versions" -type f -print0 2>/dev/null)
+        fi
+
+        # 1d. Finally, the framework bundle itself. Its seal now
+        #     references the freshly-signed inner bundles + binaries,
+        #     which is what Apple's notary verifies.
+        echo "    -> framework:  $fw_short"
         sign_one "$fw" yes
     done < <(find "$APP/Contents/Frameworks" -maxdepth 2 -type d -name "*.framework" -print0 2>/dev/null)
 
-    # 2. Nested XPC services (Sparkle's Installer / Downloader live here).
-    while IFS= read -r -d '' xpc; do
-        echo "    -> xpc: ${xpc#"$APP/"}"
-        sign_one "$xpc" no
-    done < <(find "$APP/Contents/Frameworks" -type d -name "*.xpc" -print0 2>/dev/null)
-
-    # 3. Loose dylibs that aren't inside a framework bundle.
+    # 2. Loose dylibs in Contents/Frameworks that aren't inside a
+    #    framework bundle. Rare, but guard for the future.
     while IFS= read -r -d '' dylib; do
-        echo "    -> dylib: ${dylib#"$APP/"}"
+        echo "    -> dylib:      ${dylib#"$APP/"}"
         sign_one "$dylib" no
     done < <(find "$APP/Contents/Frameworks" -type f \( -name "*.dylib" -o -name "*.so" \) -print0 2>/dev/null)
+fi
+
+# 3. Top-level XPC services (App.app/Contents/XPCServices/*.xpc) — if
+#    an app ever ships its own beyond Sparkle's framework-internal ones.
+if [[ -d "$APP/Contents/XPCServices" ]]; then
+    while IFS= read -r -d '' xpc; do
+        echo "    -> xpc:        ${xpc#"$APP/"}"
+        sign_one "$xpc" no
+    done < <(find "$APP/Contents/XPCServices" -maxdepth 1 -type d -name "*.xpc" -print0 2>/dev/null)
 fi
 
 # 4. Auxiliary helper executables under Contents/MacOS that aren't the
