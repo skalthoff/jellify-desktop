@@ -133,11 +133,19 @@ if [[ -d "$APP/Contents/Frameworks" ]]; then
         if [[ -d "$fw/Versions" ]]; then
             fw_basename="$(basename "$fw" .framework)"
             while IFS= read -r -d '' bin; do
-                # Skip files that live inside a nested bundle (already
-                # signed in 1a/1b) or in a known non-binary subdir.
-                case "$bin" in
+                # Path RELATIVE to this framework — used for the case
+                # patterns below so they match nested bundles inside
+                # this framework without spuriously matching the outer
+                # `.framework/` path component itself (the bug rc8
+                # tripped: `*/*.framework/*` matched every file inside
+                # Sparkle.framework and skipped them all, including
+                # Autoupdate).
+                rel="${bin#"$fw/"}"
+                case "$rel" in
                     */*.app/*|*/*.xpc/*|*/*.framework/*) continue ;;
                     */Headers/*|*/Resources/*|*/Modules/*) continue ;;
+                    *.app/*|*.xpc/*|*.framework/*) continue ;;
+                    Headers/*|Resources/*|Modules/*|_CodeSignature/*) continue ;;
                 esac
                 [[ -f "$bin" && -x "$bin" ]] || continue
                 file -b "$bin" 2>/dev/null | grep -q "Mach-O" || continue
