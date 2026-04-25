@@ -104,10 +104,24 @@ mkdir -p "$APP/Contents/Resources"
 
 cp "$EXE" "$APP/Contents/MacOS/Jellify"
 
-# Copy SPM-processed resources (fonts bundle) next to the executable.
+# Copy SPM-processed resources (fonts + Localizable.xcstrings) into the
+# .app. SwiftPM's generated `resource_bundle_accessor.swift` resolves
+# the bundle via
+#   Bundle.main.bundleURL.appendingPathComponent("Jellify_Jellify.bundle")
+# For a .app, `Bundle.main.bundleURL` IS the .app directory itself, so
+# the resource bundle has to sit at the .app's TOP LEVEL — not inside
+# Contents/Resources/, which is the normal macOS convention. SwiftPM's
+# only fallback is the build-time location (e.g.
+# /Users/runner/.../Jellify_Jellify.bundle), which exists on the build
+# machine but not on any user's machine. Without the top-level copy the
+# app boots, hits resource_bundle_accessor.swift, and crashes with
+#   Fatal error: could not load resource bundle: from
+#   /Applications/Jellify.app/Jellify_Jellify.bundle or <runner path>
+# Keep AppIcon.icns under Contents/Resources/ (the macOS convention is
+# fine for that); only the SPM-generated bundle has to live at the root.
 BUNDLE="$BUILD_DIR/Jellify_Jellify.bundle"
 if [[ -d "$BUNDLE" ]]; then
-    cp -R "$BUNDLE" "$APP/Contents/Resources/"
+    cp -R "$BUNDLE" "$APP/"
 fi
 
 # Copy the app icon if it has been produced. This is intentionally soft:
