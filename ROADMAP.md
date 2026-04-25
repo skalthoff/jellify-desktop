@@ -11,9 +11,20 @@ Ship a **native desktop Jellyfin client** — no Electron, no webview — that f
 - **M1 — Rust core foundation** ✅ Completed. Jellyfin REST client, SQLite cache, keyring credential store, queue state, UniFFI bindings. `cargo test --workspace` passes.
 - **M2 — macOS app MVP** ✅ Completed. SwiftUI shell (Login, Library grid, Album detail, Search, PlayerBar), AVPlayer-backed streaming, headless `SmokeTest` integration verifier. End-to-end playback validated against a real Jellyfin server.
 - **M3 — macOS polish** 🔵 In progress. Driven by the research sprint captured in [/tmp/jellify-research](../..//tmp/jellify-research) and the issues filed under the `M3 — macOS polish` milestone.
-- **M4 — macOS distribution** 🟡 Scoped. Signing, notarization, DMG, Sparkle auto-update, GitHub Release CI.
+- **M4 — macOS distribution** 🟢 Operational. v0.2.0 shipped 2026-04-25 (Apple Silicon DMG, Sparkle appcast live). Universal binary + Intel slice deferred to v0.3.0.
 - **M5 — Windows port** ⚪ Scoped. WinUI 3 + UniFFI .NET bindings + SMTC + MSIX.
 - **M6 — Linux port** ⚪ Scoped. GTK4 + libadwaita + GStreamer + MPRIS2 + Flathub.
+
+### Active release: v0.3.0 — "Feature-gap closure" 🔵 In progress
+
+Wires the visible "not yet wired" stubs in `AppModel.swift` as real FFI calls
+(downloads, add-to-playlist, mark-as-played, artist play/shuffle, genre browse,
+similar artists, Instant Mix everywhere) and ships the deferred Intel slice so
+the DMG runs on every Mac.
+
+Out of scope for 0.3 (deferred to 0.4): lyrics, mini-player, crossfade/EQ
+wiring, perf refactors, Swift 6 / Sendable migration, the P1/P2 sweep from
+audit issue #610.
 
 ## Milestones
 
