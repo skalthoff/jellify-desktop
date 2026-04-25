@@ -16,7 +16,7 @@
 #     drops the arguments.
 #
 # Usage:
-#   VERSION=0.1.0 DEVELOPER_ID="Developer ID Application: Jane (TEAMID)" \
+#   VERSION=0.2.0 DEVELOPER_ID="Developer ID Application: Jane (TEAMID)" \
 #     ./macos/Scripts/make-dmg.sh                      # uses build/Jellify.app
 #   ./macos/Scripts/make-dmg.sh path/to/Jellify.app
 set -euo pipefail
