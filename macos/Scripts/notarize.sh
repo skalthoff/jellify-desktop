@@ -17,7 +17,7 @@
 # page in the developer portal.
 #
 # Usage:
-#   ./macos/Scripts/notarize.sh path/to/Jellify-0.1.0.dmg
+#   ./macos/Scripts/notarize.sh path/to/Jellify-0.2.0.dmg
 #   NOTARY_PROFILE=other-profile ./macos/Scripts/notarize.sh some.dmg
 set -euo pipefail
 
