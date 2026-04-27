@@ -99,7 +99,7 @@ fi
 while IFS= read -r tag; do
   [[ -z "$tag" ]] && continue
   echo "    tag: $tag"
-  # Glob the DMG assets — there may be one (universal) or two (per-arch).
+  # Glob the DMG assets — Apple Silicon only, one DMG per release.
   gh release download "$tag" \
     --repo "$GITHUB_REPOSITORY" \
     --pattern "*.dmg" \
