@@ -59,7 +59,6 @@ public final class AudioEngine: NSObject {
     private var player: AVQueuePlayer?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
-    private var statusObservation: NSKeyValueObservation?
     private var rateObservation: NSKeyValueObservation?
     private var timeControlObservation: NSKeyValueObservation?
     /// KVO observation on `AVQueuePlayer.currentItem`. Fires whenever the
@@ -554,8 +553,6 @@ public final class AudioEngine: NSObject {
         endObserver = nil
         rateObservation?.invalidate()
         rateObservation = nil
-        statusObservation?.invalidate()
-        statusObservation = nil
         timeControlObservation?.invalidate()
         timeControlObservation = nil
         currentItemObservation?.invalidate()
