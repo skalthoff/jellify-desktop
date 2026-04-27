@@ -148,6 +148,8 @@ extension LyricLine {
 /// 300ms easeInOut animation. Reduce Motion disables the animation — the
 /// highlight still follows the track, just without the smooth scroll.
 struct LyricsView: View {
+    @Environment(AppModel.self) private var model
+
     /// Parsed lyric lines, ordered by timestamp. Untimed lines (timestamp
     /// = nil) are allowed and render as static rows.
     let lines: [LyricLine]
@@ -233,6 +235,9 @@ struct LyricsView: View {
                     ForEach(lines) { line in
                         LyricRow(line: line, isActive: line.id == activeId)
                             .id(line.id)
+                            .modifier(TapToSeekModifier(timestamp: line.timestamp) { ts in
+                                model.seek(toSeconds: ts)
+                            })
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -302,6 +307,27 @@ private struct LyricRow: View {
             .fixedSize(horizontal: false, vertical: true)
             .animation(.easeInOut(duration: 0.2), value: isActive)
             .accessibilityAddTraits(isActive ? .isSelected : [])
+    }
+}
+
+/// Wires a click handler onto a lyric row when — and only when — the line
+/// has an LRC timestamp. Untimed rows fall through unchanged so they
+/// don't surface a misleading pointer cursor or accessibility action.
+private struct TapToSeekModifier: ViewModifier {
+    let timestamp: Double?
+    let onSeek: (Double) -> Void
+
+    func body(content: Content) -> some View {
+        if let ts = timestamp {
+            content
+                .contentShape(Rectangle())
+                .onTapGesture { onSeek(ts) }
+                .help("Tap to jump to this line")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { onSeek(ts) }
+        } else {
+            content
+        }
     }
 }
 
