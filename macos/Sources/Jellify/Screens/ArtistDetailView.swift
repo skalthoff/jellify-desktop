@@ -41,6 +41,7 @@ struct ArtistDetailView: View {
     @State private var artistAlbums: [Album] = []
     @State private var fetchedArtist: Artist?
     @State private var isBioExpanded = false
+    @State private var similarArtistsState: [Artist] = []
 
     /// Resolve the artist: cached library page first, then whichever
     /// record the `.task` block fetched on demand. Missing (server
@@ -74,6 +75,7 @@ struct ArtistDetailView: View {
             // rendered empty for most artists on a large library (#60).
             artistAlbums = await model.loadArtistAlbums(artistId: artistID)
             topTracks = await model.loadArtistTopTracks(artistId: artistID)
+            similarArtistsState = await model.loadSimilarArtists(artistId: artistID)
             isLoadingTopTracks = false
         }
     }
@@ -552,16 +554,12 @@ struct ArtistDetailView: View {
         }
     }
 
-    /// Similar artists list. Empty today — returns `[]` so the section
-    /// collapses silently rather than surfacing a broken "similar to" shelf.
-    ///
-    /// TODO(core-#146): wire through `core.similar_artists(artist_id, limit)`
-    /// once the FFI lands. Jellyfin exposes `/Artists/{id}/Similar` — the
-    /// core just needs to pass it through. With that in place this returns
-    /// the server's list trimmed to 6 items per #232.
+    /// Similar artists list, sourced from `model.similarArtistsByArtist`
+    /// via `loadSimilarArtists(artistId:)` in the `.task(id:)` block above.
+    /// Empties (and the section collapses) until the fetch lands or when
+    /// the server has no similar artists for the current item. See #146.
     private var similarArtists: [Artist] {
-        // TODO(core-#146): return model.similarArtists(for: artistID, limit: 6)
-        []
+        similarArtistsState
     }
 
     // MARK: - About / bio (#231)

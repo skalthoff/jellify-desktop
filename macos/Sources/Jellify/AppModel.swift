@@ -104,6 +104,11 @@ final class AppModel {
     /// by `loadArtistTopTracks(artistId:)` when the Artist detail screen
     /// opens. Held for the session; cleared on logout. See #229.
     var artistTopTracks: [String: [Track]] = [:]      // artistID → top tracks
+    /// Cache of "Similar Artists" lookups keyed by artist id. Populated on
+    /// demand by `loadSimilarArtists(artistId:)` when the Artist detail
+    /// screen opens (or when `showSimilar(artist:)` navigates to it).
+    /// Held for the session; cleared on logout. See #146.
+    var similarArtistsByArtist: [String: [Artist]] = [:]
     var recentlyPlayed: [Track] = []
     /// Tracks surfaced in the Discover "For You" carousel (#249). Today this
     /// is a best-effort fallback to the first 20 `recentlyPlayed` tracks. A
@@ -2014,6 +2019,39 @@ final class AppModel {
         }
     }
 
+    /// Fetch artists similar to the given artist via Jellyfin's
+    /// `/Artists/{id}/Similar` endpoint (wired through `core.similarArtists`).
+    /// Cached per-artist for the session — `showSimilar(artist:)` and the
+    /// "Similar Artists" carousel on `ArtistDetailView` both read through
+    /// this so a single navigation seeds both. Errors swallowed silently —
+    /// the carousel collapses on empty rather than surfacing a banner. See #146.
+    @discardableResult
+    func loadSimilarArtists(artistId: String, limit: UInt32 = 6) async -> [Artist] {
+        if let cached = similarArtistsByArtist[artistId] { return cached }
+        do {
+            let artists = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.similarArtists(artistId: artistId, limit: limit)
+            }.value
+            similarArtistsByArtist[artistId] = artists
+            serverReachability.noteSuccess()
+            return artists
+        } catch {
+            if handleAuthError(error) { return [] }
+            if ServerReachability.shouldCount(error: error) {
+                serverReachability.noteFailure()
+            }
+            return []
+        }
+    }
+
+    /// Synchronous accessor for the similar-artists cache. Used by
+    /// `ArtistDetailView`'s carousel to render off the cache without
+    /// re-issuing a fetch on every body re-evaluation. Empty until
+    /// `loadSimilarArtists(artistId:)` populates it. See #146.
+    func similarArtists(for artistId: String) -> [Artist] {
+        similarArtistsByArtist[artistId] ?? []
+    }
+
     /// Fetch the ordered tracks for a playlist, preserving the server-side
     /// playlist order. Mirrors `loadTracks(forAlbum:)` — results are cached
     /// for the session, scoped to `playlistTracks[playlist.id]`. Backed by
@@ -3169,11 +3207,15 @@ final class AppModel {
         screen = .artist(artist.id)
     }
 
-    /// Show artists similar to this one.
-    /// TODO: #146 — similar_artists FFI not yet wired.
+    /// Navigate to the artist's detail page, where the now-populated
+    /// "Similar Artists" carousel surfaces the result. The detail view's
+    /// `.task(id:)` block also kicks off `loadSimilarArtists` if the cache
+    /// is cold, so this is a self-contained UX even when invoked from a
+    /// surface that hasn't pre-fetched (e.g. the artist tile context menu
+    /// in a Library grid). See #146.
     func showSimilar(artist: Artist) {
-        // TODO: #146 — similar_artists FFI not yet wired.
-        print("[AppModel] showSimilar(artist:) not yet wired — see #146")
+        Task { _ = await loadSimilarArtists(artistId: artist.id) }
+        screen = .artist(artist.id)
     }
 
     // MARK: - Artist sharing
