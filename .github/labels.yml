@@ -47,3 +47,26 @@
 - { name: "good first issue", color: "7057FF", description: "Good entry point for new contributors" }
 - { name: "help wanted",      color: "008672", description: "Extra attention / outside expertise welcome" }
 - { name: "blocked",          color: "4A0E10", description: "Waiting on another issue or external dep" }
+
+# -- Slice (sub-area routing for the agentic pipeline) --
+- { name: "slice:client",     color: "1D76DB", description: "core/src/client.rs — Jellyfin REST surface" }
+- { name: "slice:models",     color: "1D76DB", description: "core/src/models.rs + enums.rs — UniFFI types" }
+- { name: "slice:state",      color: "1D76DB", description: "core/src/{player,storage,lib}.rs — state + FFI surface" }
+- { name: "slice:tests",      color: "1D76DB", description: "core/src/tests.rs — Rust test suite" }
+- { name: "slice:screens",    color: "000000", description: "macos Screens/* — full-screen views" }
+- { name: "slice:components", color: "000000", description: "macos Components/* — reusable widgets" }
+- { name: "slice:audio",      color: "000000", description: "macos JellifyAudio/ + Theme/ + System/" }
+- { name: "slice:scaffold",   color: "000000", description: "macos AppModel + JellifyApp + AppDelegate (HOTSPOT)" }
+
+# -- Hotspot locks (managed by Scripts/area-lock.sh; do not assign manually) --
+- { name: "lock:hotspot-clientrs",   color: "B60205", description: "core/src/client.rs has an open fix; do not parallelize" }
+- { name: "lock:hotspot-testsrs",    color: "B60205", description: "core/src/tests.rs has an open fix; do not parallelize" }
+- { name: "lock:hotspot-appmodel",   color: "B60205", description: "AppModel.swift has an open fix; do not parallelize" }
+- { name: "lock:hotspot-jellifyapp", color: "B60205", description: "JellifyApp.swift has an open fix; do not parallelize" }
+
+# -- Source (provenance of the issue) --
+- { name: "source:auto-audit", color: "8B5A2B", description: "Filed by the agentic audit pipeline (area-auditor)" }
+
+# -- Triage state --
+- { name: "triage:quiet-30d",  color: "DEDEDE", description: "Area went quiet; auditor skips for 30 days" }
+- { name: "triage:adversarial-rejected", color: "DEDEDE", description: "Reviewer rejected; not actionable as-is" }
