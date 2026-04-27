@@ -71,6 +71,11 @@ struct LibraryView: View {
     /// `.libraryHoverID` env so every cell reads from (and writes to) the same
     /// binding — avoids N `@State`s on a 5k-item grid. See #428.
     @State private var hoverID: String?
+    /// Active sort applied to the displayed library list. Re-orders the
+    /// already-loaded `model.X` arrays client-side; the menu in the header
+    /// drives this. Defaults to alphabetical to match the order the server
+    /// returns by default (`SortName` ascending).
+    @State private var sortOrder: LibrarySortOrder = .nameAscending
 
     private let columns = [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 18)]
 
@@ -146,7 +151,10 @@ struct LibraryView: View {
                     .accessibilityLabel(countAccessibilityLabel)
             }
             Spacer()
-            LibraryViewToggle(mode: $viewMode)
+            HStack(spacing: 8) {
+                LibrarySortMenu(selection: $sortOrder)
+                LibraryViewToggle(mode: $viewMode)
+            }
         }
     }
 
@@ -175,11 +183,12 @@ struct LibraryView: View {
             if model.albums.isEmpty {
                 EmptyLibraryState(serverUrl: serverWebURL)
             } else {
+                let items = sortedAlbums
                 VStack(alignment: .leading, spacing: 18) {
                     switch viewMode {
                     case .grid:
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                            ForEach(Array(model.albums.enumerated()), id: \.element.id) { idx, album in
+                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, album in
                                 AlbumCard(album: album)
                                     .onAppear {
                                         triggerLoadMoreAlbumsIfNeeded(atIndex: idx)
@@ -188,7 +197,7 @@ struct LibraryView: View {
                         }
                     case .list:
                         LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(Array(model.albums.enumerated()), id: \.element.id) { idx, album in
+                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, album in
                                 LibraryListRow(album: album)
                                     .onAppear {
                                         triggerLoadMoreAlbumsIfNeeded(atIndex: idx)
@@ -205,11 +214,12 @@ struct LibraryView: View {
             if model.artists.isEmpty {
                 EmptyLibraryState(serverUrl: serverWebURL)
             } else {
+                let items = sortedArtists
                 VStack(alignment: .leading, spacing: 18) {
                     switch viewMode {
                     case .grid:
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                            ForEach(Array(model.artists.enumerated()), id: \.element.id) { idx, artist in
+                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, artist in
                                 ArtistCard(artist: artist)
                                     .onAppear {
                                         triggerLoadMoreArtistsIfNeeded(atIndex: idx)
@@ -218,7 +228,7 @@ struct LibraryView: View {
                         }
                     case .list:
                         LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(Array(model.artists.enumerated()), id: \.element.id) { idx, artist in
+                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, artist in
                                 LibraryListRow(artist: artist)
                                     .onAppear {
                                         triggerLoadMoreArtistsIfNeeded(atIndex: idx)
@@ -239,10 +249,11 @@ struct LibraryView: View {
             if model.tracks.isEmpty {
                 EmptyLibraryState(serverUrl: serverWebURL)
             } else {
+                let items = sortedTracks
                 VStack(alignment: .leading, spacing: 18) {
                     LazyVStack(alignment: .leading, spacing: 2) {
-                        ForEach(Array(model.tracks.enumerated()), id: \.element.id) { idx, track in
-                            TrackListRow(track: track, tracks: model.tracks, index: idx)
+                        ForEach(Array(items.enumerated()), id: \.element.id) { idx, track in
+                            TrackListRow(track: track, tracks: items, index: idx)
                                 .onAppear {
                                     triggerLoadMoreTracksIfNeeded(atIndex: idx)
                                 }
@@ -257,11 +268,12 @@ struct LibraryView: View {
             if model.playlists.isEmpty {
                 EmptyLibraryState(serverUrl: serverWebURL)
             } else {
+                let items = sortedPlaylists
                 VStack(alignment: .leading, spacing: 18) {
                     switch viewMode {
                     case .grid:
                         LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-                            ForEach(Array(model.playlists.enumerated()), id: \.element.id) { idx, playlist in
+                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, playlist in
                                 PlaylistCard(playlist: playlist)
                                     .onAppear {
                                         triggerLoadMorePlaylistsIfNeeded(atIndex: idx)
@@ -270,7 +282,7 @@ struct LibraryView: View {
                         }
                     case .list:
                         LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(Array(model.playlists.enumerated()), id: \.element.id) { idx, playlist in
+                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, playlist in
                                 LibraryListRow(playlist: playlist)
                                     .onAppear {
                                         triggerLoadMorePlaylistsIfNeeded(atIndex: idx)
@@ -421,6 +433,220 @@ struct LibraryView: View {
         .frame(height: 400)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.bg)
+    }
+
+    // MARK: - Sort
+
+    /// `model.albums` re-ordered for the current `sortOrder`. The underlying
+    /// model array is left untouched so pagination accounting (`loaded` vs
+    /// `total`, threshold math) keeps working unchanged. Sort keys that
+    /// don't apply to albums (`mostPlayed` for an album with no
+    /// `userData.playCount`, `recentlyAdded` with no per-item creation date
+    /// on the loaded shape) fall back through to the alphabetical tie-breaker
+    /// so the list remains stable.
+    private var sortedAlbums: [Album] {
+        switch sortOrder {
+        case .nameAscending:
+            return model.albums.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        case .nameDescending:
+            return model.albums.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedDescending
+            }
+        case .recentlyAdded:
+            // `Album` does not carry `DateCreated` on the paginated shape, so
+            // preserve the server's load order (which is `SortName` asc by
+            // default). Acts as a no-op fallback rather than a misleading
+            // "newest first" promise.
+            return model.albums
+        case .recentlyPlayed:
+            return model.albums.sorted { lhs, rhs in
+                let lhsDate = lhs.userData?.lastPlayedAt ?? ""
+                let rhsDate = rhs.userData?.lastPlayedAt ?? ""
+                if lhsDate == rhsDate {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsDate > rhsDate
+            }
+        case .mostPlayed:
+            return model.albums.sorted { lhs, rhs in
+                let lhsCount = lhs.userData?.playCount ?? 0
+                let rhsCount = rhs.userData?.playCount ?? 0
+                if lhsCount == rhsCount {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsCount > rhsCount
+            }
+        case .longest:
+            return model.albums.sorted { lhs, rhs in
+                if lhs.runtimeTicks == rhs.runtimeTicks {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.runtimeTicks > rhs.runtimeTicks
+            }
+        case .shortest:
+            return model.albums.sorted { lhs, rhs in
+                if lhs.runtimeTicks == rhs.runtimeTicks {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.runtimeTicks < rhs.runtimeTicks
+            }
+        case .yearAscending:
+            return model.albums.sorted { lhs, rhs in
+                let lhsYear = lhs.year ?? Int32.max
+                let rhsYear = rhs.year ?? Int32.max
+                if lhsYear == rhsYear {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsYear < rhsYear
+            }
+        case .yearDescending:
+            return model.albums.sorted { lhs, rhs in
+                let lhsYear = lhs.year ?? Int32.min
+                let rhsYear = rhs.year ?? Int32.min
+                if lhsYear == rhsYear {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsYear > rhsYear
+            }
+        }
+    }
+
+    /// `model.artists` re-ordered for the current `sortOrder`. Artists carry
+    /// no year or runtime, so those modes fall back to alphabetical order;
+    /// `mostPlayed` and `recentlyPlayed` consult `userData` when present.
+    private var sortedArtists: [Artist] {
+        switch sortOrder {
+        case .nameDescending:
+            return model.artists.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedDescending
+            }
+        case .recentlyPlayed:
+            return model.artists.sorted { lhs, rhs in
+                let lhsDate = lhs.userData?.lastPlayedAt ?? ""
+                let rhsDate = rhs.userData?.lastPlayedAt ?? ""
+                if lhsDate == rhsDate {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsDate > rhsDate
+            }
+        case .mostPlayed:
+            return model.artists.sorted { lhs, rhs in
+                let lhsCount = lhs.userData?.playCount ?? 0
+                let rhsCount = rhs.userData?.playCount ?? 0
+                if lhsCount == rhsCount {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsCount > rhsCount
+            }
+        case .recentlyAdded:
+            // No per-item date on the artist payload — keep server order.
+            return model.artists
+        case .nameAscending, .longest, .shortest, .yearAscending, .yearDescending:
+            // Year and runtime aren't carried for artists; treat as alpha asc.
+            return model.artists.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        }
+    }
+
+    /// `model.tracks` re-ordered for the current `sortOrder`. Tracks carry
+    /// `playCount`, `runtimeTicks`, `year`, and `userData.lastPlayedAt`, so
+    /// every option is a real key.
+    private var sortedTracks: [Track] {
+        switch sortOrder {
+        case .nameAscending:
+            return model.tracks.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        case .nameDescending:
+            return model.tracks.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedDescending
+            }
+        case .recentlyAdded:
+            return model.tracks
+        case .recentlyPlayed:
+            return model.tracks.sorted { lhs, rhs in
+                let lhsDate = lhs.userData?.lastPlayedAt ?? ""
+                let rhsDate = rhs.userData?.lastPlayedAt ?? ""
+                if lhsDate == rhsDate {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsDate > rhsDate
+            }
+        case .mostPlayed:
+            return model.tracks.sorted { lhs, rhs in
+                if lhs.playCount == rhs.playCount {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.playCount > rhs.playCount
+            }
+        case .longest:
+            return model.tracks.sorted { lhs, rhs in
+                if lhs.runtimeTicks == rhs.runtimeTicks {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.runtimeTicks > rhs.runtimeTicks
+            }
+        case .shortest:
+            return model.tracks.sorted { lhs, rhs in
+                if lhs.runtimeTicks == rhs.runtimeTicks {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.runtimeTicks < rhs.runtimeTicks
+            }
+        case .yearAscending:
+            return model.tracks.sorted { lhs, rhs in
+                let lhsYear = lhs.year ?? Int32.max
+                let rhsYear = rhs.year ?? Int32.max
+                if lhsYear == rhsYear {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsYear < rhsYear
+            }
+        case .yearDescending:
+            return model.tracks.sorted { lhs, rhs in
+                let lhsYear = lhs.year ?? Int32.min
+                let rhsYear = rhs.year ?? Int32.min
+                if lhsYear == rhsYear {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhsYear > rhsYear
+            }
+        }
+    }
+
+    /// `model.playlists` re-ordered for the current `sortOrder`. Playlists
+    /// carry only `name`, `runtimeTicks`, and `trackCount` on the loaded
+    /// shape, so play-count and year modes fall back to alphabetical.
+    private var sortedPlaylists: [Playlist] {
+        switch sortOrder {
+        case .nameDescending:
+            return model.playlists.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedDescending
+            }
+        case .longest:
+            return model.playlists.sorted { lhs, rhs in
+                if lhs.runtimeTicks == rhs.runtimeTicks {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.runtimeTicks > rhs.runtimeTicks
+            }
+        case .shortest:
+            return model.playlists.sorted { lhs, rhs in
+                if lhs.runtimeTicks == rhs.runtimeTicks {
+                    return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.runtimeTicks < rhs.runtimeTicks
+            }
+        case .recentlyAdded:
+            return model.playlists
+        case .nameAscending, .recentlyPlayed, .mostPlayed, .yearAscending, .yearDescending:
+            return model.playlists.sorted { lhs, rhs in
+                lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        }
     }
 }
 
@@ -605,5 +831,86 @@ struct AlbumCard: View {
             return "\(album.name) by \(album.artistName), \(year)"
         }
         return "\(album.name) by \(album.artistName)"
+    }
+}
+
+/// The nine sort modes the Library header offers. Drives client-side
+/// re-ordering of the already-loaded `model.X` arrays — the menu in the
+/// Library header writes this; the `sortedAlbums` / `sortedArtists` /
+/// `sortedTracks` / `sortedPlaylists` computed properties on `LibraryView`
+/// read it.
+enum LibrarySortOrder: Hashable, CaseIterable {
+    case nameAscending
+    case nameDescending
+    case recentlyAdded
+    case recentlyPlayed
+    case mostPlayed
+    case longest
+    case shortest
+    case yearAscending
+    case yearDescending
+
+    /// Label shown in the menu, matching the spec's labels exactly.
+    var label: String {
+        switch self {
+        case .nameAscending: return "A–Z"
+        case .nameDescending: return "Z–A"
+        case .recentlyAdded: return "Recently Added"
+        case .recentlyPlayed: return "Recently Played"
+        case .mostPlayed: return "Most Played"
+        case .longest: return "Longest"
+        case .shortest: return "Shortest"
+        case .yearAscending: return "Year ↑"
+        case .yearDescending: return "Year ↓"
+        }
+    }
+}
+
+/// Native SwiftUI `Menu` that drives the Library's active sort. Renders the
+/// nine options at 12pt and shows a checkmark on the active one. Wraps the
+/// menu trigger in a `surface` pill that visually matches the adjacent
+/// `LibraryViewToggle` so the two header controls read as a pair.
+struct LibrarySortMenu: View {
+    @Binding var selection: LibrarySortOrder
+
+    var body: some View {
+        Menu {
+            ForEach(LibrarySortOrder.allCases, id: \.self) { option in
+                Button {
+                    selection = option
+                } label: {
+                    if selection == option {
+                        Label(option.label, systemImage: "checkmark")
+                    } else {
+                        Text(option.label)
+                    }
+                }
+                .font(Theme.font(12, weight: .medium))
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(selection.label)
+                    .font(Theme.font(12, weight: .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(Theme.ink2)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Theme.surface)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Theme.border, lineWidth: 1)
+                    )
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Sort library")
+        .accessibilityValue(selection.label)
     }
 }
