@@ -259,6 +259,70 @@ post-mortem; cleans up on success.
 
 ---
 
+## First Launch
+
+### What users see on first run
+
+After downloading `Jellify-<version>.dmg` from GitHub Releases and dragging
+`Jellify.app` to `/Applications`, macOS assigns the app the quarantine flag
+(`com.apple.quarantine`). On double-click macOS Gatekeeper checks that
+attribute before allowing the app to run.
+
+**On a correctly signed and notarized build**, Gatekeeper resolves the ticket
+stapled into the bundle and presents a one-time confirmation dialog — not an
+error:
+
+> *"Jellify is an app downloaded from the Internet. Are you sure you want to
+> open it?"*
+
+Click **Open**. The quarantine flag is cleared and the app launches normally.
+On every subsequent launch Gatekeeper lets it through silently.
+
+### macOS 14 (Sonoma) and earlier
+
+The confirmation dialog has an **Open** button directly in the sheet.
+Clicking it is all that is required.
+
+### macOS 15 (Sequoia) and later
+
+Apple tightened the first-launch flow in Sequoia. The initial double-click
+dismisses with "Apple cannot verify the developer of Jellify" and no
+**Open** button is shown. To proceed:
+
+1. Open **System Settings → Privacy & Security**.
+2. Scroll to the **Security** section. A notice appears:
+   *"Jellify was blocked from use because it is not from an identified
+   developer."*
+3. Click **Open Anyway** next to the notice.
+4. A final confirmation sheet asks "Are you sure you want to open it?" —
+   click **Open**.
+
+After this one-time approval the app launches without prompts on all
+subsequent runs.
+
+### Why this happens
+
+Apple's Gatekeeper quarantines every file downloaded from the Internet.
+For Developer ID–signed and notarized apps (like Jellify), the stapled
+notarization ticket allows Gatekeeper to approve the app without a network
+call, but the one-time confirmation is still required by design. This is
+expected behavior and is **not** a sign of a broken or malicious build.
+
+### What a broken build looks like
+
+If users see **"Jellify cannot be opened because the developer cannot be
+verified"** (the "unidentified developer" dialog, with only **Move to Trash**
+and **Cancel** options), the code-signing or notarization chain is broken.
+Treat this as a release-blocker. Do not ship the DMG until it is resolved —
+see the Troubleshooting section and re-run `sign.sh` + `notarize.sh`.
+
+The `xattr -d com.apple.quarantine Jellify.app` terminal command removes the
+quarantine attribute and bypasses Gatekeeper entirely. Do **not** advertise
+this to end users; it is a developer diagnostic tool, not a user-facing
+workaround, and it carries real security implications.
+
+---
+
 ## Troubleshooting
 
 ### `security find-identity` shows no `Developer ID Application`
