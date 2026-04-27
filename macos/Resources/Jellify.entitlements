@@ -26,5 +26,7 @@
          when the target is the system itself. -->
     <key>com.apple.security.automation.apple-events</key>
     <true/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
 </dict>
 </plist>
