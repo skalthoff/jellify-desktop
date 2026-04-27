@@ -38,4 +38,10 @@ linux/flatpak/.cache/
 *.swo
 
 # Claude Code workspace artifacts (batch plans, worktree metadata, etc.)
-.claude/
+# We DO track .claude/agents/ and .claude/commands/ — they are how the
+# agentic-audit pipeline ships to the team. Everything else under .claude/
+# is local scratch. Pattern note: we use `.claude/*` (not `.claude/`) so
+# git can re-include subdirectories via `!` exceptions below.
+.claude/*
+!.claude/agents/
+!.claude/commands/
