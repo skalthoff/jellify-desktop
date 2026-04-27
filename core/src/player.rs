@@ -287,6 +287,8 @@ impl Player {
         s.current = None;
         s.position_seconds = 0.0;
         s.play_session_id = None;
+        s.queue.clear();
+        s.queue_index = 0;
     }
 
     pub fn status(&self) -> PlayerStatus {

@@ -6980,3 +6980,43 @@ async fn user_item_data_is_none_when_server_omits_it() {
     assert!(!tracks[0].is_favorite);
     assert_eq!(tracks[0].play_count, 0);
 }
+
+#[test]
+fn player_clear_drops_queue() {
+    use crate::models::Track;
+    use crate::player::Player;
+
+    let make = |id: &str| Track {
+        id: id.into(),
+        name: id.into(),
+        album_id: None,
+        album_name: None,
+        artist_name: "Artist".into(),
+        artist_id: None,
+        index_number: None,
+        disc_number: None,
+        year: None,
+        runtime_ticks: 1_800_000_000,
+        is_favorite: false,
+        play_count: 0,
+        container: None,
+        bitrate: None,
+        image_tag: None,
+        playlist_item_id: None,
+        user_data: None,
+    };
+
+    let player = Player::new();
+    player
+        .set_queue(vec![make("a"), make("b"), make("c")], 1)
+        .unwrap();
+    assert_eq!(player.status().queue_length, 3);
+    assert_eq!(player.status().queue_position, 1);
+
+    player.clear();
+
+    let status = player.status();
+    assert_eq!(status.queue_length, 0, "clear() must empty the queue");
+    assert_eq!(status.queue_position, 0, "clear() must reset queue_index");
+    assert!(player.current_in_queue().is_none());
+}
