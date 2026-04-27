@@ -1383,7 +1383,7 @@ checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
 name = "jellify-cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "jellify_core",
@@ -1394,7 +1394,7 @@ dependencies = [
 
 [[package]]
 name = "jellify-desktop"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-channel",
@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "jellify_core"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "anyhow",
  "async-trait",
