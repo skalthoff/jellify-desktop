@@ -367,6 +367,47 @@ public final class MediaSession {
         // `dislikeCommand` stays disabled — Jellyfin has no concept of a
         // negative rating, so exposing it would be misleading.
         cc.dislikeCommand.isEnabled = false
+
+        // (#33): ±15 s skip — standard podcast interval; costs nothing for
+        // music and the Now Playing widget surfaces the buttons automatically
+        // when `preferredIntervals` is set.
+        cc.skipForwardCommand.isEnabled = true
+        cc.skipForwardCommand.preferredIntervals = [15]
+        cc.skipForwardCommand.addTarget { [weak self] event in
+            guard let self, let delegate = self.delegate else {
+                return .commandFailed
+            }
+            guard delegate.currentStatus.currentTrack != nil else {
+                return .noActionableNowPlayingItem
+            }
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 15
+            let target = delegate.currentStatus.positionSeconds + interval
+            delegate.mediaSessionSeek(toSeconds: target)
+            self.updateElapsedAndRate(
+                elapsed: target,
+                rate: delegate.currentStatus.state == .playing ? 1.0 : 0.0
+            )
+            return .success
+        }
+
+        cc.skipBackwardCommand.isEnabled = true
+        cc.skipBackwardCommand.preferredIntervals = [15]
+        cc.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self, let delegate = self.delegate else {
+                return .commandFailed
+            }
+            guard delegate.currentStatus.currentTrack != nil else {
+                return .noActionableNowPlayingItem
+            }
+            let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 15
+            let target = max(0, delegate.currentStatus.positionSeconds - interval)
+            delegate.mediaSessionSeek(toSeconds: target)
+            self.updateElapsedAndRate(
+                elapsed: target,
+                rate: delegate.currentStatus.state == .playing ? 1.0 : 0.0
+            )
+            return .success
+        }
     }
 
     /// Map a `MPRepeatType` from Control Center onto the core's
@@ -422,6 +463,11 @@ public final class MediaSession {
         // reflecting the current favorite flag.
         cc.likeCommand.isEnabled = hasTrack
         cc.likeCommand.isActive = status.currentTrack?.isFavorite ?? false
+
+        // Skip forward/backward follow track presence — no point enabling
+        // them when there's nothing playing (issue #33).
+        cc.skipForwardCommand.isEnabled = hasTrack
+        cc.skipBackwardCommand.isEnabled = hasTrack
     }
 
     // MARK: - Artwork
