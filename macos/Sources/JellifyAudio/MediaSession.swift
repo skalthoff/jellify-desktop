@@ -213,13 +213,25 @@ public final class MediaSession {
 
         cc.playCommand.isEnabled = true
         cc.playCommand.addTarget { [weak self] _ in
-            self?.delegate?.mediaSessionPlay()
+            guard let self, let delegate = self.delegate else {
+                return .commandFailed
+            }
+            if delegate.currentStatus.currentTrack == nil {
+                return .noActionableNowPlayingItem
+            }
+            delegate.mediaSessionPlay()
             return .success
         }
 
         cc.pauseCommand.isEnabled = true
         cc.pauseCommand.addTarget { [weak self] _ in
-            self?.delegate?.mediaSessionPause()
+            guard let self, let delegate = self.delegate else {
+                return .commandFailed
+            }
+            if delegate.currentStatus.currentTrack == nil {
+                return .noActionableNowPlayingItem
+            }
+            delegate.mediaSessionPause()
             return .success
         }
 
