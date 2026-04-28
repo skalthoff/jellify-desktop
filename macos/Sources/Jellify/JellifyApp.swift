@@ -281,7 +281,6 @@ struct JellifyCommands: Commands {
             Button("menu.nav.now_playing") {
                 toggleNowPlaying()
             }
-            .keyboardShortcut("l", modifiers: .command)
             .disabled(model.session == nil)
         }
 

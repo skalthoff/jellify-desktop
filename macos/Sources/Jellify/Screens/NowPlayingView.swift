@@ -2,8 +2,8 @@ import SwiftUI
 @preconcurrency import JellifyCore
 
 /// Full Now Playing view — takes over the detail column when the user
-/// opens the "full player" from the `PlayerBar` quote-icon or via the
-/// `Cmd+Opt+L` shortcut. Replaces the compact `NowPlayingSheet` used for
+/// opens the "full player" from the `PlayerBar` artwork tap or via the
+/// `⌘L` shortcut. Replaces the compact `NowPlayingSheet` used for
 /// a quick glance at credits.
 ///
 /// Layout mirrors `design/project/src/panels.jsx`: large album art on the
@@ -17,13 +17,8 @@ import SwiftUI
 /// #273 (lyrics drawer), #278 (about block), #287 (LRC parser),
 /// #288 (auto-scroll).
 ///
-/// Out of scope — tracked in separate batches:
-/// - The quote-icon entry on the `PlayerBar` is wired in BATCH-02 (the
-///   `PlayerBar` is off-limits for this batch). `Cmd+Opt+L` from
-///   `JellifyCommands` plus pushing `Route.nowPlaying` onto `navPath`
-///   are enough to reach this view today.
-/// - The queue inspector (#272) is owned by BATCH-07 — the Queue tab
-///   here renders a placeholder until that lands.
+/// The queue inspector (#272) is owned by BATCH-07 — the Queue tab
+/// here renders a placeholder until that lands.
 struct NowPlayingView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
