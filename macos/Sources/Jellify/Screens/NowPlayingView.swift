@@ -296,16 +296,6 @@ struct NowPlayingView: View {
                     }
                 }
 
-                // TODO(core-#231): once `Artist.overview` lands, surface
-                // the first paragraph as a "Bio" block here. The
-                // `ArtistDetailView` expandable block is the final home
-                // for the full text; this surface deliberately stays
-                // compact.
-                Text("Bio will appear once the core exposes artist overviews (core-#231).")
-                    .font(Theme.font(11, weight: .medium))
-                    .foregroundStyle(Theme.ink3)
-                    .italic()
-                    .padding(.top, 8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
