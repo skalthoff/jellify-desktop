@@ -104,6 +104,7 @@ struct TrackListRow: View {
                             .font(Theme.font(13, weight: .semibold))
                             .foregroundStyle(isActive ? Theme.accent : Theme.ink)
                             .lineLimit(1)
+                        FormatBadge(track: track)
                         if willTranscode {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 10))
