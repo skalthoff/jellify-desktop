@@ -48,7 +48,13 @@ parking_lot = "0.12"
 uniffi = { version = "0.29", features = ["cli"] }
 
 # Testing
-wiremock = "0.6"
+# NOTE: pinned below 0.6.5 — that release uses unstable `let` expressions
+# that fail under workspace MSRV (Rust 1.86):
+#   error[E0658]: `let` expressions in this position are unstable
+#   error: could not compile `wiremock` (lib) due to 2 previous errors
+# 0.6.4 compiles cleanly. Lockstep upgrade with the rest of the dev deps
+# happens when MSRV moves; tracked in #750.
+wiremock = ">=0.6, <0.6.5"
 tempfile = "3"
 insta = { version = "1", features = ["yaml"] }
 
