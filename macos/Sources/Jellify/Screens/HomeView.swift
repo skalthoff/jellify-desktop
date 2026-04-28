@@ -397,7 +397,7 @@ struct HomeView: View {
                 iconColor: Theme.primary,
                 title: "Jump Back In",
                 subtitle: "Pick up where you left off",
-                onSeeAll: { model.screen = .library }
+                onSeeAll: { model.selectTab(.library) }
             ) {
                 LazyHStack(alignment: .top, spacing: 16) {
                     ForEach(model.jumpBackIn, id: \.id) { album in
@@ -451,7 +451,7 @@ struct HomeView: View {
                 iconColor: Theme.primary,
                 title: "Recently Added",
                 subtitle: "Fresh arrivals in your library",
-                onSeeAll: { model.screen = .library }
+                onSeeAll: { model.selectTab(.library) }
             ) {
                 LazyHStack(alignment: .top, spacing: 16) {
                     ForEach(model.recentlyAdded, id: \.id) { album in
