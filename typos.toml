@@ -5,6 +5,8 @@
 #   - "seeked" is the correct past-participle in media APIs (HTMLMediaElement
 #     fires a `seeked` event; our AudioEngine mirrors that naming).
 #   - "missable" is used deliberately in copy (opposite of "unmissable").
+#   - "empted" appears inside "pre-empted" (correct English for an
+#     interrupted operation; typos would coerce it to "emptied").
 #   - design/research docs contain transcribed chat snippets with typos
 #     we do not own and don't want to edit after-the-fact.
 [default]
@@ -15,6 +17,7 @@ extend-ignore-re = [
 [default.extend-words]
 seeked = "seeked"
 missable = "missable"
+empted = "empted"
 
 [files]
 extend-exclude = [
