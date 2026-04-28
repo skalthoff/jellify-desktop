@@ -54,7 +54,7 @@ uniffi = { version = "0.29", features = ["cli"] }
 #   error: could not compile `wiremock` (lib) due to 2 previous errors
 # 0.6.4 compiles cleanly. Lockstep upgrade with the rest of the dev deps
 # happens when MSRV moves; tracked in #750.
-wiremock = ">=0.6, <0.6.5"
+wiremock = ">=0.6, <0.6.6"
 tempfile = "3"
 insta = { version = "1", features = ["yaml"] }
 
