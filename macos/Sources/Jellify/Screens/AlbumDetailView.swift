@@ -698,9 +698,7 @@ private struct CreditChip: View {
 
 /// Popover-style picker shown by the album detail's `+` button. Lists the
 /// current user's playlists and calls `AppModel.addToPlaylist(...)` with
-/// the album's track ids when the user picks one. A "New playlist" row is
-/// surfaced at the top but wired as a TODO stub pending the create-playlist
-/// UI (tracked in #127 follow-up).
+/// the album's track ids when the user picks one.
 ///
 /// Empty-state copy explains "No playlists yet"; callers close the popover
 /// via the passed-in `onDismiss` closure after a successful append.
@@ -720,32 +718,6 @@ private struct AddToPlaylistPopover: View {
                 .padding(.horizontal, 14)
                 .padding(.top, 14)
                 .padding(.bottom, 10)
-
-            // TODO(core-#127): wire create-playlist flow once the UI for
-            // naming a new playlist lands. For now this is a stub row so
-            // the affordance is visible.
-            Button {
-                // TODO(core-#127): prompt for a name + call
-                // `core.createPlaylist(name:itemIds:)`.
-                print("[AlbumDetailView] new-playlist flow not yet wired — see core-#127")
-            } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "plus.circle")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.accent)
-                    Text("New playlist")
-                        .font(Theme.font(13, weight: .semibold))
-                        .foregroundStyle(Theme.ink)
-                    Spacer()
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Divider()
-                .padding(.vertical, 4)
 
             if model.playlists.isEmpty {
                 Text("No playlists yet")
