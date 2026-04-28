@@ -96,22 +96,25 @@ XML
   exit 0
 fi
 
+# Build a flat tag→filename mapping so the post-process step can inject
+# tag segments into Sparkle's enclosure URLs. Sparkle's generate_appcast
+# scans $DMG_DIR non-recursively and emits URLs as $PREFIX/$FILENAME with
+# no tag segment — but GitHub release-asset URLs require the tag in the
+# path. Rather than fight Sparkle's scanner, we let it produce tag-less
+# URLs and rewrite them in a post-process pass below.
+declare -a TAG_ARRAY=()
 while IFS= read -r tag; do
   [[ -z "$tag" ]] && continue
   echo "    tag: $tag"
-  # Each tag's DMGs (Apple Silicon only — one DMG per release; #660) go into
-  # their own subdir so generate_appcast emits relative paths like
-  # "$tag/Jellify-X.Y.Z.dmg". Combined with the url-prefix below
-  # (.../releases/download/), this produces the working GitHub release-asset
-  # URL .../releases/download/$tag/Jellify-X.Y.Z.dmg. Flat layout would
-  # drop the $tag segment and 404. Fixes #742.
-  mkdir -p "$DMG_DIR/$tag"
+  # Each tag's DMGs (Apple Silicon only — one DMG per release; #660).
+  # All DMGs land in $DMG_DIR (flat) for Sparkle's scanner.
   gh release download "$tag" \
     --repo "$GITHUB_REPOSITORY" \
     --pattern "*.dmg" \
-    --dir "$DMG_DIR/$tag" \
+    --dir "$DMG_DIR" \
     --skip-existing \
-    || echo "    (no DMGs on $tag — skipping)"
+    || { echo "    (no DMGs on $tag — skipping)"; continue; }
+  TAG_ARRAY+=("$tag")
 done <<<"$TAGS"
 
 # Pass the private key via a temp file: generate_appcast reads the key via
@@ -122,11 +125,9 @@ trap 'rm -f "$KEY_FILE"' EXIT
 printf '%s' "$SPARKLE_ED25519_PRIVATE" > "$KEY_FILE"
 chmod 600 "$KEY_FILE"
 
-# Prefix used when rewriting download URLs in the feed. Each DMG must be
-# reachable at ${PREFIX}/${TAG}/${FILENAME} so Sparkle clients can fetch
-# it directly from the GitHub release. The ${TAG}/${FILENAME} portion is
-# emitted by generate_appcast as a *relative path* derived from each DMG's
-# location under $DMG_DIR — see the per-tag subdir layout above.
+# Prefix Sparkle uses for enclosure URLs. The per-tag segment is missing
+# at this layer — generate_appcast emits $PREFIX/$FILENAME — so we insert
+# the tag in the post-process pass below.
 DOWNLOAD_URL_PREFIX="https://github.com/${GITHUB_REPOSITORY}/releases/download"
 
 echo "==> Running generate_appcast"
@@ -137,13 +138,35 @@ echo "==> Running generate_appcast"
   -o "$DOCS/appcast.xml" \
   "$DMG_DIR"
 
-# Sanity-check: assert the regenerated appcast contains tag-prefixed enclosure
-# URLs. If we shipped an appcast with bare /releases/download/<filename>.dmg
-# entries (the bug fixed in #742), every Sparkle client would 404 silently.
-# This grep fails the build before publish so a broken appcast never hits
-# gh-pages.
-if grep -q 'enclosure url="[^"]*/releases/download/[^/"]*\.dmg"' "$DOCS/appcast.xml"; then
+# Post-process: rewrite each enclosure URL to include the tag segment.
+# Each release tag has exactly one DMG asset (#660 — Apple Silicon only),
+# so the filename → tag mapping is unambiguous: query each tag for its
+# uploaded asset names and rewrite ${PREFIX}/<filename> →
+# ${PREFIX}/<tag>/<filename>. Files Sparkle generates as deltas
+# (Jellify<build>-<deltaFrom>.delta) are uploaded to the most recent tag,
+# so we rewrite delta enclosures using the latest tag. Fixes #742.
+echo "==> Injecting tag segments into enclosure URLs"
+for tag in "${TAG_ARRAY[@]}"; do
+  # Get the asset names actually uploaded to this tag.
+  assets=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')
+  while IFS= read -r asset; do
+    [[ -z "$asset" ]] && continue
+    # Escape regex metacharacters in asset names (dots especially).
+    escaped=$(printf '%s' "$asset" | sed 's/[][\.*^$/]/\\&/g')
+    # Replace bare /releases/download/$asset with /releases/download/$tag/$asset.
+    # Only rewrites if the URL is currently bare (no tag segment).
+    sed -i.bak -E "s|(/releases/download/)($escaped)\"|\1${tag}/\2\"|g" "$DOCS/appcast.xml"
+  done <<<"$assets"
+done
+rm -f "$DOCS/appcast.xml.bak"
+
+# Sanity-check: assert no tag-less enclosure URLs slipped through. If we
+# shipped an appcast with bare /releases/download/<filename>.dmg entries
+# (the #742 bug), every Sparkle client would 404 silently. This grep
+# fails the build before publish so a broken appcast never hits gh-pages.
+if grep -qE 'enclosure url="[^"]*/releases/download/[^/"]+\.(dmg|delta)"' "$DOCS/appcast.xml"; then
   echo "error: appcast contains tag-less enclosure URL. Each <enclosure url> must include the tag segment (e.g. .../releases/download/v1.0.0/Jellify-1.0.0.dmg). See #742." >&2
+  grep -nE 'enclosure url="[^"]*/releases/download/[^/"]+\.(dmg|delta)"' "$DOCS/appcast.xml" >&2 | head -5
   exit 1
 fi
 
