@@ -3,7 +3,6 @@ import SwiftUI
 
 struct PlayerBar: View {
     @Environment(AppModel.self) private var model
-    @State private var showNowPlaying = false
 
     /// Local scrubber position used while the user is actively dragging the
     /// Slider. We don't bind the Slider straight to `status.positionSeconds`
@@ -52,20 +51,21 @@ struct PlayerBar: View {
         // before the persistent chrome at the bottom. See #334.
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Playback controls")
-        .sheet(isPresented: $showNowPlaying) {
-            NowPlayingSheet()
-                .environment(model)
-        }
     }
 
     @ViewBuilder
     private var leftMeta: some View {
         if let track = model.status.currentTrack {
-            // Tapping the track meta opens the Now Playing sheet (#279)
-            // which currently surfaces track artwork, title/artist/album,
-            // and the Credits block. The button is styled flush so it
-            // reads as a regular bar region, not a chrome control.
-            Button(action: { showNowPlaying = true }) {
+            // Tapping the track meta pushes Route.nowPlaying onto navPath,
+            // opening the full Now Playing view (Queue / Lyrics / About /
+            // Credits tabs). Guard prevents double-push if the view is
+            // already on the stack. The button is styled flush so it reads
+            // as a regular bar region, not a chrome control.
+            Button(action: {
+                if !model.isShowingNowPlaying {
+                    model.navPath.append(AppModel.Route.nowPlaying)
+                }
+            }) {
                 HStack(spacing: 12) {
                     Artwork(
                         url: model.imageURL(for: track.albumId ?? track.id, tag: track.imageTag, maxWidth: 120),
@@ -89,7 +89,7 @@ struct PlayerBar: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Now Playing: \(track.name) by \(track.artistName)")
-            .accessibilityHint("Shows track details")
+            .accessibilityHint("Opens Now Playing")
         } else {
             Text("player.nothing_playing")
                 .font(Theme.font(12, weight: .medium))
