@@ -4,6 +4,11 @@ struct MainShell: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Drives `NavigationSplitView`'s sidebar visibility so the toolbar
+    /// `Toggle Sidebar` item has somewhere to write. SwiftUI animates the
+    /// column collapse / reveal for us when this changes.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
     var body: some View {
         @Bindable var model = model
         VStack(spacing: 0) {
@@ -15,7 +20,7 @@ struct MainShell: View {
             // drives `mainContent`; drill destinations (album / artist /
             // playlist / nowPlaying) live as `Route` entries on `navPath`
             // and render via the `.navigationDestination` handler below.
-            NavigationSplitView {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
                 // Tab order (#334): sidebar gets first focus, then the
                 // detail column, then the queue inspector / player bar.
                 Sidebar()
@@ -35,6 +40,54 @@ struct MainShell: View {
                             // playlist / nowPlaying detail pages on top.
                             .navigationDestination(for: AppModel.Route.self) { route in
                                 routeDestination(for: route)
+                            }
+                            // Native unified toolbar (#3 / #343). NavigationStack
+                            // owns built-in back navigation (swipe, ⌘[ and ⌘←),
+                            // so we surface a sidebar toggle and a global search
+                            // field rather than re-implementing the back button.
+                            // Every item carries `.accessibilityLabel` so
+                            // VoiceOver / Voice Control can target them.
+                            .toolbar {
+                                ToolbarItem(placement: .navigation) {
+                                    Button {
+                                        columnVisibility = (columnVisibility == .all)
+                                            ? .detailOnly
+                                            : .all
+                                    } label: {
+                                        Image(systemName: "sidebar.left")
+                                    }
+                                    .help("Toggle Sidebar")
+                                    .accessibilityLabel("Toggle Sidebar")
+                                }
+
+                                ToolbarItem(placement: .principal) {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "magnifyingglass")
+                                            .foregroundStyle(Theme.ink2)
+                                        TextField("Search", text: $model.searchPageQuery)
+                                            .textFieldStyle(.plain)
+                                            .font(Theme.font(13, weight: .medium))
+                                            .foregroundStyle(Theme.ink)
+                                            .frame(maxWidth: 280)
+                                            .onSubmit {
+                                                // Hand off to the Search page so
+                                                // `runFullSearch` and the existing
+                                                // results UI light up. ⌘F still
+                                                // routes through `focusSearch()`.
+                                                model.selectTab(.search)
+                                                Task { await model.runFullSearch(query: model.searchPageQuery, scope: model.activeSearchScope) }
+                                            }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Theme.surface)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6)
+                                            .stroke(Theme.border, lineWidth: 1)
+                                    )
+                                    .cornerRadius(6)
+                                    .accessibilityLabel("Search")
+                                }
                             }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
