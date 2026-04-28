@@ -3,38 +3,38 @@
     <channel>
         <title>Jellify</title>
         <item>
+            <title>1.0.0-rc2</title>
+            <pubDate>Tue, 28 Apr 2026 06:17:49 +0000</pubDate>
+            <link>https://skalthoff.github.io/jellify-desktop/</link>
+            <sparkle:version>202604280606</sparkle:version>
+            <sparkle:shortVersionString>1.0.0-rc2</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify-1.0.0-rc2.dmg" length="7001521" type="application/octet-stream" sparkle:edSignature="2NYznY1hXcuNbxZGFKkwoDwiTT90Vunole0nSpKDgFBLWYZCg3UOg092r3OapVCVxg4IL66itGU/ggFHMYH0CA=="/>
+            <sparkle:deltas>
+                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280606-202604280432.delta" sparkle:deltaFrom="202604280432" length="646606" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="vJU3Qf1CgKFJlTk1509acoE5y0SSEk1JcmcKbXsFLw5/Q/RMDGRxvK7ODnzZF5oq3Cd1ekN2U/VcFn3lclsDCw=="/>
+                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280606-202604251604.delta" sparkle:deltaFrom="202604251604" length="2132210" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="Ehx5TI0/ltF1GYG5CYY5XclA5E/pvizM0NAOUe/nnqtky722qZbTM/1d4JjKvcIyK2M1Ak0MzD+k17+zt96BDQ=="/>
+                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280606-202604251537.delta" sparkle:deltaFrom="202604251537" length="2132574" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="XYViiDZ/d9b9757Gcp5JiDfJA478Rw+WQcGqUPX6Uh+mLJlivATO++r9DfMlLPnBwKeor0kJ0RFxKLs9Uz7xDQ=="/>
+                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280606-202604251226.delta" sparkle:deltaFrom="202604251226" length="2134574" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="Yddc+7Zm9U8THfYyKbbvRIXUK5aRxFExIBi0FPz7xIKZpMJ73vLgWjseEgJ/lWDqM5DcgQBonGKVhv6fCuRLDg=="/>
+                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280606-202604251111.delta" sparkle:deltaFrom="202604251111" length="2123390" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="2k5ErMfAQfnAXRyhMRqzhE7BlzRDbIM16SbGIogsxeAfqr6ESmJX1AgkjUmCfs2Zjed5WLLvqx/YUfgknYR2Aw=="/>
+            </sparkle:deltas>
+        </item>
+        <item>
             <title>1.0.0-rc1</title>
-            <pubDate>Tue, 28 Apr 2026 04:40:18 +0000</pubDate>
+            <pubDate>Tue, 28 Apr 2026 06:17:49 +0000</pubDate>
             <link>https://skalthoff.github.io/jellify-desktop/</link>
             <sparkle:version>202604280432</sparkle:version>
             <sparkle:shortVersionString>1.0.0-rc1</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify-1.0.0-rc1.dmg" length="7017355" type="application/octet-stream" sparkle:edSignature="75NHbuliRHd8PVc7b7FDyj7ooENmL6mWj+l84/Uk3OknBIBIypIVJxMd172RAmpf4MxgOQT7E1jppG/8E+Q8Cg=="/>
-            <sparkle:deltas>
-                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280432-202604251604.delta" sparkle:deltaFrom="202604251604" length="2119378" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="U90vCsKeDBXSHmydq8ZpQpDQ28dVgQl+EvD3pzzoxoxtTR5C2j/3/IYZZuXOungg4m+ESbzhaqVYmCz4Ov7xCw=="/>
-                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280432-202604251537.delta" sparkle:deltaFrom="202604251537" length="2121330" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="yj+yUr13rYSFXwcdimgaKRAQp90NMrWnpdIjXiJ+u21FWkJVRdJWEAB2WrC7EEUfEGwOEk62IaWfXwZEJlCpAA=="/>
-                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280432-202604251226.delta" sparkle:deltaFrom="202604251226" length="2121454" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="TPS/TbSitp7yqIIIzzLhpIPrK74kXRWhiHkGr4gFKLdv27eL7Ivk3D5drD8VOCgHlNrBHAIX7rlYIAPIHomNDQ=="/>
-                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280432-202604251111.delta" sparkle:deltaFrom="202604251111" length="2121518" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="980432" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="9kZyWMFHcRSgIOUJappJBEW8y6GdEodAy5I0neSW61t4zrietRkBP8LewENyeUTvQnThTHSYStql09jmOU1NAQ=="/>
-                <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify202604280432-202604241956.delta" sparkle:deltaFrom="202604241956" length="2986858" type="application/octet-stream" sparkle:deltaFromSparkleExecutableSize="977808" sparkle:deltaFromSparkleLocales="de,he,ar,el,ja,fa,uk" sparkle:edSignature="iz6XzKJwLmwcuyvGtj5w7ZncqD6SHz2WJbBaWJgQzUSNvQOZaaqEJpoSl4kpwM/9R9FGlrvY+CZyMzjOfl3yBw=="/>
-            </sparkle:deltas>
         </item>
         <item>
             <title>0.2.0</title>
-            <pubDate>Tue, 28 Apr 2026 04:40:19 +0000</pubDate>
+            <pubDate>Tue, 28 Apr 2026 06:17:50 +0000</pubDate>
             <link>https://skalthoff.github.io/jellify-desktop/</link>
             <sparkle:version>202604251604</sparkle:version>
             <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify-0.2.0.dmg" length="6839088" type="application/octet-stream" sparkle:edSignature="n57xB+D/c4V3k1rMeVuOVoqEy4prr1PVhioePmWkbssCXa/3TloKOos4i30ou2OqayihdcDX2rCOgWLqmiFLCA=="/>
-        </item>
-        <item>
-            <title>0.2.0-rc12</title>
-            <pubDate>Tue, 28 Apr 2026 04:40:20 +0000</pubDate>
-            <link>https://skalthoff.github.io/jellify-desktop/</link>
-            <sparkle:version>202604251537</sparkle:version>
-            <sparkle:shortVersionString>0.2.0-rc12</sparkle:shortVersionString>
-            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <enclosure url="https://github.com/skalthoff/jellify-desktop/releases/download/Jellify-0.2.0-rc12.dmg" length="6839142" type="application/octet-stream" sparkle:edSignature="4eLVPBrofvPXy2sb3a5WTZoh9kHTIkR15QAbKWE5WsD6mgheAPiSbz+PY9pvZ/cwaVlXNGeV0VSSNh0YXogxCQ=="/>
         </item>
     </channel>
 </rss>
