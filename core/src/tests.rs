@@ -7323,7 +7323,10 @@ async fn tracks_by_artist_propagates_pagination_offset() {
         .tracks_by_artist("artist-77", Paging::new(100, 50))
         .await
         .unwrap();
-    assert_eq!(page.total_count, 250, "server-reported total wins over page len");
+    assert_eq!(
+        page.total_count, 250,
+        "server-reported total wins over page len"
+    );
     assert!(page.items.is_empty());
 }
 
