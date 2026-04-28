@@ -16,7 +16,7 @@ extension AppModel {
 
     /// `mark_played` / `mark_unplayed` FFIs (#133, #222). Gates
     /// "Mark All as Played" on albums and "Mark as Played" on tracks.
-    var supportsMarkPlayed: Bool { false }
+    var supportsMarkPlayed: Bool { true }
 
     /// Artist-tracks FFI (#156, #465). Gates "Play All" / "Shuffle All"
     /// on artist surfaces. Top-track-driven actions (Play Next via
