@@ -17,8 +17,7 @@ import SwiftUI
 /// #273 (lyrics drawer), #278 (about block), #287 (LRC parser),
 /// #288 (auto-scroll).
 ///
-/// The queue inspector (#272) is owned by BATCH-07 — the Queue tab
-/// here renders a placeholder until that lands.
+/// The queue inspector (#272) is embedded via `QueueInspector`.
 struct NowPlayingView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -200,23 +199,13 @@ struct NowPlayingView: View {
 
     // MARK: - Queue tab (#272)
 
-    /// Placeholder queue drawer. BATCH-07 owns the rich queue inspector
-    /// (#272); until it lands we render a minimal "Queue goes here"
-    /// marker so the tab is explorable without looking broken.
+    /// Queue panel — embeds the full `QueueInspector` component so the Now
+    /// Playing view surfaces the same upcoming-tracks UI as the sidebar.
+    /// `QueueInspector` pulls its data from `AppModel` via `@Environment`,
+    /// which `NowPlayingView` already injects.
     @ViewBuilder
     private var queuePanel: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Queue goes here")
-                    .font(Theme.font(14, weight: .medium))
-                    .foregroundStyle(Theme.ink2)
-                Text("A full queue inspector lands with BATCH-07 (#272).")
-                    .font(Theme.font(11, weight: .medium))
-                    .foregroundStyle(Theme.ink3)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 8)
-        }
+        QueueInspector()
     }
 
     // MARK: - Lyrics tab (#91, #273)
