@@ -39,7 +39,7 @@ extension AppModel {
 
     /// Track-info sheet (#95). Gates "Show Track Info" on track
     /// context menus.
-    var supportsTrackInfo: Bool { false }
+    var supportsTrackInfo: Bool { true }
 
     /// Genre actions (#144, #248, #318). Genre radio (#94) is wired;
     /// browse landing (#318), genre shuffle (#318), and pin-to-home
