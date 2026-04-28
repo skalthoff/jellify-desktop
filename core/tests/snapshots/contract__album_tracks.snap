@@ -19,6 +19,14 @@ expression: tracks
   bitrate: 900000
   image_tag: tag-001
   playlist_item_id: ~
+  user_data:
+    is_favorite: false
+    played: false
+    play_count: 3
+    playback_position_ticks: 0
+    last_played_at: ~
+    likes: ~
+    rating: ~
 - id: track-002
   name: Verse
   album_id: album-abc
@@ -35,3 +43,11 @@ expression: tracks
   bitrate: 850000
   image_tag: tag-002
   playlist_item_id: ~
+  user_data:
+    is_favorite: true
+    played: false
+    play_count: 7
+    playback_position_ticks: 0
+    last_played_at: ~
+    likes: ~
+    rating: ~

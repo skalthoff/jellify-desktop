@@ -11,6 +11,14 @@ artists:
     genres:
       - Pop
     image_tag: img-a01
+    user_data:
+      is_favorite: false
+      played: false
+      play_count: 0
+      playback_position_ticks: 0
+      last_played_at: ~
+      likes: ~
+      rating: ~
 albums:
   - id: album-001
     name: Searchable Record
@@ -22,6 +30,14 @@ albums:
     genres:
       - Pop
     image_tag: img-al1
+    user_data:
+      is_favorite: false
+      played: false
+      play_count: 0
+      playback_position_ticks: 0
+      last_played_at: ~
+      likes: ~
+      rating: ~
 tracks:
   - id: track-001
     name: Searchable Song
@@ -39,4 +55,12 @@ tracks:
     bitrate: 320000
     image_tag: img-tr1
     playlist_item_id: ~
+    user_data:
+      is_favorite: false
+      played: false
+      play_count: 1
+      playback_position_ticks: 0
+      last_played_at: ~
+      likes: ~
+      rating: ~
 total_record_count: 3
