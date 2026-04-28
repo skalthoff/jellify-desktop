@@ -37,7 +37,7 @@ Deliverable: `gh release create vX.Y.Z` produces a signed, notarized, stapled `J
 Key work:
 - Developer ID signing + hardened runtime entitlements.
 - `notarytool` CI pipeline with Keychain-stored credentials.
-- `create-dmg` packaging, universal binary via `lipo`.
+- `create-dmg` packaging, Apple Silicon arm64 only (Intel dropped — see #660).
 - Sparkle 2 via SPM, EdDSA-signed appcast hosted on GitHub Pages.
 - Crash reporting (opt-in Sentry-Cocoa).
 
