@@ -21,7 +21,6 @@ import SwiftUI
 ///    below).
 ///
 /// Data stubs that remain TODO pending core work:
-/// - `similar_artists` FFI (#146) → similar artists row is empty-state today.
 /// - `artist_overview` / `artist_details` FFI (#231) → the About block falls
 ///   back to the artist's genres + a "No bio yet" line.
 /// - `AlbumType` on the `Album` record (#60) → discography grouping uses
@@ -41,6 +40,7 @@ struct ArtistDetailView: View {
     @State private var artistAlbums: [Album] = []
     @State private var fetchedArtist: Artist?
     @State private var isBioExpanded = false
+    @State private var similarArtistsState: [Artist] = []
 
     /// Resolve the artist: cached library page first, then whichever
     /// record the `.task` block fetched on demand. Missing (server
@@ -75,6 +75,7 @@ struct ArtistDetailView: View {
             artistAlbums = await model.loadArtistAlbums(artistId: artistID)
             topTracks = await model.loadArtistTopTracks(artistId: artistID)
             isLoadingTopTracks = false
+            similarArtistsState = await model.loadSimilarArtists(artistId: artistID)
         }
     }
 
@@ -530,8 +531,8 @@ struct ArtistDetailView: View {
 
     /// Horizontal carousel of 140pt circular artist tiles, mirroring
     /// `ArtistRadioTile`'s shape but with the real-artist nav action.
-    /// Empty today — see TODO below — and hidden entirely when we have no
-    /// data, so the section doesn't read as a bug.
+    /// Hidden when the server returns no similar artists so the section
+    /// doesn't read as a bug. Data comes from `similarArtistsState`.
     @ViewBuilder
     private var similarArtistsSection: some View {
         let similar = similarArtists
@@ -552,16 +553,12 @@ struct ArtistDetailView: View {
         }
     }
 
-    /// Similar artists list. Empty today — returns `[]` so the section
-    /// collapses silently rather than surfacing a broken "similar to" shelf.
-    ///
-    /// TODO(core-#146): wire through `core.similar_artists(artist_id, limit)`
-    /// once the FFI lands. Jellyfin exposes `/Artists/{id}/Similar` — the
-    /// core just needs to pass it through. With that in place this returns
-    /// the server's list trimmed to 6 items per #232.
+    /// Similar artists list. Backed by `model.loadSimilarArtists` (which
+    /// calls `core.similar_artists` via Jellyfin's `/Artists/{id}/Similar`).
+    /// Populated by the `.task(id:)` block; collapses silently when empty.
+    /// See #146.
     private var similarArtists: [Artist] {
-        // TODO(core-#146): return model.similarArtists(for: artistID, limit: 6)
-        []
+        similarArtistsState
     }
 
     // MARK: - About / bio (#231)
@@ -797,9 +794,8 @@ private struct ArtistDiscographyTile: View {
 /// visual shape of `ArtistRadioTile` but the action is "open detail", not
 /// "start radio", and the subline is the genre rather than the word "Radio".
 ///
-/// Today this is unreachable (similar artists aren't wired — see
-/// `ArtistDetailView.similarArtists`) but we keep the component live so that
-/// when #146 lands the tile just gets data and works.
+/// Wired as of #146 — `ArtistDetailView.similarArtistsState` is now populated
+/// by `model.loadSimilarArtists(artistId:)` in the `.task(id:)` block.
 private struct SimilarArtistTile: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
