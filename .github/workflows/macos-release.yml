@@ -52,18 +52,16 @@ jobs:
         with:
           # `latest-stable` resolves to Xcode 16.2 on the macos-14 runner
           # today. Xcode 16.x compiles Nuke 13.0.2 cleanly via single-arch
-          # `swift build` (the regular CI proves this on every PR). The
-          # multi-arch route through xcodebuild trips strict-concurrency
-          # errors in Nuke, so the 0.2 release ships Apple Silicon only —
-          # see the `Swift build` step below. Universal slice returns in
-          # 0.3 alongside the wider Swift 6 / Sendable cleanup.
+          # `swift build`. Apple Silicon only — Intel was dropped from
+          # macOS distribution permanently (#660 wontfix); current install
+          # base no longer justifies multi-arch build complexity, and
+          # SwiftPM xcframework consumption with multi-arch is broken under
+          # Xcode 26.
           xcode-version: latest-stable
 
       - name: Install Rust (Apple Silicon)
         uses: dtolnay/rust-toolchain@stable
         with:
-          # 0.2 ships Apple Silicon only; the x86_64 slice is deferred to
-          # 0.3 once Nuke / strict-concurrency on multi-arch is sorted.
           targets: aarch64-apple-darwin
 
       - name: Cache cargo

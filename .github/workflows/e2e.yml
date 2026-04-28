@@ -70,9 +70,7 @@ jobs:
           xcode-version: latest-stable
       - uses: dtolnay/rust-toolchain@stable
         with:
-          # build-core.sh targets aarch64 by default; x86_64 must be installed
-          # explicitly so the runner can produce universal xcframeworks.
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          targets: aarch64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
           key: e2e-macos

@@ -399,7 +399,7 @@ auto-updating `.app` on someone's Mac.
 ```
   git tag v0.2.0  ── push ──►  .github/workflows/macos-release.yml
        │
-       ├─ build universal xcframework (arm64 + x86_64)
+       ├─ build arm64 xcframework (Apple Silicon only — see #660)
        ├─ swift build -c release
        ├─ make-iconset.sh            → Resources/Jellify.icns
        ├─ make-bundle.sh             → build/Jellify.app
