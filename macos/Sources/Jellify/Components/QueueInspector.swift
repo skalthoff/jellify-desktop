@@ -42,20 +42,41 @@ struct QueueInspector: View {
     @State private var draggingId: UUID?
     @State private var dropTargetIndex: Int?
 
+    /// Transient toast shown when the user double-clicks an auto-queue row.
+    /// The underlying `seek_to_queue_index` primitive (#282) does not exist
+    /// yet; rather than silently doing nothing we surface a brief message so
+    /// the interaction feels acknowledged. Auto-dismisses after 3 s.
+    @State private var showJumpToast = false
+    /// Work item backing the 3 s auto-dismiss. Held so a second double-click
+    /// within the window resets the timer instead of racing two dismissals.
+    @State private var jumpToastDismissWork: DispatchWorkItem?
+
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    actionRow
-                    nowPlayingCard
-                    upNextSection
-                    playingFromSection
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                header
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        actionRow
+                        nowPlayingCard
+                        upNextSection
+                        playingFromSection
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 16)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 16)
+            }
+            .frame(maxHeight: .infinity)
+            .background(Theme.bgAlt)
+
+            if showJumpToast {
+                JumpToTrackToast(onDismiss: dismissJumpToast)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.easeInOut(duration: 0.2), value: showJumpToast)
         .frame(maxHeight: .infinity)
         .background(Theme.bgAlt)
         // Clear-queue confirmation dialog (#284). Count interpolated into
@@ -421,15 +442,30 @@ struct QueueInspector: View {
         model.moveUpNext(from: IndexSet(integer: idx), to: offset)
     }
 
-    /// Jump playback to an auto-queue entry. Implementation is deliberately
-    /// a no-op stub for BATCH-07a: the underlying "seek to queue index"
-    /// primitive (TODO(core-#282)) does not exist yet. Double-clicking a
-    /// row still triggers this handler so the interaction is wired and
-    /// BATCH-07b / core can land the playback side without touching the UI.
+    /// Jump playback to an auto-queue entry. The underlying
+    /// `seek_to_queue_index` primitive (TODO(core-#282)) does not exist yet.
+    /// Rather than silently doing nothing, we surface a transient toast so
+    /// the user knows the gesture was recognized and that the feature is
+    /// coming. When #282 lands, replace the toast call with the real seek.
     private func jumpTo(entry: Queue) {
-        // TODO(core-#282): needs `seek_to_queue_index` on the Rust player.
-        // Until then, surface a log so manual QA knows the row registered.
-        print("[QueueInspector] jumpTo(\(entry.track.name)) needs core seek primitive — see #282")
+        // TODO(core-#282): replace with `try core.seek_to_queue_index(...)`.
+        showJumpToastMessage()
+    }
+
+    /// Show the "Jump to track coming soon" toast and arm a 3 s auto-dismiss.
+    /// A second double-click within the window resets the timer cleanly.
+    private func showJumpToastMessage() {
+        jumpToastDismissWork?.cancel()
+        withAnimation { showJumpToast = true }
+        let work = DispatchWorkItem { dismissJumpToast() }
+        jumpToastDismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
+    }
+
+    private func dismissJumpToast() {
+        jumpToastDismissWork?.cancel()
+        jumpToastDismissWork = nil
+        withAnimation { showJumpToast = false }
     }
 
     // MARK: - Helpers
@@ -683,5 +719,59 @@ private struct SaveQueueSheet: View {
     private var totalCount: Int {
         let currentCount = model.status.currentTrack == nil ? 0 : 1
         return currentCount + model.upNextUserAdded.count + model.upNextAutoQueue.count
+    }
+}
+
+// MARK: - Jump-to-track toast
+
+/// Transient informational toast shown when the user double-clicks an
+/// auto-queue row. The seek-to-index primitive (#282) isn't wired yet;
+/// this prevents the gesture from feeling broken by giving explicit
+/// feedback that it was recognized. Dismisses automatically after 3 s
+/// or via the close button.
+private struct JumpToTrackToast: View {
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Theme.ink2)
+                .accessibilityHidden(true)
+
+            Text("Jump to track coming soon")
+                .font(Theme.font(12, weight: .semibold))
+                .foregroundStyle(Theme.ink)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.ink3)
+                    .frame(width: 18, height: 18)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface)
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(Theme.ink2)
+                .frame(width: 3)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: Color.black.opacity(0.25), radius: 8, y: 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Jump to track coming soon")
+        .accessibilityAddTraits(.isStaticText)
     }
 }
