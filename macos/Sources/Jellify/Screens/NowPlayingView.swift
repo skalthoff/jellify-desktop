@@ -27,6 +27,7 @@ struct NowPlayingView: View {
     /// the tab the user was last on — a prior-tab memory would surprise
     /// people returning to Now Playing days later.
     @State private var tab: Tab = .queue
+    @State private var resolvedAlbum: Album?
 
     enum Tab: String, CaseIterable, Identifiable {
         case queue = "Queue"
@@ -126,6 +127,19 @@ struct NowPlayingView: View {
                     .disabled(track.albumId == nil)
                     .accessibilityHint(track.albumId == nil ? "" : "Open album page")
                 }
+
+                let isFav = model.isFavorite(id: track.id)
+                Button {
+                    model.toggleFavorite(track: track)
+                } label: {
+                    Image(systemName: isFav ? "heart.fill" : "heart")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(isFav ? Theme.accent : Theme.ink2)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .help(isFav ? "Unfavorite" : "Favorite")
+                .accessibilityLabel(isFav ? "Unfavorite" : "Favorite")
             }
             Spacer(minLength: 0)
         }
@@ -281,7 +295,7 @@ struct NowPlayingView: View {
                     )
                 }
 
-                if let album = matchingAlbum(for: track) {
+                if let album = resolvedAlbum {
                     if album.trackCount > 0 {
                         aboutSection(
                             label: "Tracks",
@@ -300,6 +314,13 @@ struct NowPlayingView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
         }
+        .task(id: track.albumId) {
+            guard let albumId = track.albumId else {
+                resolvedAlbum = nil
+                return
+            }
+            resolvedAlbum = await model.resolveAlbum(id: albumId)
+        }
     }
 
     @ViewBuilder
@@ -316,16 +337,6 @@ struct NowPlayingView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)")
-    }
-
-    /// Look up the album record for this track in the cached library,
-    /// if any. Returns `nil` when the track's album isn't in the
-    /// currently-loaded page (e.g. a track started from a search
-    /// hint). The About panel gracefully omits album-derived rows in
-    /// that case.
-    private func matchingAlbum(for track: Track) -> Album? {
-        guard let albumId = track.albumId else { return nil }
-        return model.albums.first { $0.id == albumId }
     }
 
     private func formatRuntime(_ seconds: Double) -> String {
