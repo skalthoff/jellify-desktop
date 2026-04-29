@@ -474,11 +474,6 @@ final class AppModel {
     /// this set. Cleared on success or error. See `duplicatePlaylist`.
     var sidebarCopyingPlaylistIds: Set<String> = []
 
-    /// Artists the user has "followed" in-app. Today this is purely local
-    /// state (no server-side follow primitive on Jellyfin), persisted to
-    /// `UserDefaults` on write. See #64 / #228.
-    var followedArtistIds: Set<String> = []
-
     // MARK: - Command Palette (⌘K)
 
     /// Whether the command-palette overlay is currently visible. Toggled by
@@ -578,6 +573,12 @@ final class AppModel {
             title: "Go to Discover",
             symbol: "sparkles",
             run: { [weak self] in self?.goToDiscover() }
+        ))
+        actions.append(PaletteAction(
+            id: "nav.favorites",
+            title: "Go to Favorites",
+            symbol: "heart",
+            run: { [weak self] in self?.selectTab(.favorites) }
         ))
 
         // Preferences. macOS exposes the Settings scene through the standard
@@ -1623,7 +1624,10 @@ final class AppModel {
                 markAuthExpired()
                 return []
             }
-            return Self.parseTracksFromItems(data: data)
+            let tracks = Self.parseTracksFromItems(data: data)
+            // Seed favoriteById so track hearts are correct on first paint.
+            for track in tracks { favoriteById[track.id] = true }
+            return tracks
         } catch {
             print("[AppModel] loadFavoriteTracks failed: \(error.localizedDescription)")
             return []
@@ -1633,13 +1637,16 @@ final class AppModel {
     /// Fetch up to `limit` favorited albums, sorted by name. Backs the
     /// "Albums" section of the Favorites screen.
     func loadFavoriteAlbums(limit: UInt32 = 500) async -> [Album] {
-        await fetchAlbumsViaItemsQuery(
+        let albums = await fetchAlbumsViaItemsQuery(
             sortBy: "SortName",
             filters: "IsFavorite",
             limit: limit,
             extraFields: [],
             minDateLastSaved: nil
         )
+        // Seed favoriteById so album hearts are correct on first paint.
+        for album in albums { favoriteById[album.id] = true }
+        return albums
     }
 
     /// Fetch up to `limit` favorited artists, sorted by name. Backs the
@@ -1661,7 +1668,10 @@ final class AppModel {
                 markAuthExpired()
                 return []
             }
-            return Self.parseArtistsFromItems(data: data)
+            let artists = Self.parseArtistsFromItems(data: data)
+            // Seed favoriteById so artist hearts are correct on first paint.
+            for artist in artists { favoriteById[artist.id] = true }
+            return artists
         } catch {
             print("[AppModel] loadFavoriteArtists failed: \(error.localizedDescription)")
             return []
@@ -2153,7 +2163,8 @@ final class AppModel {
     /// stable for the duration of the user's browsing session and the
     /// detail screen may be entered / left repeatedly.
     @discardableResult
-    func loadArtistAlbums(artistId: String, limit: UInt32 = 100) async -> [Album] {
+    func loadArtistAlbums(artistId: String, limit: UInt32 = 500) async -> [Album] {
+        // Soft cap. Prolific catalogues > 500 will still truncate; pagination tracked as v1.x follow-up.
         if let cached = artistAlbumsCache[artistId] { return cached }
         do {
             let page = try await Task.detached(priority: .userInitiated) { [core] in
@@ -2314,6 +2325,16 @@ final class AppModel {
         let removed = currentPlaylistTracks.filter { removing.contains($0.id) }
         guard !removed.isEmpty else { return }
         let playlistItemIds = removed.compactMap { $0.playlistItemId }
+        // Server call requires playlistItemIds. If any removed track lacks
+        // one, the whole batch can't be reconciled with the server. Bail
+        // BEFORE the optimistic mutation so there's nothing to roll back —
+        // surface a banner so the user knows the action didn't persist.
+        // (Earlier we mutated then rolled back, but the rollback restored
+        // from the already-mutated array — net no-op.)
+        guard !playlistItemIds.isEmpty else {
+            errorMessage = "Couldn't remove this track from the playlist. Try refreshing the playlist."
+            return
+        }
         currentPlaylistTracks.removeAll { removing.contains($0.id) }
         playlistTracks[playlistId] = currentPlaylistTracks
         pendingPlaylistRemoval = PendingRemoval(
@@ -2330,10 +2351,6 @@ final class AppModel {
                 runtimeTicks: p.runtimeTicks,
                 imageTag: p.imageTag
             )
-        }
-        guard !playlistItemIds.isEmpty else {
-            print("[AppModel] removeFromPlaylist: no PlaylistItemIds on removed tracks — server unchanged; did these come from core.playlistTracks?")
-            return
         }
         Task.detached(priority: .userInitiated) { [core] in
             try? core.removeFromPlaylist(
@@ -2456,6 +2473,20 @@ final class AppModel {
             return
         }
         playInstantMix(seedId: seedId)
+    }
+
+    /// Re-seed the Instant Mix with a different track than the current one.
+    /// Picks a random track from `recentlyPlayed` excluding the currently-
+    /// playing track, so "Generate new mix" actually sounds different. Falls
+    /// back to `startInstantMix` when there is nothing else to pick from.
+    func regenerateInstantMix() {
+        let currentId = status.currentTrack?.id
+        let candidates = recentlyPlayed.filter { $0.id != currentId }
+        if let seed = candidates.randomElement() {
+            playInstantMix(seedId: seed.id)
+        } else {
+            startInstantMix()
+        }
     }
 
     /// Common driver for every "Start Radio" entry point. `core.instantMix`
@@ -2978,6 +3009,11 @@ final class AppModel {
     /// round-trip.
     var favoriteById: [String: Bool] = [:]
 
+    /// Bumps every time `setFavorite(...)` resolves on the server. Views that
+    /// list favorites can `.task(id: model.favoriteChangeToken)` to refetch
+    /// without polling.
+    var favoriteChangeToken: UInt64 = 0
+
     /// In-memory played flag keyed by item id (track / album / playlist).
     /// Mirrors `favoriteById` — populated lazily from
     /// `track.userData?.played` and stamped with the server's authoritative
@@ -3028,6 +3064,7 @@ final class AppModel {
                 }
             }.value
             favoriteById[itemId] = state.isFavorite
+            favoriteChangeToken &+= 1
             serverReachability.noteSuccess()
         } catch {
             if handleAuthError(error) { return }
@@ -3071,20 +3108,6 @@ final class AppModel {
     func enqueueDownload(album: Album) {
         // TODO: #70 / #222 — download engine not yet wired.
         print("[AppModel] enqueueDownload(album:) not yet wired — see #70 / #222")
-    }
-
-    /// Present an "Add all to playlist" destination picker.
-    ///
-    /// The album detail screen has its own inline popover that does the
-    /// actual picking; this entry point is kept for menu-bar / context-menu
-    /// callers that don't own a popover anchor. When the new
-    /// `addToPlaylist(...)` helper below lands for every surface, this
-    /// becomes a no-op wrapper.
-    /// TODO: #72, #126 — menu-bar picker sheet for surfaces without their
-    /// own popover anchor.
-    func requestAddToPlaylist(album: Album) {
-        // TODO: #72 / #126 — standalone picker sheet for non-popover callers.
-        print("[AppModel] requestAddToPlaylist(album:) not yet wired — see #72 / #126")
     }
 
     /// Append a batch of tracks to an existing playlist via `add_to_playlist`
@@ -3330,32 +3353,37 @@ final class AppModel {
         Task { await setFavorite(itemId: artist.id, enabled: !isFavorite(id: artist.id)) }
     }
 
-    /// Toggle the follow flag for an artist.
-    /// TODO: #64 / #228 — server-side follow primitive TBD. For now,
-    /// toggle a local `followedArtistIds` set so the UI has something to
-    /// render against; persistence lives alongside the real API work.
+    /// Toggle the follow flag for an artist. Routes through `setFavorite`
+    /// since Jellyfin's `/Users/{id}/FavoriteItems/{id}` endpoint is the
+    /// correct server primitive for "following" an artist — the vocabulary
+    /// differs but the data is the same `IsFavorite` flag on the artist item.
     func toggleFollow(artist: Artist) {
-        if followedArtistIds.contains(artist.id) {
-            followedArtistIds.remove(artist.id)
-        } else {
-            followedArtistIds.insert(artist.id)
-        }
+        Task { await setFavorite(itemId: artist.id, enabled: !isFavorite(id: artist.id)) }
     }
 
-    /// `true` when the user has followed this artist (in-app, today).
-    /// See `toggleFollow(artist:)` for the TODO on server-side follow.
+    /// `true` when the user has favorited/followed this artist.
+    /// Reads from the shared `favoriteById` cache so state is consistent
+    /// with `isFavorite(id:)` calls on the same artist id.
     func isFollowing(artist: Artist) -> Bool {
-        followedArtistIds.contains(artist.id)
+        isFavorite(id: artist.id)
     }
 
-    /// Play a handful of the artist's top tracks as "Play Next".
-    /// TODO: #282 — needs an Up Next queue primitive. Until that lands,
-    /// behaves like `playTopTracks` (start playback from the first top
-    /// track) so the UI action has a landing pad.
+    /// Insert a handful of the artist's top tracks immediately after the
+    /// currently-playing track. Uses the `core.playNext` primitive wired
+    /// in for #282. Falls back silently when there are no top tracks to load.
     func playNextArtist(artist: Artist) {
-        // TODO(#282): queue "Up Next" insertion. Fall through to top-tracks
-        // playback so the menu item does something.
-        playTopTracks(artist: artist)
+        Task {
+            let tracks = await loadArtistTopTracks(artistId: artist.id)
+            guard !tracks.isEmpty else { return }
+            if status.currentTrack == nil {
+                play(tracks: tracks, startIndex: 0)
+                return
+            }
+            _ = try? await Task.detached(priority: .userInitiated) { [core] in
+                core.playNext(tracks: tracks)
+            }.value
+            self.status = core.status()
+        }
     }
 
     /// Navigate to the artist detail screen. Used when the menu is invoked
@@ -3956,13 +3984,6 @@ final class AppModel {
     func addTracksToPlaylist(tracks: [Track], playlist: Playlist) {
         guard !tracks.isEmpty else { return }
         Task { await addToPlaylist(trackIds: tracks.map(\.id), playlistId: playlist.id) }
-    }
-
-    /// Present a "new playlist" flow seeded with the given selection.
-    /// TODO(#126): create_playlist FFI + sheet not yet wired.
-    func requestAddTracksToPlaylist(tracks: [Track]) {
-        // TODO(#126): create_playlist + picker sheet not yet wired.
-        print("[AppModel] requestAddTracksToPlaylist(\(tracks.count) tracks) not yet wired — see #126")
     }
 
     /// Navigate to the album detail screen for this track's album.
