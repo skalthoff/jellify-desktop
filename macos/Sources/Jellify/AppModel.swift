@@ -2325,6 +2325,16 @@ final class AppModel {
         let removed = currentPlaylistTracks.filter { removing.contains($0.id) }
         guard !removed.isEmpty else { return }
         let playlistItemIds = removed.compactMap { $0.playlistItemId }
+        // Server call requires playlistItemIds. If any removed track lacks
+        // one, the whole batch can't be reconciled with the server. Bail
+        // BEFORE the optimistic mutation so there's nothing to roll back —
+        // surface a banner so the user knows the action didn't persist.
+        // (Earlier we mutated then rolled back, but the rollback restored
+        // from the already-mutated array — net no-op.)
+        guard !playlistItemIds.isEmpty else {
+            errorMessage = "Couldn't remove this track from the playlist. Try refreshing the playlist."
+            return
+        }
         currentPlaylistTracks.removeAll { removing.contains($0.id) }
         playlistTracks[playlistId] = currentPlaylistTracks
         pendingPlaylistRemoval = PendingRemoval(
@@ -2341,28 +2351,6 @@ final class AppModel {
                 runtimeTicks: p.runtimeTicks,
                 imageTag: p.imageTag
             )
-        }
-        guard !playlistItemIds.isEmpty else {
-            // Roll back the optimistic removal — the server was not changed, so
-            // the track would reappear on next launch. Surface a banner so the
-            // user knows the action did not persist.
-            currentPlaylistTracks = (playlistTracks[playlistId] ?? [])
-            playlistTracks[playlistId] = currentPlaylistTracks
-            // Also roll back the track count on the in-memory Playlist.
-            if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
-                let p = playlists[idx]
-                let restored = Int(p.trackCount) + removed.count
-                playlists[idx] = Playlist(
-                    id: p.id,
-                    name: p.name,
-                    trackCount: UInt32(restored),
-                    runtimeTicks: p.runtimeTicks,
-                    imageTag: p.imageTag
-                )
-            }
-            pendingPlaylistRemoval = nil
-            errorMessage = "Couldn't remove this track from the playlist. Try refreshing the playlist."
-            return
         }
         Task.detached(priority: .userInitiated) { [core] in
             try? core.removeFromPlaylist(
@@ -3023,7 +3011,7 @@ final class AppModel {
 
     /// Bumps every time `setFavorite(...)` resolves on the server. Views that
     /// list favorites can `.task(id: model.favoriteChangeToken)` to refetch
-    /// without polling. See #2 in v1.0 audit.
+    /// without polling.
     var favoriteChangeToken: UInt64 = 0
 
     /// In-memory played flag keyed by item id (track / album / playlist).
