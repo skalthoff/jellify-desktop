@@ -48,6 +48,7 @@ struct PreferencesAdvanced: View {
     @State private var onboardingResetDone = false
     @State private var cachesClearedDone = false
     @State private var copyCommandDone = false
+    @State private var consoleHintShown = false
 
     // MARK: - Body
 
@@ -118,10 +119,10 @@ struct PreferencesAdvanced: View {
             ) {
                 HStack(spacing: 8) {
                     logActionButton(
-                        title: "Open in Console.app",
-                        systemImage: "doc.text.magnifyingglass",
+                        title: consoleHintShown ? "Paste in search bar" : "Open in Console.app",
+                        systemImage: consoleHintShown ? "doc.on.clipboard" : "doc.text.magnifyingglass",
                         action: openLogsInConsole,
-                        accessibilityLabel: "Open Console.app filtered to Jellify logs"
+                        accessibilityLabel: "Open Console.app and copy a Jellify filter to the clipboard"
                     )
                     logActionButton(
                         title: copyCommandDone ? "Copied" : "Copy log command",
@@ -241,29 +242,55 @@ struct PreferencesAdvanced: View {
     /// streaming and the persistence semantics so the user knows entries
     /// don't survive across reboots unless `log show` is run.
     private var streamLogsHelp: String {
+        if consoleHintShown {
+            return "Console is open — paste (⌘V) into its search bar to filter for Jellify entries."
+        }
         if copyCommandDone {
             return "Command copied — paste it into Terminal to start streaming."
         }
         return "Stream Jellify's `os.Logger` output. Console.app is GUI-friendly; the copied `log stream` command is the same data on the Terminal."
     }
 
-    /// Open Console.app with a pre-applied `subsystem:org.jellify.desktop`
-    /// filter via the standard `Console.app:` URL scheme. Falls back to
-    /// launching the app bare if the URL scheme is unavailable on this
-    /// macOS version (Console accepts `subsystem` filters via search bar
-    /// on every supported version, but the URL form was only added in
-    /// macOS 13 — older systems open the app and the user types the
-    /// filter manually).
+    /// Open Console.app and pre-load the clipboard with a search-friendly
+    /// filter so the user can land in the app and `⌘F`+`⌘V` to filter for
+    /// Jellify entries.
+    ///
+    /// Why not deep-link with a URL scheme: Console.app registers no
+    /// `CFBundleURLTypes` (verified on macOS 26.4 — the previously-shipped
+    /// `x-apple-syslog:?subsystem=…` scheme was an invented one and silently
+    /// failed). AppleScript-driving the search field would work but requires
+    /// the user to grant accessibility permissions to Jellify, which is a
+    /// heavyweight ask for a debug button. Clipboard + alert is two extra
+    /// keystrokes for the user, no permissions, no failure modes.
+    ///
+    /// The clipboard payload is just `subsystem:org.jellify.desktop` —
+    /// Console's search bar accepts that token directly and applies it as a
+    /// scoped filter (versus typing the same string into a free-text search
+    /// which matches as substring across all fields).
     private func openLogsInConsole() {
-        let urlString = "x-apple-syslog:?subsystem=org.jellify.desktop"
-        if let url = URL(string: urlString), NSWorkspace.shared.open(url) {
-            return
-        }
-        // Fallback: bring Console.app to the foreground without a filter.
+        let filter = "subsystem:org.jellify.desktop"
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(filter, forType: .string)
+
+        // Bring Console forward by bundle id; falls back to launching by
+        // path if `urlForApplication(withBundleIdentifier:)` returns nil
+        // (rare — Console is in the system Utilities folder by default).
         if let consoleURL = NSWorkspace.shared.urlForApplication(
             withBundleIdentifier: "com.apple.Console"
         ) {
             NSWorkspace.shared.open(consoleURL)
+        } else {
+            NSWorkspace.shared.open(
+                URL(fileURLWithPath: "/System/Applications/Utilities/Console.app")
+            )
+        }
+
+        consoleHintShown = true
+        // Auto-dismiss the hint after a few seconds so the row doesn't stay
+        // stuck on "Paste in search bar" forever.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) {
+            consoleHintShown = false
         }
     }
 
