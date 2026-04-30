@@ -386,8 +386,16 @@ struct ArtistDetailView: View {
                         message: "No play history yet for this artist."
                     )
                 } else {
-                    ForEach(Array(topTracks.enumerated()), id: \.element.id) { idx, track in
-                        TopTrackRow(track: track, rank: idx + 1, queue: topTracks)
+                    // rc9: drop the `Array(topTracks.enumerated())` wrapper.
+                    // The wrapped sequence allocates fresh `(Int, Track)`
+                    // tuples each render and `id: \.element.id` was the only
+                    // identity hint SwiftUI had; the indirection appears to
+                    // confuse macOS 26.4's layout-cache invalidation. Direct
+                    // `ForEach(topTracks, id: \.id)` gives SwiftUI a stable
+                    // identity rooted in the persistent `Track.id` value.
+                    ForEach(topTracks, id: \.id) { track in
+                        let rank = (topTracks.firstIndex(where: { $0.id == track.id }) ?? 0) + 1
+                        TopTrackRow(track: track, rank: rank, queue: topTracks)
                     }
                 }
             }
@@ -439,7 +447,17 @@ struct ArtistDetailView: View {
                 .font(Theme.font(18, weight: .bold))
                 .foregroundStyle(Theme.ink)
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 16) {
+                // rc9: regular `HStack` instead of `LazyHStack`. macOS 26.4 +
+                // Apple Silicon SwiftUI 7.4.27 has a use-after-free in
+                // `_ArrayBuffer._consumeAndCreateNew` when a `LazyHStack`
+                // inside a `ScrollView(.horizontal)` reuses children across
+                // navigation — confirmed by two consecutive crashes
+                // (rc7 OOM + rc8 SIGSEGV) both inside `HVStack.updateCache`
+                // during ArtistDetailView render. Each discography group
+                // here holds at most ~50 tiles (loadArtistAlbums limit / 4
+                // groups), so the eager `HStack` is plenty cheap and avoids
+                // the lazy-recycle buffer churn that triggers the UAF.
+                HStack(alignment: .top, spacing: 16) {
                     ForEach(group.albums, id: \.id) { album in
                         ArtistDiscographyTile(album: album)
                     }
@@ -542,7 +560,11 @@ struct ArtistDetailView: View {
             VStack(alignment: .leading, spacing: 12) {
                 sectionHeader(eyebrow: "YOU MIGHT ALSO LIKE", title: "Similar Artists")
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 18) {
+                    // rc9: regular `HStack` instead of `LazyHStack`. See the
+                    // matching note in `discographyGroup` — same UAF surface,
+                    // same fix. `loadSimilarArtists(limit: 12)` caps the row
+                    // at twelve tiles, so eager rendering is essentially free.
+                    HStack(alignment: .top, spacing: 18) {
                         ForEach(similar, id: \.id) { similarArtist in
                             SimilarArtistTile(artist: similarArtist)
                         }
