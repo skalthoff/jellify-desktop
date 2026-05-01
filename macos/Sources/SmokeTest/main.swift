@@ -30,8 +30,8 @@ import JellifyAudio
 //   16  skipNext didn't change currentTrack
 //
 // Driven by `JELLYFIN_URL` / `JELLYFIN_USER` / `JELLYFIN_PASS`. The
-// `e2e.yml` workflow points all three at a Docker Jellyfin and gates
-// merges on this test.
+// `e2e.yml` workflow points all three at the live `music.skalthoff.com`
+// test instance (`test`/`test`) and gates merges on this test.
 
 @main
 @MainActor
