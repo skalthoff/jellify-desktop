@@ -7381,15 +7381,19 @@ async fn login_forwards_empty_password_to_server() {
         .await;
 
     let server_url = server.uri();
+    // Per-test tempdir avoids parallel-test SQLite contention on Windows
+    // ("database is locked") when multiple tests share a default data_dir.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
         let core = JellifyCore::new(CoreConfig {
-            data_dir: String::new(),
+            data_dir: tmp_path,
             device_name: "Test".into(),
         })
         .unwrap();
         let session = core
-            .login(server_url, "guest".into(), "".into())
+            .login(server_url, "passwordless-user".into(), "".into())
             .expect("login with empty password should succeed");
         assert_eq!(session.access_token, "passwordless-token");
     })
@@ -7408,7 +7412,7 @@ async fn login_forwards_empty_password_to_server() {
         json!(""),
         "empty Pw must be forwarded as the empty string"
     );
-    assert_eq!(body["Username"], json!("guest"));
+    assert_eq!(body["Username"], json!("passwordless-user"));
 }
 
 /// Whitespace-only password is trimmed to empty and forwarded as `Pw: ""`,
@@ -7434,14 +7438,18 @@ async fn login_forwards_whitespace_only_password_as_empty() {
         .await;
 
     let server_url = server.uri();
+    // Per-test tempdir avoids parallel-test SQLite contention on Windows
+    // ("database is locked") when multiple tests share a default data_dir.
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
         let core = JellifyCore::new(CoreConfig {
-            data_dir: String::new(),
+            data_dir: tmp_path,
             device_name: "Test".into(),
         })
         .unwrap();
-        core.login(server_url, "guest".into(), "\t\n  ".into())
+        core.login(server_url, "ws-user".into(), "\t\n  ".into())
             .expect("login with whitespace-only password should succeed (trimmed to empty)");
     })
     .await
@@ -7454,5 +7462,9 @@ async fn login_forwards_whitespace_only_password_as_empty() {
         .expect("expected an AuthenticateByName POST");
     let body: serde_json::Value =
         serde_json::from_slice(&post.body).expect("auth body must be JSON");
-    assert_eq!(body["Pw"], json!(""), "whitespace-only Pw must be trimmed to empty");
+    assert_eq!(
+        body["Pw"],
+        json!(""),
+        "whitespace-only Pw must be trimmed to empty"
+    );
 }
