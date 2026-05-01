@@ -2,17 +2,16 @@
 //!
 //! Gated on `JELLIFY_E2E_URL` — every test early-returns when the variable is
 //! absent so `cargo test --workspace` stays fully offline / hermetic. The e2e
-//! CI workflow (`.github/workflows/e2e.yml`) provisions a Jellyfin container,
-//! completes its first-run setup wizard, and invokes these tests with the URL
-//! and admin credentials injected via env vars.
+//! CI workflow (`.github/workflows/e2e.yml`) points at the shared
+//! `music.skalthoff.com` test instance with the read-only `test` account, and
+//! injects the URL and credentials via env vars.
 //!
 //! What each test exercises against a real Jellyfin:
 //!
 //! - `probe_returns_server_info` — anonymous `/System/Info/Public`
 //! - `login_issues_access_token` — `POST /Users/AuthenticateByName`
-//! - `list_albums_on_empty_library_returns_envelope` — authenticated `/Items`
-//!   query, verifies the pagination envelope shape rather than any particular
-//!   media (CI does not seed a library).
+//! - `list_albums_returns_envelope` — authenticated `/Items` query; verifies
+//!   the pagination envelope shape, agnostic to library contents.
 //!
 //! These cover the paths that wiremock-based unit tests can only simulate: the
 //! actual Jellyfin response shapes, auth header handling, and HTTP edge cases.
@@ -29,11 +28,11 @@ fn e2e_url() -> Option<String> {
 }
 
 fn e2e_user() -> String {
-    std::env::var("JELLIFY_E2E_USER").unwrap_or_else(|_| "jellify-e2e".to_string())
+    std::env::var("JELLIFY_E2E_USER").unwrap_or_else(|_| "test".to_string())
 }
 
 fn e2e_pass() -> String {
-    std::env::var("JELLIFY_E2E_PASS").unwrap_or_else(|_| "jellify-e2e-password".to_string())
+    std::env::var("JELLIFY_E2E_PASS").unwrap_or_else(|_| "test".to_string())
 }
 
 fn make_core() -> Arc<JellifyCore> {
@@ -70,7 +69,7 @@ fn login_issues_access_token() {
     let core = make_core();
     let session = core
         .login(url, e2e_user(), e2e_pass())
-        .expect("login should succeed with seeded admin");
+        .expect("login should succeed with the test account");
     assert!(
         !session.access_token.is_empty(),
         "access_token must be non-empty"
@@ -79,7 +78,7 @@ fn login_issues_access_token() {
 }
 
 #[test]
-fn list_albums_on_empty_library_returns_envelope() {
+fn list_albums_returns_envelope() {
     let Some(url) = e2e_url() else {
         eprintln!("{SKIP_HINT}");
         return;
@@ -87,10 +86,10 @@ fn list_albums_on_empty_library_returns_envelope() {
     let core = make_core();
     let _ = core
         .login(url, e2e_user(), e2e_pass())
-        .expect("login should succeed with seeded admin");
+        .expect("login should succeed with the test account");
     let page = core.list_albums(0, 10).expect("list_albums");
-    // CI does not seed media, so the envelope is expected to be empty — but the
-    // request round-trip and pagination shape still need to succeed.
+    // Envelope shape only — agnostic to library contents (the live test
+    // server is populated; mocked / fresh servers may be empty).
     assert!(
         page.items.len() as u32 <= page.total_count.max(page.items.len() as u32),
         "items should not exceed total_count"
