@@ -194,7 +194,7 @@ struct LibraryListRow: View {
     private var countMeta: String {
         switch payload {
         case .album(let album):
-            return "\(album.trackCount) tracks"
+            return album.trackCount == 1 ? "1 track" : "\(album.trackCount) tracks"
         case .artist(let artist):
             return artist.albumCount == 1 ? "1 album" : "\(artist.albumCount) albums"
         case .playlist(let playlist):
