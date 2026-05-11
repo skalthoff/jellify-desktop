@@ -23,8 +23,13 @@ struct LoginView: View {
     @Environment(AppModel.self) private var model
 
     @State private var url: String = ""
-    @State private var username: String = ""
     @State private var password: String = ""
+    // Username is read from / written through `AppModel.username` (which is
+    // `@Observable`) so the typed value is captured into model state on
+    // every keystroke and survives any view re-render — including the one
+    // triggered by `model.errorMessage` flipping on a failed sign-in. A
+    // local `@State` mirror would render the placeholder "you" again when
+    // SwiftUI re-evaluated the form after auth fail (#791).
 
     @State private var discovery = ServerDiscovery()
     @State private var probe = ServerProbe()
@@ -86,10 +91,7 @@ struct LoginView: View {
                 // schedule a probe so the success row populates on appear.
                 probe.schedule(url: url)
             }
-            if username.isEmpty, !model.username.isEmpty {
-                username = model.username
-            }
-            focusedField = username.isEmpty ? .url : .password
+            focusedField = model.username.isEmpty ? .url : .password
         }
         .onDisappear {
             discovery.stop()
@@ -259,7 +261,10 @@ struct LoginView: View {
                 .font(Theme.font(10, weight: .bold))
                 .foregroundStyle(Theme.ink3)
                 .tracking(1.5)
-            TextField(LocalizedStringKey("login.username.placeholder"), text: $username)
+            TextField(
+                LocalizedStringKey("login.username.placeholder"),
+                text: Binding(get: { model.username }, set: { model.username = $0 })
+            )
                 .textFieldStyle(.plain)
                 .font(Theme.font(14, weight: .medium))
                 .foregroundStyle(Theme.ink)
@@ -348,7 +353,7 @@ struct LoginView: View {
         // wrong-credentials copy. See `JellifyErrorPresenter.key(for:)`.
         let authExpiredCopy = String(localized: "error.auth.expired", bundle: .main)
         Task {
-            await model.login(url: url, username: username, password: password)
+            await model.login(url: url, username: model.username, password: password)
             if let err = model.errorMessage, err != previousError {
                 if err == authExpiredCopy {
                     shakeAttempts += 1
@@ -367,7 +372,7 @@ struct LoginView: View {
         // Empty password is allowed — Jellyfin supports passwordless accounts
         // and the server is the authority on whether the password is valid.
         !url.trimmingCharacters(in: .whitespaces).isEmpty
-            && !username.trimmingCharacters(in: .whitespaces).isEmpty
+            && !model.username.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     private var loginErrorMessage: String? {
