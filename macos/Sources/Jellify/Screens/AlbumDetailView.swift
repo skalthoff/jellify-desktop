@@ -549,11 +549,12 @@ struct AlbumDetailView: View {
     /// spans multiple discs ("12 tracks · 2 discs").
     private func tracksSummary(album: Album) -> String {
         let trackCount = tracks.isEmpty ? Int(album.trackCount) : tracks.count
+        let trackWord = trackCount == 1 ? "track" : "tracks"
         let discs = Set(tracks.compactMap { $0.discNumber.map(Int.init) }).count
         if discs > 1 {
-            return "\(trackCount) tracks · \(discs) discs"
+            return "\(trackCount) \(trackWord) · \(discs) discs"
         }
-        return "\(trackCount) tracks"
+        return "\(trackCount) \(trackWord)"
     }
 
     /// Format summary used by both the hero stat and the liner-note row.
