@@ -1,17 +1,17 @@
-//! App-wide model — owns the shared [`jellify_core::JellifyCore`] and the
+//! App-wide model — owns the shared [`lyrebird_core::LyrebirdCore`] and the
 //! `gio::ListStore`s that back `gtk::ListView` / `gtk::GridView` widgets.
 //!
 //! Threading model:
 //! - `AppModel` lives on the GTK main loop (held behind `Rc<_>` on the
 //!   window). Its methods are `&self`-only.
-//! - `JellifyCore` is `Send + Sync` and internally runs blocking Jellyfin
+//! - `LyrebirdCore` is `Send + Sync` and internally runs blocking Jellyfin
 //!   HTTP calls on its own Tokio runtime via `block_on`. Screens that need
 //!   to invoke a core method dispatch it to a worker via `gio::spawn_blocking`
 //!   (to be added in a follow-up batch) and post results back to the main
 //!   loop through `async-channel` + `glib::MainContext::spawn_local`.
 //! - The wrapper GObjects below (`AlbumObject`, `ArtistObject`,
 //!   `TrackObject`) are main-loop-only and carry only `Clone`-friendly data
-//!   snapshots — never a `JellifyCore` handle — so they can be safely held
+//!   snapshots — never a `LyrebirdCore` handle — so they can be safely held
 //!   by `gio::ListStore` and bound to `SignalListItemFactory` rows.
 //!
 //! No network calls are issued in this bootstrap batch: `AppModel::new`
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use gio::prelude::*;
 use glib::subclass::prelude::*;
-use jellify_core::{Album, Artist, CoreConfig, JellifyCore, Track};
+use lyrebird_core::{Album, Artist, CoreConfig, LyrebirdCore, Track};
 
 /// Device name reported to the Jellyfin server during authentication.
 /// Shows up under "Dashboard → Sessions" on the server; matches the macOS
@@ -36,7 +36,7 @@ pub struct AppModel {
     /// Shared Rust core — HTTP client, SQLite cache, auth, queue. Held as
     /// `Arc` because the same handle is shared with any worker thread that
     /// issues blocking core calls on behalf of the UI.
-    pub core: Arc<JellifyCore>,
+    pub core: Arc<LyrebirdCore>,
 
     /// Backing store for the Library → Albums grid. Populated by the
     /// library screen once a session is active.
@@ -48,7 +48,7 @@ pub struct AppModel {
 }
 
 impl std::fmt::Debug for AppModel {
-    // `JellifyCore` intentionally does not implement `Debug` (it owns a
+    // `LyrebirdCore` intentionally does not implement `Debug` (it owns a
     // Tokio runtime and locked HTTP client state). Derive a minimal
     // manual impl so containers holding `AppModel` — notably the window's
     // `OnceCell<Rc<AppModel>>` inside the `CompositeTemplate`-derived
@@ -64,19 +64,19 @@ impl std::fmt::Debug for AppModel {
 
 impl AppModel {
     /// Construct a fresh `AppModel`, initializing the core against the
-    /// default XDG data directory (`$XDG_DATA_HOME/jellify-desktop/`, by
+    /// default XDG data directory (`$XDG_DATA_HOME/lyrebird-desktop/`, by
     /// convention via `core::storage::default_data_dir`). Follow-up
     /// batches may switch to an explicit `glib::user_data_dir()` path so
     /// the sandboxed Flatpak case stays deterministic.
     pub fn new() -> Result<Self> {
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             // Empty string = use core's default (`dirs::data_dir`), which
-            // today resolves to `$XDG_DATA_HOME/jellify-desktop/` on Linux.
+            // today resolves to `$XDG_DATA_HOME/lyrebird-desktop/` on Linux.
             data_dir: String::new(),
             device_name: DEVICE_NAME.to_string(),
         })
         .map_err(|e| anyhow::anyhow!("core init: {e}"))
-        .context("JellifyCore::new failed")?;
+        .context("LyrebirdCore::new failed")?;
 
         Ok(Self {
             core,
@@ -127,7 +127,7 @@ mod album_imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for AlbumObject {
-        const NAME: &'static str = "JellifyAlbumObject";
+        const NAME: &'static str = "LyrebirdAlbumObject";
         type Type = super::AlbumObject;
     }
 
@@ -162,7 +162,7 @@ mod album_imp {
 }
 
 glib::wrapper! {
-    /// GObject wrapper around a [`jellify_core::Album`]. Backs rows in the
+    /// GObject wrapper around a [`lyrebird_core::Album`]. Backs rows in the
     /// Library → Albums grid.
     pub struct AlbumObject(ObjectSubclass<album_imp::AlbumObject>);
 }
@@ -205,7 +205,7 @@ mod artist_imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for ArtistObject {
-        const NAME: &'static str = "JellifyArtistObject";
+        const NAME: &'static str = "LyrebirdArtistObject";
         type Type = super::ArtistObject;
     }
 
@@ -233,7 +233,7 @@ mod artist_imp {
 }
 
 glib::wrapper! {
-    /// GObject wrapper around a [`jellify_core::Artist`]. Backs rows in
+    /// GObject wrapper around a [`lyrebird_core::Artist`]. Backs rows in
     /// the Library → Artists grid.
     pub struct ArtistObject(ObjectSubclass<artist_imp::ArtistObject>);
 }
@@ -277,7 +277,7 @@ mod track_imp {
 
     #[glib::object_subclass]
     impl ObjectSubclass for TrackObject {
-        const NAME: &'static str = "JellifyTrackObject";
+        const NAME: &'static str = "LyrebirdTrackObject";
         type Type = super::TrackObject;
     }
 
@@ -311,7 +311,7 @@ mod track_imp {
 }
 
 glib::wrapper! {
-    /// GObject wrapper around a [`jellify_core::Track`]. Backs rows in
+    /// GObject wrapper around a [`lyrebird_core::Track`]. Backs rows in
     /// the queue sidebar, album track lists, and playlist track lists.
     pub struct TrackObject(ObjectSubclass<track_imp::TrackObject>);
 }

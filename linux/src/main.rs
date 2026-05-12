@@ -4,7 +4,7 @@
 //! instance registration is handled by `gio::Application` itself: the first
 //! process acquires the D-Bus name; subsequent invocations hand off to it
 //! and exit. The first process then receives `activate` (or `open`) signals
-//! and raises / focuses the existing `JellifyWindow` rather than creating
+//! and raises / focuses the existing `LyrebirdWindow` rather than creating
 //! a second one.
 //!
 //! `ApplicationFlags::HANDLES_OPEN` is reserved for a future `jellify://`
@@ -23,7 +23,7 @@ use gio::ApplicationFlags;
 use libadwaita as adw;
 use tracing::info;
 
-use crate::window::JellifyWindow;
+use crate::window::LyrebirdWindow;
 
 /// App id — must match the gresource prefix, the `.desktop` entry, and the
 /// Flatpak manifest. Changing this is a migration for users (settings keys
@@ -59,7 +59,7 @@ fn main() -> glib::ExitCode {
             return;
         }
 
-        let window = JellifyWindow::new(app);
+        let window = LyrebirdWindow::new(app);
         window.present();
         info!("jellify-desktop activated");
     });

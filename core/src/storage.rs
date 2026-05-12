@@ -1,4 +1,4 @@
-use crate::error::{JellifyError, Result};
+use crate::error::{LyrebirdError, Result};
 use crate::player::RepeatMode;
 use parking_lot::Mutex;
 use rusqlite::{params, Connection};
@@ -13,7 +13,7 @@ pub struct Database {
 impl Database {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         if let Some(parent) = path.as_ref().parent() {
-            std::fs::create_dir_all(parent).map_err(|e| JellifyError::Storage(e.to_string()))?;
+            std::fs::create_dir_all(parent).map_err(|e| LyrebirdError::Storage(e.to_string()))?;
         }
         let conn = Connection::open(path)?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
@@ -171,9 +171,9 @@ impl Database {
 
 pub fn default_data_dir() -> PathBuf {
     if let Some(dirs) = dirs_next_like() {
-        dirs.join("jellify-desktop")
+        dirs.join("lyrebird-desktop")
     } else {
-        PathBuf::from(".").join(".jellify-desktop")
+        PathBuf::from(".").join(".lyrebird-desktop")
     }
 }
 
@@ -211,7 +211,7 @@ fn dirs_next_like() -> Option<PathBuf> {
 // Credentials — access tokens stored in OS credential store via `keyring`.
 // ============================================================================
 
-const SERVICE: &str = "org.jellify.desktop";
+const SERVICE: &str = "org.lyrebird.desktop";
 
 pub struct CredentialStore;
 
@@ -248,7 +248,7 @@ impl CredentialStore {
 ///
 /// The design is a "pull latest from the keyring" pattern: when Jellyfin
 /// rejects a request with `401`, the in-memory token on the client may be
-/// stale relative to what's in the keychain (e.g. another Jellify instance
+/// stale relative to what's in the keychain (e.g. another Lyrebird instance
 /// refreshed it on this machine, or the user re-authenticated in a parallel
 /// window). Re-reading the keyring is the cheap first step — callers that
 /// want to force a full `POST /Users/AuthenticateByName` round trip drive
@@ -257,7 +257,7 @@ impl CredentialStore {
 /// Returns `Ok(None)` when the persisted identifiers are missing or the
 /// keyring has no entry for that `(server_id, username)` pair. Callers treat
 /// that the same as "user must re-authenticate" and typically raise
-/// [`crate::JellifyError::AuthExpired`].
+/// [`crate::LyrebirdError::AuthExpired`].
 pub fn refresh_token_from_keyring(db: &Database) -> Result<Option<String>> {
     let server_id = match db.get_setting("last_server_id")? {
         Some(v) => v,

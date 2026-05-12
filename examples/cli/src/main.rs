@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use jellify_core::{CoreConfig, JellifyCore};
+use lyrebird_core::{CoreConfig, LyrebirdCore};
 use std::io::{self, Write};
 
 fn prompt(msg: &str) -> Result<String> {
@@ -15,7 +15,7 @@ fn main() -> Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let core = JellifyCore::new(CoreConfig {
+    let core = LyrebirdCore::new(CoreConfig {
         data_dir: String::new(),
         device_name: "Jellify CLI".to_string(),
     })

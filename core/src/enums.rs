@@ -27,7 +27,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The item-type subset Jellify Desktop cares about.
+/// The item-type subset Lyrebird Desktop cares about.
 ///
 /// Mirrors Jellyfin's `BaseItemKind` — we only expose the variants that can
 /// land in music-scoped queries (tracks, albums, artists, playlists,
@@ -47,7 +47,7 @@ pub enum ItemKind {
     Playlist,
     /// A music genre bucket — `MusicGenre`.
     MusicGenre,
-    /// A music video — rare in Jellify Desktop but accepted by the server
+    /// A music video — rare in Lyrebird Desktop but accepted by the server
     /// and included so `ItemKind` round-trips without loss for generic
     /// queries.
     MusicVideo,

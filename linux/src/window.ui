@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Composite template for `JellifyWindow`. Kept intentionally minimal for the
+  Composite template for `LyrebirdWindow`. Kept intentionally minimal for the
   bootstrap batch — later batches land the sidebar (AdwNavigationSplitView),
   mini-player, and per-screen content pages under this AdwNavigationView root.
 -->
 <interface>
   <requires lib="gtk" version="4.12"/>
   <requires lib="Adw" version="1.5"/>
-  <template class="JellifyWindow" parent="AdwApplicationWindow">
+  <template class="LyrebirdWindow" parent="AdwApplicationWindow">
     <property name="title" translatable="yes">Jellify</property>
     <property name="default-width">1100</property>
     <property name="default-height">720</property>

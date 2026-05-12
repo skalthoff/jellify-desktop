@@ -1,6 +1,6 @@
-//! Jellify core — shared Rust library for the desktop apps.
+//! Lyrebird core — shared Rust library for the desktop apps.
 //!
-//! The public surface is the [`JellifyCore`] type, which owns the Jellyfin
+//! The public surface is the [`LyrebirdCore`] type, which owns the Jellyfin
 //! HTTP client, the local database, and queue/player bookkeeping. Platform
 //! UIs consume this either via UniFFI bindings (Swift/C#) or directly (GTK /
 //! Rust).
@@ -19,7 +19,7 @@ pub mod query;
 pub mod storage;
 
 pub use enums::{ImageType, ItemField, ItemKind, ItemSortBy, SortOrder};
-pub use error::{JellifyError, Result};
+pub use error::{LyrebirdError, Result};
 pub use models::*;
 pub use player::{PlaybackState, Player, PlayerStatus, RepeatMode};
 pub use query::ItemsQuery;
@@ -53,7 +53,7 @@ impl Drop for HeartbeatHandle {
 
 /// The main handle a UI holds.
 #[derive(uniffi::Object)]
-pub struct JellifyCore {
+pub struct LyrebirdCore {
     inner: Arc<Mutex<Inner>>,
     player: Arc<Player>,
     runtime: tokio::runtime::Runtime,
@@ -86,15 +86,15 @@ pub struct CoreConfig {
 }
 
 #[uniffi::export]
-impl JellifyCore {
+impl LyrebirdCore {
     #[uniffi::constructor]
-    pub fn new(config: CoreConfig) -> std::result::Result<Arc<Self>, JellifyError> {
+    pub fn new(config: CoreConfig) -> std::result::Result<Arc<Self>, LyrebirdError> {
         let data_dir = if config.data_dir.is_empty() {
             storage::default_data_dir()
         } else {
             PathBuf::from(&config.data_dir)
         };
-        let db_path = data_dir.join("jellify.db");
+        let db_path = data_dir.join("lyrebird.db");
         let db = Arc::new(Database::open(&db_path)?);
 
         let device_id = match db.get_setting("device_id")? {
@@ -109,7 +109,7 @@ impl JellifyCore {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .map_err(|e| JellifyError::Other(format!("tokio runtime: {e}")))?;
+            .map_err(|e| LyrebirdError::Other(format!("tokio runtime: {e}")))?;
 
         // Restore shuffle/repeat state from the previous launch.
         let player = Arc::new(Player::new());
@@ -135,7 +135,7 @@ impl JellifyCore {
         self.inner.lock().device_id.clone()
     }
 
-    pub fn probe_server(&self, url: String) -> std::result::Result<Server, JellifyError> {
+    pub fn probe_server(&self, url: String) -> std::result::Result<Server, LyrebirdError> {
         let (device_id, device_name) = {
             let inner = self.inner.lock();
             (inner.device_id.clone(), inner.device_name.clone())
@@ -155,7 +155,7 @@ impl JellifyCore {
         url: String,
         username: String,
         password: String,
-    ) -> std::result::Result<models::Session, JellifyError> {
+    ) -> std::result::Result<models::Session, LyrebirdError> {
         let username = username.trim().to_string();
         let password = password.trim().to_string();
         // Jellyfin allows accounts with no password — the server is the
@@ -163,7 +163,7 @@ impl JellifyCore {
         // we only short-circuit on missing username. Empty password is
         // forwarded as `Pw: ""` to /Users/AuthenticateByName.
         if username.is_empty() {
-            return Err(JellifyError::InvalidCredentials);
+            return Err(LyrebirdError::InvalidCredentials);
         }
 
         let (device_id, device_name, db) = {
@@ -181,7 +181,7 @@ impl JellifyCore {
 
         if let Some(server_id) = &session.server.id {
             CredentialStore::save_token(server_id, &session.user.name, &session.access_token)
-                .map_err(|e| JellifyError::KeyringWrite {
+                .map_err(|e| LyrebirdError::KeyringWrite {
                     reason: e.to_string(),
                 })?;
         }
@@ -212,7 +212,7 @@ impl JellifyCore {
     /// left blank — the next library call will refresh them, and we do NOT
     /// block this call on network availability so users launching offline
     /// still see their cached library instantly.
-    pub fn resume_session(&self) -> std::result::Result<Option<Session>, JellifyError> {
+    pub fn resume_session(&self) -> std::result::Result<Option<Session>, LyrebirdError> {
         let (device_id, device_name, db, server_url, username, server_id, user_id) = {
             let inner = self.inner.lock();
             let server_url = match inner.db.get_setting("last_server_url")? {
@@ -223,7 +223,7 @@ impl JellifyCore {
                 Some(v) => {
                     let v = v.trim().to_string();
                     if v.is_empty() {
-                        return Err(JellifyError::InvalidCredentials);
+                        return Err(LyrebirdError::InvalidCredentials);
                     }
                     v
                 }
@@ -278,7 +278,7 @@ impl JellifyCore {
         }))
     }
 
-    pub fn logout(&self) -> std::result::Result<(), JellifyError> {
+    pub fn logout(&self) -> std::result::Result<(), LyrebirdError> {
         // 1. Invalidate the server session while the token is still valid.
         //    Log but do not abort on any error — an unreachable server must
         //    not prevent local cleanup (#592).
@@ -320,7 +320,7 @@ impl JellifyCore {
     /// Drop the stored access token (and the ids that key into it) without
     /// wiping the remembered server URL / username. Used by the auth-expired
     /// sheet so the login form pre-fills on the re-auth attempt.
-    pub fn forget_token(&self) -> std::result::Result<(), JellifyError> {
+    pub fn forget_token(&self) -> std::result::Result<(), LyrebirdError> {
         {
             let inner = self.inner.lock();
             if let (Ok(Some(server_id)), Ok(Some(username))) = (
@@ -349,7 +349,7 @@ impl JellifyCore {
         &self,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
+    ) -> std::result::Result<PaginatedAlbums, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.albums(Paging::new(offset, limit))))
     }
 
@@ -358,7 +358,7 @@ impl JellifyCore {
         &self,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedArtists, JellifyError> {
+    ) -> std::result::Result<PaginatedArtists, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.artists(Paging::new(offset, limit))))
     }
 
@@ -372,14 +372,14 @@ impl JellifyCore {
         artist_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
+    ) -> std::result::Result<PaginatedAlbums, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.albums_by_artist(&artist_id, Paging::new(offset, limit)))
         })
     }
 
-    pub fn album_tracks(&self, album_id: String) -> std::result::Result<Vec<Track>, JellifyError> {
+    pub fn album_tracks(&self, album_id: String) -> std::result::Result<Vec<Track>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.album_tracks(&album_id)))
     }
 
@@ -390,7 +390,7 @@ impl JellifyCore {
         &self,
         artist_id: String,
         limit: u32,
-    ) -> std::result::Result<Vec<Track>, JellifyError> {
+    ) -> std::result::Result<Vec<Track>, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.artist_top_tracks(&artist_id, limit))
@@ -406,7 +406,7 @@ impl JellifyCore {
         artist_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedTracks, JellifyError> {
+    ) -> std::result::Result<PaginatedTracks, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.tracks_by_artist(&artist_id, Paging::new(offset, limit)))
@@ -421,13 +421,13 @@ impl JellifyCore {
         &self,
         item_id: String,
         limit: u32,
-    ) -> std::result::Result<Vec<Track>, JellifyError> {
+    ) -> std::result::Result<Vec<Track>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.instant_mix(&item_id, limit)))
     }
 
     /// Server-curated suggestions for the Home "You might like" row. More
     /// useful than recency-ordered recent-adds for long-tail discovery.
-    pub fn suggestions(&self, limit: u32) -> std::result::Result<Vec<Track>, JellifyError> {
+    pub fn suggestions(&self, limit: u32) -> std::result::Result<Vec<Track>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.suggestions(limit)))
     }
 
@@ -437,7 +437,7 @@ impl JellifyCore {
         &self,
         artist_id: String,
         limit: u32,
-    ) -> std::result::Result<Vec<Artist>, JellifyError> {
+    ) -> std::result::Result<Vec<Artist>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.similar_artists(&artist_id, limit)))
     }
 
@@ -447,7 +447,7 @@ impl JellifyCore {
         &self,
         album_id: String,
         limit: u32,
-    ) -> std::result::Result<Vec<Album>, JellifyError> {
+    ) -> std::result::Result<Vec<Album>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.similar_albums(&album_id, limit)))
     }
 
@@ -457,7 +457,7 @@ impl JellifyCore {
         &self,
         item_id: String,
         limit: u32,
-    ) -> std::result::Result<Vec<ItemRef>, JellifyError> {
+    ) -> std::result::Result<Vec<ItemRef>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.similar_items(&item_id, limit)))
     }
 
@@ -467,7 +467,7 @@ impl JellifyCore {
     pub fn frequently_played_tracks(
         &self,
         limit: u32,
-    ) -> std::result::Result<Vec<Track>, JellifyError> {
+    ) -> std::result::Result<Vec<Track>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.frequently_played_tracks(limit)))
     }
 
@@ -478,7 +478,7 @@ impl JellifyCore {
         &self,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedGenres, JellifyError> {
+    ) -> std::result::Result<PaginatedGenres, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.genres(Paging::new(offset, limit))))
     }
 
@@ -489,7 +489,7 @@ impl JellifyCore {
         genre_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
+    ) -> std::result::Result<PaginatedAlbums, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.items_by_genre(&genre_id, Paging::new(offset, limit)))
@@ -502,7 +502,7 @@ impl JellifyCore {
     pub fn artist_detail(
         &self,
         artist_id: String,
-    ) -> std::result::Result<ArtistDetail, JellifyError> {
+    ) -> std::result::Result<ArtistDetail, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.artist_detail(&artist_id)))
     }
 
@@ -510,7 +510,7 @@ impl JellifyCore {
     /// (no lyrics available — common). Handles both synced LRC and plain
     /// text; `LyricLine::time_seconds` is pre-converted out of Jellyfin's
     /// 100-ns tick units.
-    pub fn lyrics(&self, track_id: String) -> std::result::Result<Option<Lyrics>, JellifyError> {
+    pub fn lyrics(&self, track_id: String) -> std::result::Result<Option<Lyrics>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.lyrics(&track_id)))
     }
 
@@ -531,7 +531,7 @@ impl JellifyCore {
         library_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedAlbums, JellifyError> {
+    ) -> std::result::Result<PaginatedAlbums, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.latest_albums(&library_id, Paging::new(offset, limit)))
@@ -551,7 +551,7 @@ impl JellifyCore {
         music_library_id: Option<String>,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedTracks, JellifyError> {
+    ) -> std::result::Result<PaginatedTracks, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.list_tracks(music_library_id.as_deref(), Paging::new(offset, limit)))
@@ -566,7 +566,7 @@ impl JellifyCore {
         music_library_id: Option<String>,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedTracks, JellifyError> {
+    ) -> std::result::Result<PaginatedTracks, LyrebirdError> {
         self.with_client(|c| {
             self.runtime.block_on(
                 c.recently_played(music_library_id.as_deref(), Paging::new(offset, limit)),
@@ -584,7 +584,7 @@ impl JellifyCore {
         playlist_library_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedPlaylists, JellifyError> {
+    ) -> std::result::Result<PaginatedPlaylists, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.user_playlists(&playlist_library_id, Paging::new(offset, limit)))
@@ -598,7 +598,7 @@ impl JellifyCore {
         playlist_library_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedPlaylists, JellifyError> {
+    ) -> std::result::Result<PaginatedPlaylists, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.public_playlists(&playlist_library_id, Paging::new(offset, limit)))
@@ -615,7 +615,7 @@ impl JellifyCore {
         playlist_id: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<PaginatedTracks, JellifyError> {
+    ) -> std::result::Result<PaginatedTracks, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.playlist_tracks(&playlist_id, Paging::new(offset, limit)))
@@ -634,7 +634,7 @@ impl JellifyCore {
         playlist_id: String,
         item_ids: Vec<String>,
         position: Option<u32>,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| {
             let id_refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
             self.runtime
@@ -651,7 +651,7 @@ impl JellifyCore {
         query: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<SearchResults, JellifyError> {
+    ) -> std::result::Result<SearchResults, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.search(&query, Paging::new(offset, limit)))
@@ -663,7 +663,7 @@ impl JellifyCore {
     /// Use this for debounced omnibox queries. It returns a single flat
     /// list of [`SearchHint`] entries carrying the server-supplied `Type`
     /// so the UI can split results into typed sections without extra
-    /// round-trips. Prefer [`JellifyCore::search`] for "see all results".
+    /// round-trips. Prefer [`LyrebirdCore::search`] for "see all results".
     ///
     /// `offset` maps to Jellyfin's `startIndex`; `total_record_count` on
     /// the returned [`SearchHintResults`] is stable across pages.
@@ -672,7 +672,7 @@ impl JellifyCore {
         query: String,
         offset: u32,
         limit: u32,
-    ) -> std::result::Result<SearchHintResults, JellifyError> {
+    ) -> std::result::Result<SearchHintResults, LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.search_hints(&query, Paging::new(offset, limit)))
@@ -682,21 +682,21 @@ impl JellifyCore {
     /// Mark an item (track, album, artist, playlist) as a favorite for the
     /// current user. Returns the updated [`FavoriteState`] so the UI can
     /// refresh without refetching. Errors with
-    /// [`JellifyError::NotAuthenticated`] if no session is active.
+    /// [`LyrebirdError::NotAuthenticated`] if no session is active.
     pub fn set_favorite(
         &self,
         item_id: String,
-    ) -> std::result::Result<FavoriteState, JellifyError> {
+    ) -> std::result::Result<FavoriteState, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.set_favorite(&item_id)))
     }
 
     /// Remove the favorite flag from an item for the current user. Returns the
     /// updated [`FavoriteState`] so the UI can refresh without refetching.
-    /// Errors with [`JellifyError::NotAuthenticated`] if no session is active.
+    /// Errors with [`LyrebirdError::NotAuthenticated`] if no session is active.
     pub fn unset_favorite(
         &self,
         item_id: String,
-    ) -> std::result::Result<FavoriteState, JellifyError> {
+    ) -> std::result::Result<FavoriteState, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.unset_favorite(&item_id)))
     }
 
@@ -709,27 +709,27 @@ impl JellifyCore {
         &self,
         item_id: String,
         favorite: bool,
-    ) -> std::result::Result<FavoriteState, JellifyError> {
+    ) -> std::result::Result<FavoriteState, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.toggle_favorite(&item_id, favorite)))
     }
 
     /// Mark an item (track / album / playlist) as played for the current
     /// user. Returns the full updated [`UserItemData`] so the UI can update
     /// `played` + `play_count` + `last_played_at` without refetching. Errors
-    /// with [`JellifyError::NotAuthenticated`] if no session is active.
+    /// with [`LyrebirdError::NotAuthenticated`] if no session is active.
     /// See issue #133.
-    pub fn mark_played(&self, item_id: String) -> std::result::Result<UserItemData, JellifyError> {
+    pub fn mark_played(&self, item_id: String) -> std::result::Result<UserItemData, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.mark_played(&item_id)))
     }
 
     /// Clear the played flag from an item for the current user. Returns the
     /// updated [`UserItemData`] (with `play_count = 0` and `last_played_at =
-    /// None`). Errors with [`JellifyError::NotAuthenticated`] if no session
+    /// None`). Errors with [`LyrebirdError::NotAuthenticated`] if no session
     /// is active. See issue #133.
     pub fn mark_unplayed(
         &self,
         item_id: String,
-    ) -> std::result::Result<UserItemData, JellifyError> {
+    ) -> std::result::Result<UserItemData, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.mark_unplayed(&item_id)))
     }
 
@@ -742,15 +742,15 @@ impl JellifyCore {
         &self,
         item_id: String,
         played: bool,
-    ) -> std::result::Result<UserItemData, JellifyError> {
+    ) -> std::result::Result<UserItemData, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.set_played(&item_id, played)))
     }
 
     /// Create a new playlist for the current user. Returns the new
     /// playlist id — callers refetch the full [`Playlist`] via
-    /// [`JellifyCore::fetch_item`] if they need the populated record.
+    /// [`LyrebirdCore::fetch_item`] if they need the populated record.
     /// `item_ids` may be empty to create an empty playlist. Errors with
-    /// [`JellifyError::NotAuthenticated`] if no session is active.
+    /// [`LyrebirdError::NotAuthenticated`] if no session is active.
     ///
     /// When `position` is `Some(n)`, the Jellyfin `StartIndex` query param is
     /// set so the server inserts the initial items starting at index `n`.
@@ -759,7 +759,7 @@ impl JellifyCore {
         name: String,
         item_ids: Vec<String>,
         position: Option<u32>,
-    ) -> std::result::Result<String, JellifyError> {
+    ) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| {
             let id_refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
             self.runtime
@@ -775,11 +775,11 @@ impl JellifyCore {
         &self,
         item_id: String,
         fields: Vec<String>,
-    ) -> std::result::Result<String, JellifyError> {
+    ) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| {
             let field_refs: Vec<&str> = fields.iter().map(String::as_str).collect();
             let value = self.runtime.block_on(c.fetch_item(&item_id, &field_refs))?;
-            serde_json::to_string(&value).map_err(JellifyError::from)
+            serde_json::to_string(&value).map_err(LyrebirdError::from)
         })
     }
 
@@ -788,7 +788,7 @@ impl JellifyCore {
         item_id: String,
         tag: Option<String>,
         max_width: u32,
-    ) -> std::result::Result<String, JellifyError> {
+    ) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| {
             Ok(c.image_url(&item_id, tag.as_deref(), max_width)?
                 .to_string())
@@ -807,7 +807,7 @@ impl JellifyCore {
         tag: Option<String>,
         max_width: Option<u32>,
         max_height: Option<u32>,
-    ) -> std::result::Result<String, JellifyError> {
+    ) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| {
             Ok(c.image_url_of_type(
                 &item_id,
@@ -835,7 +835,7 @@ impl JellifyCore {
         track_id: String,
         media_source_id: Option<String>,
         play_session_id: Option<String>,
-    ) -> std::result::Result<String, JellifyError> {
+    ) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| {
             Ok(c.stream_url(
                 &track_id,
@@ -848,20 +848,20 @@ impl JellifyCore {
 
     /// The `Authorization` header value to attach to streaming requests.
     /// Cloudflare-fronted Jellyfin servers reject query-key-only auth.
-    pub fn auth_header(&self) -> std::result::Result<String, JellifyError> {
+    pub fn auth_header(&self) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| Ok(c.auth_header_value()))
     }
 
     /// Set the queue to a list of tracks and mark `tracks[start_index]` as
     /// the current track. Returns the track that should start playing now.
     ///
-    /// Errors with [`JellifyError::InvalidIndex`] when `start_index` is
+    /// Errors with [`LyrebirdError::InvalidIndex`] when `start_index` is
     /// out-of-bounds for `tracks`, or `tracks` is empty.
     pub fn set_queue(
         &self,
         tracks: Vec<Track>,
         start_index: u32,
-    ) -> std::result::Result<Option<Track>, JellifyError> {
+    ) -> std::result::Result<Option<Track>, LyrebirdError> {
         self.player.set_queue(tracks, start_index)?;
         Ok(self.player.current_in_queue())
     }
@@ -914,7 +914,7 @@ impl JellifyCore {
     pub fn report_playback_stopped(
         &self,
         info: PlaybackStopInfo,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.report_playback_stopped(info)))
     }
 
@@ -925,7 +925,7 @@ impl JellifyCore {
     pub fn report_playback_started(
         &self,
         info: PlaybackStartInfo,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.report_playback_started(info)))
     }
 
@@ -936,7 +936,7 @@ impl JellifyCore {
     pub fn post_capabilities(
         &self,
         caps: ClientCapabilities,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.post_capabilities(caps)))
     }
 
@@ -948,7 +948,7 @@ impl JellifyCore {
         &self,
         item_id: String,
         opts: PlaybackInfoOpts,
-    ) -> std::result::Result<PlaybackInfoResponse, JellifyError> {
+    ) -> std::result::Result<PlaybackInfoResponse, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.playback_info(&item_id, opts)))
     }
 
@@ -957,7 +957,7 @@ impl JellifyCore {
     /// Every top-level library the current user can browse. Backed by
     /// `GET /UserViews`. Callers typically filter by `collection_type`
     /// (`"music"`, `"playlists"`) to find the library ids they need.
-    pub fn user_views(&self) -> std::result::Result<Vec<Library>, JellifyError> {
+    pub fn user_views(&self) -> std::result::Result<Vec<Library>, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.user_views()))
     }
 
@@ -965,13 +965,13 @@ impl JellifyCore {
     /// query below the top level (albums, artists, tracks, genres, years)
     /// is parented to this id, so callers typically resolve it once at
     /// sign-in and hand it to subsequent requests.
-    pub fn music_library_id(&self) -> std::result::Result<String, JellifyError> {
+    pub fn music_library_id(&self) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.music_library_id()))
     }
 
     /// Resolve (and cache) the user's playlists library id. Used as the
     /// `ParentId` for `user_playlists` / `public_playlists`.
-    pub fn playlist_library_id(&self) -> std::result::Result<String, JellifyError> {
+    pub fn playlist_library_id(&self) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.playlist_library_id()))
     }
 
@@ -985,7 +985,7 @@ impl JellifyCore {
         &self,
         playlist_id: String,
         entry_ids: Vec<String>,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.remove_from_playlist(&playlist_id, &entry_ids))
@@ -995,12 +995,12 @@ impl JellifyCore {
     /// Rename a playlist on the server. Fetches the current item to prefill
     /// the required `POST /Items/{id}` body, then re-POSTs with only `Name`
     /// changed. UI callers should update their local playlist cache on success.
-    /// Errors with [`JellifyError::NotAuthenticated`] when no session is active.
+    /// Errors with [`LyrebirdError::NotAuthenticated`] when no session is active.
     pub fn rename_playlist(
         &self,
         playlist_id: String,
         new_name: String,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| {
             self.runtime
                 .block_on(c.rename_playlist(&playlist_id, &new_name))
@@ -1009,8 +1009,8 @@ impl JellifyCore {
 
     /// Delete a playlist from the server via `DELETE /Items/{id}`. UI callers
     /// should drop the item from their local cache on success.
-    /// Errors with [`JellifyError::NotAuthenticated`] when no session is active.
-    pub fn delete_playlist(&self, playlist_id: String) -> std::result::Result<(), JellifyError> {
+    /// Errors with [`LyrebirdError::NotAuthenticated`] when no session is active.
+    pub fn delete_playlist(&self, playlist_id: String) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.delete_playlist(&playlist_id)))
     }
 
@@ -1021,13 +1021,13 @@ impl JellifyCore {
     /// (populated by `playlist_tracks`). `new_index` is zero-based.
     /// Callers should reload playlist tracks after this returns so the UI
     /// reflects the server order.
-    /// Errors with [`JellifyError::NotAuthenticated`] when no session is active.
+    /// Errors with [`LyrebirdError::NotAuthenticated`] when no session is active.
     pub fn reorder_playlist_track(
         &self,
         playlist_id: String,
         playlist_item_id: String,
         new_index: u32,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| {
             self.runtime.block_on(c.reorder_playlist_track(
                 &playlist_id,
@@ -1060,7 +1060,7 @@ impl JellifyCore {
     pub fn report_playback_progress(
         &self,
         info: PlaybackProgressInfo,
-    ) -> std::result::Result<(), JellifyError> {
+    ) -> std::result::Result<(), LyrebirdError> {
         self.with_client(|c| self.runtime.block_on(c.report_playback_progress(info)))
     }
 
@@ -1080,7 +1080,7 @@ impl JellifyCore {
     /// # Note on `Arc<Self>`
     ///
     /// This method requires `Arc<Self>` so the spawned task can hold a
-    /// reference back to `JellifyCore` for the lifetime of the interval.
+    /// reference back to `LyrebirdCore` for the lifetime of the interval.
     pub fn start_heartbeat(self: &Arc<Self>, interval_secs: u32, play_session_id: Option<String>) {
         // Clamp to Jellyfin's detection threshold so the server never sees a
         // gap that looks like a dead client.
@@ -1202,7 +1202,7 @@ impl JellifyCore {
     }
 }
 
-impl JellifyCore {
+impl LyrebirdCore {
     /// Run `f` with a reference to the live HTTP client, releasing the
     /// `Inner` mutex before the closure executes.
     ///
@@ -1216,16 +1216,16 @@ impl JellifyCore {
     /// The closure must not touch `self.inner`; every existing caller
     /// satisfies that by only calling methods on the client or the
     /// runtime.
-    fn with_client<T, F>(&self, f: F) -> std::result::Result<T, JellifyError>
+    fn with_client<T, F>(&self, f: F) -> std::result::Result<T, LyrebirdError>
     where
-        F: FnOnce(&JellyfinClient) -> std::result::Result<T, JellifyError>,
+        F: FnOnce(&JellyfinClient) -> std::result::Result<T, LyrebirdError>,
     {
         let client = self
             .inner
             .lock()
             .client
             .as_ref()
-            .ok_or(JellifyError::NoSession)?
+            .ok_or(LyrebirdError::NoSession)?
             .clone();
         f(&client)
     }

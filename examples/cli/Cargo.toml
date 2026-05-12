@@ -1,19 +1,19 @@
 [package]
-name = "jellify-cli"
+name = "lyrebird-cli"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Minimal CLI exercising jellify_core — login, list, play"
+description = "Minimal CLI exercising lyrebird_core — login, list, play"
 publish = false
 
 [[bin]]
-name = "jellify-cli"
+name = "lyrebird-cli"
 path = "src/main.rs"
 
 [dependencies]
-jellify_core = { path = "../../core" }
+lyrebird_core = { path = "../../core" }
 tokio = { workspace = true }
 anyhow.workspace = true
 tracing.workspace = true

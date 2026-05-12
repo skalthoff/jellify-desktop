@@ -1,14 +1,14 @@
 [package]
-name = "jellify_core"
+name = "lyrebird_core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Shared Rust core for Jellify desktop apps — Jellyfin API, audio engine, storage"
+description = "Shared Rust core for Lyrebird desktop apps — Jellyfin API, audio engine, storage"
 
 [lib]
-name = "jellify_core"
+name = "lyrebird_core"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [[bin]]

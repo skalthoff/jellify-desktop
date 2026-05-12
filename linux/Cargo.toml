@@ -1,20 +1,20 @@
 [package]
-name = "jellify-desktop"
+name = "lyrebird-desktop"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Jellify — native GTK4 + libadwaita Jellyfin music player for Linux"
+description = "Lyrebird — native GTK4 + libadwaita Jellyfin music player for Linux"
 publish = false
 
 [[bin]]
-name = "jellify-desktop"
+name = "lyrebird-desktop"
 path = "src/main.rs"
 
 [dependencies]
 # Core (in-process; no FFI on Linux)
-jellify_core = { path = "../core" }
+lyrebird_core = { path = "../core" }
 
 # GNOME 46 / libadwaita 1.5 stack — pinned to match the Flatpak runtime we
 # target (org.gnome.Platform//46). Bumping these means bumping the runtime

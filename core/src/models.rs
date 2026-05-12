@@ -372,7 +372,7 @@ pub struct Library {
 /// Corresponds to Jellyfin's `DirectPlayProfile` DTO.
 ///
 /// `kind` is `"Audio"` / `"Video"` — we only emit `Audio` rules here since
-/// Jellify Desktop is a music app.
+/// Lyrebird Desktop is a music app.
 #[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]
 #[serde(rename_all = "PascalCase")]
 pub struct DirectPlayProfile {
@@ -404,7 +404,7 @@ pub struct TranscodingProfile {
 /// caps. Sent on every `POST /Items/{id}/PlaybackInfo` and
 /// `POST /Sessions/Capabilities/Full` call.
 ///
-/// Only the fields a music client needs are included here — Jellify Desktop
+/// Only the fields a music client needs are included here — Lyrebird Desktop
 /// never touches video, subtitles, or DLNA codec profiles, so those array
 /// fields are simply omitted from the payload (Jellyfin treats a missing
 /// key the same as an empty array).

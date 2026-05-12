@@ -1,4 +1,4 @@
-//! `JellifyWindow` — the top-level app window.
+//! `LyrebirdWindow` — the top-level app window.
 //!
 //! Subclasses `AdwApplicationWindow` via `glib::subclass` so we get a proper
 //! GObject type (required for composite templates) while keeping the
@@ -12,7 +12,7 @@
 //! The window owns the shared [`AppModel`]; child screens (once added in
 //! follow-up batches) reach the model via `window.model()`. We hold
 //! `AppModel` behind `Rc<_>` rather than `Arc<_>` because everything in the
-//! GTK world runs on a single main thread — the `Arc<JellifyCore>` *inside*
+//! GTK world runs on a single main thread — the `Arc<LyrebirdCore>` *inside*
 //! `AppModel` is what crosses thread boundaries when we dispatch core calls
 //! to a worker.
 
@@ -30,7 +30,7 @@ mod imp {
 
     #[derive(Debug, Default, gtk4::CompositeTemplate)]
     #[template(resource = "/org/jellify/Desktop/window.ui")]
-    pub struct JellifyWindow {
+    pub struct LyrebirdWindow {
         #[template_child]
         pub header_bar: gtk4::TemplateChild<adw::HeaderBar>,
         #[template_child]
@@ -43,9 +43,9 @@ mod imp {
     }
 
     #[glib::object_subclass]
-    impl ObjectSubclass for JellifyWindow {
-        const NAME: &'static str = "JellifyWindow";
-        type Type = super::JellifyWindow;
+    impl ObjectSubclass for LyrebirdWindow {
+        const NAME: &'static str = "LyrebirdWindow";
+        type Type = super::LyrebirdWindow;
         type ParentType = adw::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
@@ -57,7 +57,7 @@ mod imp {
         }
     }
 
-    impl ObjectImpl for JellifyWindow {
+    impl ObjectImpl for LyrebirdWindow {
         fn constructed(&self) {
             self.parent_constructed();
             // Hook for future wiring: sidebar signals, GActions, geometry
@@ -67,22 +67,22 @@ mod imp {
         }
     }
 
-    impl WidgetImpl for JellifyWindow {}
-    impl WindowImpl for JellifyWindow {}
-    impl ApplicationWindowImpl for JellifyWindow {}
-    impl AdwApplicationWindowImpl for JellifyWindow {}
+    impl WidgetImpl for LyrebirdWindow {}
+    impl WindowImpl for LyrebirdWindow {}
+    impl ApplicationWindowImpl for LyrebirdWindow {}
+    impl AdwApplicationWindowImpl for LyrebirdWindow {}
 }
 
 glib::wrapper! {
     /// Top-level `AdwApplicationWindow` for Jellify. Created once per primary
     /// instance in `main.rs::activate`.
-    pub struct JellifyWindow(ObjectSubclass<imp::JellifyWindow>)
+    pub struct LyrebirdWindow(ObjectSubclass<imp::LyrebirdWindow>)
         @extends adw::ApplicationWindow, gtk4::ApplicationWindow, gtk4::Window, gtk4::Widget,
         @implements gio::ActionGroup, gio::ActionMap, gtk4::Accessible, gtk4::Buildable,
                     gtk4::ConstraintTarget, gtk4::Native, gtk4::Root, gtk4::ShortcutManager;
 }
 
-impl JellifyWindow {
+impl LyrebirdWindow {
     /// Build a new window bound to the running `adw::Application` and lazily
     /// initialize the shared [`AppModel`]. Model construction is allowed to
     /// fail (e.g. if the SQLite DB under the XDG data dir can't be opened);
