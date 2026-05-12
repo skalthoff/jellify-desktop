@@ -1,4 +1,4 @@
-# Jellyfin API Coverage Roadmap — Jellify Desktop (Rust `JellyfinClient`)
+# Jellyfin API Coverage Roadmap — Lyrebird Desktop (Rust `JellyfinClient`)
 
 Scope: endpoints the desktop client needs beyond the current
 (`public_info`, `authenticate_by_name`, `artists`, `albums`, `album_tracks`,
@@ -676,7 +676,7 @@ impl ItemsQuery { pub fn fetch(&self, client: &JellyfinClient) -> Result<Items<R
 **Labels:** `area:core`, `kind:refactor`, `priority:p1`
 **Effort:** S
 
-- Current `JellifyError::Server { status, message }` is too coarse. Differentiate 401 (reauth needed), 403 (policy denied), 404 (missing), 429 (rate-limited), 5xx (retryable).
+- Current `LyrebirdError::Server { status, message }` is too coarse. Differentiate 401 (reauth needed), 403 (policy denied), 404 (missing), 429 (rate-limited), 5xx (retryable).
 - Consumers: UI retry logic; automatic re-auth when token expires.
 - Acceptance: Typed variants; public helper `is_retryable()`.
 

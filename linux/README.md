@@ -1,4 +1,4 @@
-# Jellify — Linux
+# Lyrebird — Linux
 
 Native GTK4 + libadwaita Jellyfin music player. Consumes the shared `../core`
 crate in-process (no FFI on Linux).
@@ -46,7 +46,7 @@ The MSRV is pinned via the workspace `rust-version` field.
 From the repo root:
 
 ```sh
-cargo build -p jellify-desktop
+cargo build -p lyrebird-desktop
 ```
 
 Or from this directory:
@@ -62,7 +62,7 @@ metadata without requiring `pkg-config` to resolve native libraries.
 ## Run
 
 ```sh
-cargo run -p jellify-desktop
+cargo run -p lyrebird-desktop
 ```
 
 Launching a second instance is a no-op — primary-instance registration routes

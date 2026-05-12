@@ -1,5 +1,5 @@
 Accessibility Inspector Audit Report
-App:     Jellify
+App:     Lyrebird
 Screen:  PlayerBar (track playing)
 Build:   e44fbda / 2026-04-21 21:25:44 -0700
 Runner:  skalthoff (manual, Xcode Accessibility Inspector)

@@ -1,12 +1,12 @@
 using System;
-using Jellify.App.Services;
-using Jellify.App.ViewModels;
-using Jellify.Core;
+using Lyrebird.App.Services;
+using Lyrebird.App.ViewModels;
+using Lyrebird.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.UI.Xaml;
 
-namespace Jellify.App;
+namespace Lyrebird.App;
 
 /// <summary>
 /// Composition root. Builds a <see cref="HostApplicationBuilder"/> at
@@ -52,7 +52,7 @@ public partial class App : Application
         // so the DI graph compiles and the Composition root is wired.
         builder.Services.AddSingleton<IJellyfinClient>(_ =>
             throw new NotImplementedException(
-                "JellyfinClient implementation lands with Jellify.Core wrapper (#363)."));
+                "JellyfinClient implementation lands with Lyrebird.Core wrapper (#363)."));
         builder.Services.AddSingleton<IQueueStore>(_ =>
             throw new NotImplementedException("QueueStore lands with player batch."));
         builder.Services.AddSingleton<IPlaybackStateStore>(_ =>

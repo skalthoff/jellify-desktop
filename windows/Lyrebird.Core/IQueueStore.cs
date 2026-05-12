@@ -1,4 +1,4 @@
-namespace Jellify.Core;
+namespace Lyrebird.Core;
 
 /// <summary>
 /// In-memory queue projection mirrored from the Rust core's player module.

@@ -9,10 +9,10 @@ should reference the audit row it closes out.
 
 1. Launch the app in a debug build. The easiest path is the helper script
    [`../../Scripts/a11y-audit.sh`](../../Scripts/a11y-audit.sh), which builds
-   `Jellify.app` and launches it in the background.
+   `Lyrebird.app` and launches it in the background.
 2. Open **Xcode → Open Developer Tool → Accessibility Inspector**.
 3. In the Inspector window, use the **target chooser** at the top-left to
-   select the running `Jellify` process.
+   select the running `Lyrebird` process.
 4. Switch to the **Audit** panel and click **Run Audit**.
 5. Walk the app through each screen listed below. Run the audit once per
    screen — Accessibility Inspector only inspects what is currently visible,
@@ -45,15 +45,15 @@ audit row green on the next run.
 
 | Finding | Source | Tracking |
 | ------- | ------ | -------- |
-| ~~Icon-only buttons have no VoiceOver label (shuffle, repeat)~~ | `Sources/Jellify/Components/PlayerBar.swift` — `iconBtn("shuffle")`, `iconBtn("repeat")` | ~~[#331](https://github.com/skalthoff/jellify-desktop/issues/331)~~ — fixed by BATCH-22 |
-| ~~Logout button in Sidebar has no VoiceOver label~~ | `Sources/Jellify/Components/Sidebar.swift` | ~~[#331](https://github.com/skalthoff/jellify-desktop/issues/331)~~ — fixed by BATCH-22 |
-| ~~Progress bar is not an accessible slider~~ | PlayerBar scrubber | ~~[#332](https://github.com/skalthoff/jellify-desktop/issues/332)~~ — fixed by BATCH-22 |
-| Track row sub-labels announce separately | TrackRow | [#333](https://github.com/skalthoff/jellify-desktop/issues/333) |
-| ~~No logical tab order / Shift-Tab traversal~~ | Focus system | ~~[#334](https://github.com/skalthoff/jellify-desktop/issues/334)~~ — fixed by BATCH-22 |
-| No visible themed focus ring | Focus system | [#335](https://github.com/skalthoff/jellify-desktop/issues/335) |
-| `@FocusState` not wired for search autofocus / modal focus | Search, modals | [#336](https://github.com/skalthoff/jellify-desktop/issues/336) |
-| ~~No Dynamic Type / scaledFont support on Figtree~~ | Theme | ~~[#337](https://github.com/skalthoff/jellify-desktop/issues/337)~~ — fixed by BATCH-22 |
-| PlayerBar and Sidebar do not reflow at large text sizes | Layout | [#338](https://github.com/skalthoff/jellify-desktop/issues/338) |
+| ~~Icon-only buttons have no VoiceOver label (shuffle, repeat)~~ | `Sources/Lyrebird/Components/PlayerBar.swift` — `iconBtn("shuffle")`, `iconBtn("repeat")` | ~~[#331](https://github.com/skalthoff/lyrebird-desktop/issues/331)~~ — fixed by BATCH-22 |
+| ~~Logout button in Sidebar has no VoiceOver label~~ | `Sources/Lyrebird/Components/Sidebar.swift` | ~~[#331](https://github.com/skalthoff/lyrebird-desktop/issues/331)~~ — fixed by BATCH-22 |
+| ~~Progress bar is not an accessible slider~~ | PlayerBar scrubber | ~~[#332](https://github.com/skalthoff/lyrebird-desktop/issues/332)~~ — fixed by BATCH-22 |
+| Track row sub-labels announce separately | TrackRow | [#333](https://github.com/skalthoff/lyrebird-desktop/issues/333) |
+| ~~No logical tab order / Shift-Tab traversal~~ | Focus system | ~~[#334](https://github.com/skalthoff/lyrebird-desktop/issues/334)~~ — fixed by BATCH-22 |
+| No visible themed focus ring | Focus system | [#335](https://github.com/skalthoff/lyrebird-desktop/issues/335) |
+| `@FocusState` not wired for search autofocus / modal focus | Search, modals | [#336](https://github.com/skalthoff/lyrebird-desktop/issues/336) |
+| ~~No Dynamic Type / scaledFont support on Figtree~~ | Theme | ~~[#337](https://github.com/skalthoff/lyrebird-desktop/issues/337)~~ — fixed by BATCH-22 |
+| PlayerBar and Sidebar do not reflow at large text sizes | Layout | [#338](https://github.com/skalthoff/lyrebird-desktop/issues/338) |
 
 Anything else the Audit panel reports — and which is not in the table above
 — counts as **unexpected** and should open a new issue labelled
@@ -77,13 +77,13 @@ Fix PRs should:
 ## Repeat audits
 
 Use [`../../Scripts/a11y-audit.sh`](../../Scripts/a11y-audit.sh) to rebuild
-and launch the current `Jellify.app`. The script prints its PID and waits
+and launch the current `Lyrebird.app`. The script prints its PID and waits
 on `Ctrl-C` so you can keep Accessibility Inspector attached for the entire
 sweep and kill the app cleanly when done.
 
-Pass `--fresh` to wipe Jellify's saved preferences (`~/Library/Preferences/
-org.jellify.desktop.plist`) and Application Support data (`~/Library/
-Application Support/Jellify/`) before launch. Use it when repeatable runs
+Pass `--fresh` to wipe Lyrebird's saved preferences (`~/Library/Preferences/
+org.lyrebird.desktop.plist`) and Application Support data (`~/Library/
+Application Support/lyrebird-desktop/`) before launch. Use it when repeatable runs
 matter — e.g. when comparing a new audit against an earlier dated report in
 `audits/` — so persisted state from a previous session doesn't mask
 findings.

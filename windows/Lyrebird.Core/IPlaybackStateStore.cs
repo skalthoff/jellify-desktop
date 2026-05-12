@@ -1,4 +1,4 @@
-namespace Jellify.Core;
+namespace Lyrebird.Core;
 
 /// <summary>
 /// Reactive playback-state surface (state, position, duration, volume).

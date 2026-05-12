@@ -1,6 +1,6 @@
 # Contract Tests
 
-This directory contains the contract-test infrastructure for `jellify_core`.
+This directory contains the contract-test infrastructure for `lyrebird_core`.
 Each test replays a golden JSON fixture through a `wiremock` mock server,
 calls a `JellyfinClient` method, and snapshots the parsed Rust type with
 `insta`. Any schema drift between the Jellyfin server responses and the Rust

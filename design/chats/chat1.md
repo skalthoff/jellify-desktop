@@ -6,11 +6,11 @@ _Started 2026-04-21 20:28 UTC_
 
 ## User
 
-create a crossplatform desktop app design for jellify
+create a crossplatform desktop app design for lyrebird
 
 ## Assistant
 
-I'll design a cross-platform desktop app for Jellify. Let me start by exploring the design system and asking a few key questions.
+I'll design a cross-platform desktop app for Lyrebird. Let me start by exploring the design system and asking a few key questions.
 
 _[tool: list_files]_
 
@@ -22,7 +22,7 @@ _[tool: read_file]_
 
 _[tool: read_file]_
 
-I have strong context on the Jellify identity. Let me ask a few focused questions before designing.
+I have strong context on the Lyrebird identity. Let me ask a few focused questions before designing.
 
 _[tool: questions_v2]_
 
@@ -32,7 +32,7 @@ Questions timed out; go with defaults
 
 ## Assistant
 
-I'll design a polished Jellify desktop app, going with sensible defaults: Spotify-style layout (sidebar + main + bottom player) with a right now-playing panel that can expand, macOS chrome, full clickable interactivity, bold on Jellify personality, and Tweaks for theme/mode/density.
+I'll design a polished Lyrebird desktop app, going with sensible defaults: Spotify-style layout (sidebar + main + bottom player) with a right now-playing panel that can expand, macOS chrome, full clickable interactivity, bold on Lyrebird personality, and Tweaks for theme/mode/density.
 
 Let me explore more and get to work.
 
@@ -54,7 +54,7 @@ _[tool: copy_files]_
 
 _[tool: copy_starter_component]_
 
-I have what I need. I'll build a custom-chrome desktop app (won't need the mac starter's styling — I'll do custom traffic lights since Jellify is dark-themed).
+I have what I need. I'll build a custom-chrome desktop app (won't need the mac starter's styling — I'll do custom traffic lights since Lyrebird is dark-themed).
 
 Let me design the system:
 
@@ -116,7 +116,7 @@ _[tool: snip]_
 
 _[tool: fork_verifier_agent]_
 
-**Jellify Desktop** is live at `Jellify Desktop.html`.
+**Lyrebird Desktop** is live at `Lyrebird Desktop.html`.
 
 **What's in it**
 - **Custom-chrome window** with traffic lights, back/forward, breadcrumbs, global search, avatar.
@@ -159,7 +159,7 @@ The fix locks the window to its intended 1440×900 and scales it to fit any view
 
 Address these comments from my teammates:
 
-**S** (on Jellify Library Albums The Deep End):
+**S** (on Lyrebird Library Albums The Deep End):
 I love this to keep track of where you are
 
 **S** (on ALBUM The Deep End Saloli · 2020 · 10 tracks, 42 min):

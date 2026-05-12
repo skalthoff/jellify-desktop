@@ -1,11 +1,11 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using Jellify.Core;
+using Lyrebird.Core;
 
-namespace Jellify.App.ViewModels;
+namespace Lyrebird.App.ViewModels;
 
 /// <summary>
 /// Login screen view model — server URL probe → username/password →
-/// <c>JellifyCore.login(...)</c>. Concrete bindings land in batch W-M2.
+/// <c>LyrebirdCore.login(...)</c>. Concrete bindings land in batch W-M2.
 /// </summary>
 public partial class LoginViewModel : ObservableObject
 {

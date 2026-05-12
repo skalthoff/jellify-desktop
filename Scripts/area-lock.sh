@@ -10,10 +10,10 @@
 #   Scripts/area-lock.sh release <hotspot>
 #   Scripts/area-lock.sh status  [<hotspot>]
 #
-# Hotspots: clientrs | testsrs | appmodel | jellifyapp
+# Hotspots: clientrs | testsrs | appmodel | lyrebirdapp
 set -euo pipefail
 
-VALID_HOTSPOTS=("clientrs" "testsrs" "appmodel" "jellifyapp")
+VALID_HOTSPOTS=("clientrs" "testsrs" "appmodel" "lyrebirdapp")
 
 is_valid_hotspot() {
   local h="$1"

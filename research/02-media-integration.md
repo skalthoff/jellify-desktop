@@ -1,6 +1,6 @@
-# jellify-desktop — macOS Media + System Integration Issues
+# lyrebird-desktop — macOS Media + System Integration Issues
 
-Proposed GitHub issues to bring `macos/Sources/JellifyAudio/AudioEngine.swift` and the surrounding app to parity with first-class macOS media citizens (Apple Music, Doppler, Swinsian, Cider). Ordering is roughly by foundation → feature. Where an existing file is the natural home, it is cited by path.
+Proposed GitHub issues to bring `macos/Sources/LyrebirdAudio/AudioEngine.swift` and the surrounding app to parity with first-class macOS media citizens (Apple Music, Doppler, Swinsian, Cider). Ordering is roughly by foundation → feature. Where an existing file is the natural home, it is cited by path.
 
 Conventions used:
 - `area:macos` — implies SwiftUI / AppKit / AVFoundation / MediaPlayer work
@@ -15,12 +15,12 @@ Conventions used:
 **Effort:** M
 **Depends on:** —
 
-- Create a new `MediaSession` class (e.g. `macos/Sources/JellifyAudio/MediaSession.swift`) that is the single writer of `MPNowPlayingInfoCenter.default().nowPlayingInfo`. Every other system integration (Control Center, AVRCP, media keys, Dock) reads through it. Do not scatter `nowPlayingInfo` mutations across the codebase — that's how `elapsedPlaybackTime` drifts.
+- Create a new `MediaSession` class (e.g. `macos/Sources/LyrebirdAudio/MediaSession.swift`) that is the single writer of `MPNowPlayingInfoCenter.default().nowPlayingInfo`. Every other system integration (Control Center, AVRCP, media keys, Dock) reads through it. Do not scatter `nowPlayingInfo` mutations across the codebase — that's how `elapsedPlaybackTime` drifts.
 - Write the full property set on every track change: `MPMediaItemPropertyTitle`, `MPMediaItemPropertyArtist`, `MPMediaItemPropertyAlbumTitle`, `MPMediaItemPropertyAlbumArtist`, `MPMediaItemPropertyPlaybackDuration`, `MPMediaItemPropertyMediaType = .music`, `MPNowPlayingInfoPropertyAssetURL`, `MPNowPlayingInfoPropertyMediaType = .audio`, plus `MPNowPlayingInfoPropertyIsLiveStream = false`. Set `MPNowPlayingInfoPropertyQueueIndex` / `QueueCount` from `PlayerStatus.queuePosition` / `queueLength`.
 - On every play/pause/seek, update only the mutated keys: `MPNowPlayingInfoPropertyElapsedPlaybackTime` and `MPNowPlayingInfoPropertyPlaybackRate` (0.0 paused, 1.0 playing). Never leave a stale rate — Bluetooth AVRCP misbehaves when `AVPlayer.rate` and `playbackRate` disagree ([Apple forums thread 654413](https://developer.apple.com/forums/thread/654413)).
 - Inject the session into `AudioEngine` (construction-time dependency, not a singleton) so unit tests can substitute a mock. Keep AudioEngine `@MainActor`.
 - Refactor `AppModel.pollTimer` so the session, not AppModel, is the source of truth for "what's playing now." AppModel still exposes `status: PlayerStatus` for SwiftUI but the MediaSession pushes to MPNowPlaying on each `core.markPosition` tick.
-- **Acceptance:** opening `System Settings > Control Center > Now Playing` shows Jellify with correct title, artist, album, duration; rate flips between 0.0/1.0 on pause/resume; queue index updates when skipping. Verified visually and by logging `MPNowPlayingInfoCenter.default().nowPlayingInfo` after each transport action.
+- **Acceptance:** opening `System Settings > Control Center > Now Playing` shows Lyrebird with correct title, artist, album, duration; rate flips between 0.0/1.0 on pause/resume; queue index updates when skipping. Verified visually and by logging `MPNowPlayingInfoCenter.default().nowPlayingInfo` after each transport action.
 
 References: [MPNowPlayingInfoCenter docs](https://developer.apple.com/documentation/mediaplayer/mpnowplayinginfocenter) • [Controlling music from lock screen](https://medium.com/@g4gurpreetoberoi/controlling-music-from-lock-screen-mpnowplayinginfocenter-3f75ec7972d6) • [Enabling Now-Playing and Earphone Button Controls for an Audio App](https://www.glucode.com/blog/posts/enabling-now-playing-and-earphone-button-controls-for-an-audio-app).
 
@@ -49,7 +49,7 @@ References: [MPNowPlayingInfoCenter docs](https://developer.apple.com/documentat
 - Explicitly enable/disable: `playCommand.isEnabled = true` etc. macOS gates what shows in Control Center by which commands are enabled. Disable `stopCommand` unless there's a current item.
 - Re-check enablement on every queue change: at `queuePosition == 0`, disable `previousTrackCommand`; at `queuePosition == queueLength - 1`, disable `nextTrackCommand` (unless repeat is on, see #8).
 - Keep the handlers side-effect-minimal. They should not themselves touch `AVPlayer`; they route through `AppModel.togglePlayPause()` etc. so the same code path runs whether a human or a Bluetooth headset triggers it.
-- **Acceptance:** Clicking play/pause in Control Center's Now Playing widget starts/stops Jellify; next/previous in the widget skips; buttons gray out appropriately at queue bounds.
+- **Acceptance:** Clicking play/pause in Control Center's Now Playing widget starts/stops Lyrebird; next/previous in the widget skips; buttons gray out appropriately at queue bounds.
 
 References: [MPRemoteCommandCenter docs](https://developer.apple.com/documentation/mediaplayer/mpremotecommandcenter) • [RemoteCommandManager.swift (iOS-Swift-Demos)](https://github.com/iamzken/iOS-Swift-Demos/blob/master/MPRemoteCommandSample/Shared/Managers/RemoteCommandManager.swift) • [mpv's implementation (macOS)](https://github.com/mpv-player/mpv/blob/master/osdep/mac/remote_command_center.swift).
 
@@ -85,7 +85,7 @@ References: [MPRemoteCommandCenter docs](https://developer.apple.com/documentati
 **Effort:** M
 **Depends on:** #3
 
-- Add shuffle + repeat state to the Rust core: extend `PlayerStatus` with `shuffle: bool` and `repeatMode: RepeatMode { off, one, all }`. Plumb through `core.setShuffle(on:)` / `core.setRepeatMode(mode:)` via UniFFI. This is a cross-platform win — Linux/Windows also need it. (Touches `core/src/player.rs`, regenerates `jellify_core.swift`.)
+- Add shuffle + repeat state to the Rust core: extend `PlayerStatus` with `shuffle: bool` and `repeatMode: RepeatMode { off, one, all }`. Plumb through `core.setShuffle(on:)` / `core.setRepeatMode(mode:)` via UniFFI. This is a cross-platform win — Linux/Windows also need it. (Touches `core/src/player.rs`, regenerates `lyrebird_core.swift`.)
 - In `MediaSession`, wire `changeShuffleModeCommand` / `changeRepeatModeCommand`. Map `MPShuffleType.items` → `shuffle=true`, `MPShuffleType.off` → `shuffle=false`; map `MPRepeatType.one` → `.one`, `.all` → `.all`, `.off` → `.off`.
 - Propagate state back: set `MPShuffleType` and `MPRepeatType` on the command on every status change so the Control Center toggle reflects current state.
 - Update `next`/`previous` behavior in core to honor shuffle (random draw from remaining queue) and repeat (wrap for `.all`, same track for `.one`).
@@ -99,7 +99,7 @@ References: [MPRemoteCommandCenter docs](https://developer.apple.com/documentati
 **Effort:** S
 **Depends on:** #3
 
-- Track struct already exposes `isFavorite` (see `jellify_core.swift:1687`). Expose a core method `setFavorite(trackId:favorite:)` that hits Jellyfin's `/Users/{id}/FavoriteItems/{id}` (POST to favorite, DELETE to unfavorite).
+- Track struct already exposes `isFavorite` (see `lyrebird_core.swift:1687`). Expose a core method `setFavorite(trackId:favorite:)` that hits Jellyfin's `/Users/{id}/FavoriteItems/{id}` (POST to favorite, DELETE to unfavorite).
 - Wire `MPRemoteCommandCenter.shared().likeCommand` — toggle favorite on. Leave `dislikeCommand` disabled (Jellyfin has no dislike concept; don't fake one).
 - On track change update `likeCommand.isActive = track.isFavorite` so the heart fills correctly.
 - **Acceptance:** Hitting the heart in Control Center toggles the favorite in the Jellyfin library; re-queuing the track shows the updated state.
@@ -112,9 +112,9 @@ References: [MPRemoteCommandCenter docs](https://developer.apple.com/documentati
 **Depends on:** #3
 
 - macOS 10.12.2+ delivers F7/F8/F9 and Touch Bar media button presses via `MPRemoteCommandCenter` to the "most recently active" media app (the one that last called `MPNowPlayingInfoCenter`). This supersedes the old private `MediaRemote` / `HIDManager` route keylogger approach used pre-Sierra ([apple.stackexchange discussion](https://github.com/iina/iina/issues/1110), [BTHSControl](https://github.com/JamesFator/BTHSControl)).
-- Once #1-#3 are done, F7/F8/F9 should Just Work with no additional code. This issue is a verification / smoke-test task: hit each key with Jellify playing, hit with Jellify paused, hit while Music.app is also installed (confirm Jellify intercepts since it most-recently set `nowPlayingInfo`).
-- Document the "most recently active" rule in `CONTRIBUTING.md` under a "Media keys" section. Users sometimes report "Jellify doesn't respond to F8" when really they just opened Music.app afterward.
-- **Acceptance:** F7/F8/F9 trigger previous/play-pause/next while Jellify is the most-recent media app. Touch Bar transport controls (on supported hardware) also work.
+- Once #1-#3 are done, F7/F8/F9 should Just Work with no additional code. This issue is a verification / smoke-test task: hit each key with Lyrebird playing, hit with Lyrebird paused, hit while Music.app is also installed (confirm Lyrebird intercepts since it most-recently set `nowPlayingInfo`).
+- Document the "most recently active" rule in `CONTRIBUTING.md` under a "Media keys" section. Users sometimes report "Lyrebird doesn't respond to F8" when really they just opened Music.app afterward.
+- **Acceptance:** F7/F8/F9 trigger previous/play-pause/next while Lyrebird is the most-recent media app. Touch Bar transport controls (on supported hardware) also work.
 
 ---
 
@@ -266,7 +266,7 @@ References: [Jellyfin ReplayGain feature request](https://features.jellyfin.org/
 
 - `NSApp.dockTile.contentView = NSHostingView(rootView: DockTileView())`. `DockTileView` is a SwiftUI view showing current album art with a thin progress arc around the icon edge (or a bottom bar — pick one). Pause icon overlay when `state == .paused`.
 - Call `NSApp.dockTile.display()` at most once per second (the tile does not auto-redraw). Tie it to the existing 0.5s status poll but throttle to 1s in the tile path — anything more frequent spikes CPU per [thisdevbrain](https://thisdevbrain.com/custom-view-inside-dock-with-nsdocktile/).
-- Dock menu: right-click should show play/pause, next, previous as `NSMenu` items. Bind the menu via `applicationDockMenu(_:)` in an `NSApplicationDelegate` (set up an `NSApplicationDelegateAdaptor` in `JellifyApp.swift`).
+- Dock menu: right-click should show play/pause, next, previous as `NSMenu` items. Bind the menu via `applicationDockMenu(_:)` in an `NSApplicationDelegate` (set up an `NSApplicationDelegateAdaptor` in `LyrebirdApp.swift`).
 - On quit, restore the standard icon (`dockTile.contentView = nil; dockTile.display()`).
 - **Acceptance:** Playing a track shows a ring filling around the Dock icon in real time; right-click on dock icon shows transport menu; pausing shows an overlay badge; quitting restores the stock icon.
 
@@ -279,7 +279,7 @@ References: [Custom View inside Dock via NSDockTile (This Dev Brain)](https://th
 **Effort:** M
 **Depends on:** —
 
-- Add a second `Scene` to `JellifyApp`: `MenuBarExtra("Jellify", systemImage: "music.note") { MenuBarPlayerView() }` with `.menuBarExtraStyle(.window)` for a richer popover rather than a dropdown menu.
+- Add a second `Scene` to `LyrebirdApp`: `MenuBarExtra("Lyrebird", systemImage: "music.note") { MenuBarPlayerView() }` with `.menuBarExtraStyle(.window)` for a richer popover rather than a dropdown menu.
 - `MenuBarPlayerView` shows: 36×36 artwork, title + artist (single line each, truncated), a progress bar, and a row of prev / play-pause / next icons. Keep the whole popover under ~260×120 pt. See [PlayStatus](https://github.com/nbolar/PlayStatus) / Sarunw tutorials for the layout pattern.
 - Reuse `AppModel` — the same `@Environment(AppModel.self)` the main window uses. Menu bar popover is a second front-end onto the same state.
 - Offer a setting: "Show in menu bar" (default on); "Hide Dock icon when in menu bar" which flips `LSUIElement` (requires relaunch; document that).
@@ -364,7 +364,7 @@ References: [Last.FM compatible API for ListenBrainz](https://listenbrainz.readt
 **Effort:** S
 **Depends on:** —
 
-- CarPlay is iOS-only (CarPlay framework is iOS); it's not applicable to `jellify-desktop`. iOS Jellify (the React Native app in the sibling repo `jellify/`) is the home for CarPlay.
+- CarPlay is iOS-only (CarPlay framework is iOS); it's not applicable to `lyrebird-desktop`. iOS Jellify (the React Native app in the sibling repo `jellify/`) is the home for CarPlay.
 - Add a comment in `AudioEngine.swift` explaining that any CarPlay-ish patterns you might see in iOS Jellify's codebase don't apply here.
 - **Acceptance:** `README.md` and `CONTRIBUTING.md` note that desktop has no CarPlay and iOS covers it.
 
@@ -376,7 +376,7 @@ References: [Last.FM compatible API for ListenBrainz](https://listenbrainz.readt
 **Depends on:** #1, #3, #10
 
 - Extend `Sources/SmokeTest/main.swift` with a non-interactive harness that:
-  - Sets up `AudioEngine` + `MediaSession` with a fake `JellifyCore` double (just build an in-memory `PlayerStatus` and stream a tiny test asset from disk via `file://`).
+  - Sets up `AudioEngine` + `MediaSession` with a fake `LyrebirdCore` double (just build an in-memory `PlayerStatus` and stream a tiny test asset from disk via `file://`).
   - Exercises each MPRemoteCommand handler and asserts state transitions.
   - Simulates buffer stall via `URLProtocol` interception.
   - Verifies `MPNowPlayingInfoCenter.default().nowPlayingInfo` dictionary contents after each transition.

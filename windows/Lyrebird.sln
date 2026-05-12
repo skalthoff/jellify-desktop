@@ -2,9 +2,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.8.0.0
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jellify.App", "Jellify.App\Jellify.App.csproj", "{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Lyrebird.App", "Lyrebird.App\Lyrebird.App.csproj", "{1A1B73C8-0001-4A2A-9D1E-0001A1B7C001}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Jellify.Core", "Jellify.Core\Jellify.Core.csproj", "{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Lyrebird.Core", "Lyrebird.Core\Lyrebird.Core.csproj", "{1A1B73C8-0002-4A2A-9D1E-0001A1B7C002}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

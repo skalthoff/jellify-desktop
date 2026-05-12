@@ -1,7 +1,7 @@
-namespace Jellify.Core;
+namespace Lyrebird.Core;
 
 /// <summary>
-/// Idiomatic C# facade over the UniFFI-generated <c>JellifyCore</c> handle.
+/// Idiomatic C# facade over the UniFFI-generated <c>LyrebirdCore</c> handle.
 /// The wrapper is what app-side view models depend on; subsequent batches
 /// add concrete implementations that delegate into the Rust core.
 /// </summary>

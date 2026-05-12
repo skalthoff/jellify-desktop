@@ -1,6 +1,6 @@
-# Jellify macOS Distribution
+# Lyrebird macOS Distribution
 
-End-to-end pipeline for producing a signed, notarized, stapled `Jellify-<version>.dmg`
+End-to-end pipeline for producing a signed, notarized, stapled `Lyrebird-<version>.dmg`
 that passes Gatekeeper and launches cleanly on a fresh Mac.
 
 ---
@@ -23,7 +23,7 @@ mandatory for a tag push to produce a signed, notarized DMG.
       secret.
 - [ ] **App-specific password** created at <https://appleid.apple.com>
       → Sign-In and Security → App-Specific Passwords. Label it
-      "Jellify notarization".
+      "Lyrebird notarization".
 - [ ] **Sparkle keypair generated** (below → "Sparkle key generation").
       Store both halves in your password manager before closing the
       terminal.
@@ -38,7 +38,7 @@ mandatory for a tag push to produce a signed, notarized DMG.
       are shaped right before committing to a tag.
 - [ ] **First tag pushed**:
       ```bash
-      git tag -s v0.1.0 -m "Jellify 0.1.0"
+      git tag -s v0.1.0 -m "Lyrebird 0.1.0"
       git push origin v0.1.0
       ```
       `.github/workflows/macos-release.yml` picks it up, builds for
@@ -73,11 +73,11 @@ below cannot be exercised end-to-end until it is done. Start it first.**
    Certificates**. Select both the certificate *and* its private key
    (if the key is missing from the selection, the Export menu item is
    greyed out). Set a long random password. Store the `.p12` + password
-   in 1Password under `jellify-desktop / Apple Developer ID`.
+   in 1Password under `lyrebird-desktop / Apple Developer ID`.
 5. From the portal's **Membership** page, record the **Team ID**. Save
    it in the same 1Password entry.
 6. (Related to issue #176) In **Identifiers → + → App IDs → macOS App**,
-   register the bundle identifier `org.jellify.desktop` exactly. A
+   register the bundle identifier `org.lyrebird.desktop` exactly. A
    mismatch between the cert's recognized identifiers and the bundle ID
    is a common notarization surprise.
 
@@ -96,7 +96,7 @@ disk outside of the keychain-stored credentials and local build outputs.
 | `VERSION`       | `make-bundle.sh`, `make-dmg.sh`    | `0.1.0` (semver, matches a git tag)                          |
 | `BUILD`         | `make-bundle.sh`                   | `1234` (monotonic build number, typically CI run number)     |
 | `DEVELOPER_ID`  | `sign.sh`, `make-dmg.sh`           | `Developer ID Application: Jane Doe (TEAMID123)`             |
-| `NOTARY_PROFILE`| `notarize.sh`                      | `jellify-notary` (keychain profile name)                     |
+| `NOTARY_PROFILE`| `notarize.sh`                      | `lyrebird-notary` (keychain profile name)                     |
 
 If `VERSION` / `BUILD` are unset, the scripts fall back to
 `git describe --tags --abbrev=0` and `git rev-list --count HEAD` so local
@@ -108,7 +108,7 @@ Store notary credentials in the keychain so the scripts never see raw
 secrets:
 
 ```sh
-xcrun notarytool store-credentials jellify-notary \
+xcrun notarytool store-credentials lyrebird-notary \
     --apple-id       "$APPLE_ID" \
     --team-id        "$APPLE_TEAM_ID" \
     --password       "$APPLE_NOTARY_APP_PASSWORD"
@@ -121,7 +121,7 @@ xcrun notarytool store-credentials jellify-notary \
   Passwords. (Your real Apple ID password will not work.)
 
 This only needs to run once per machine. The profile is stored in the
-login keychain under the name `jellify-notary`.
+login keychain under the name `lyrebird-notary`.
 
 ### Tooling install
 
@@ -140,11 +140,11 @@ command line tools must be present (`xcode-select --install`).
 | Path                                         | Purpose                                                        |
 | -------------------------------------------- | -------------------------------------------------------------- |
 | `macos/Resources/Info.plist`                 | Info.plist template with `$VERSION`/`$BUILD` placeholders      |
-| `macos/Resources/Jellify.entitlements`       | Hardened-runtime entitlements applied at signing time          |
+| `macos/Resources/Lyrebird.entitlements`       | Hardened-runtime entitlements applied at signing time          |
 | `macos/Scripts/build-core.sh`                | Builds the Rust core as an `arm64` xcframework                  |
-| `macos/Scripts/make-bundle.sh`               | Assembles `Jellify.app` and injects Info.plist version fields  |
+| `macos/Scripts/make-bundle.sh`               | Assembles `Lyrebird.app` and injects Info.plist version fields  |
 | `macos/Scripts/sign.sh`                      | Codesigns the bundle inside-out with the hardened runtime      |
-| `macos/Scripts/make-dmg.sh`                  | Produces `Jellify-<version>.dmg` via `create-dmg`              |
+| `macos/Scripts/make-dmg.sh`                  | Produces `Lyrebird-<version>.dmg` via `create-dmg`              |
 | `macos/Scripts/notarize.sh`                  | Submits to Apple's notary, waits, staples the ticket           |
 
 ---
@@ -163,12 +163,12 @@ cd macos
 swift build -c release
 cd ..
 
-# 3. Assemble Jellify.app. Picks up $VERSION / $BUILD (or git fallback).
+# 3. Assemble Lyrebird.app. Picks up $VERSION / $BUILD (or git fallback).
 VERSION=0.1.0 BUILD=1 ./macos/Scripts/make-bundle.sh --release
 
 # 4. Code-sign inside-out with the hardened runtime.
 DEVELOPER_ID="Developer ID Application: Your Name (TEAMID123)" \
-    ./macos/Scripts/sign.sh macos/build/Jellify.app
+    ./macos/Scripts/sign.sh macos/build/Lyrebird.app
 
 # 5. Produce the DMG (signed with the same identity).
 DEVELOPER_ID="Developer ID Application: Your Name (TEAMID123)" \
@@ -176,11 +176,11 @@ DEVELOPER_ID="Developer ID Application: Your Name (TEAMID123)" \
     ./macos/Scripts/make-dmg.sh
 
 # 6. Submit for notarization and staple the ticket on success.
-./macos/Scripts/notarize.sh macos/build/Jellify-0.1.0.dmg
+./macos/Scripts/notarize.sh macos/build/Lyrebird-0.1.0.dmg
 ```
 
 After step 6, the DMG is shippable. `spctl --assess --type open
---context context:primary-signature -v macos/build/Jellify-0.1.0.dmg`
+--context context:primary-signature -v macos/build/Lyrebird-0.1.0.dmg`
 should report `accepted`.
 
 ---
@@ -188,14 +188,14 @@ should report `accepted`.
 ## Bundle layout (after step 4)
 
 ```
-Jellify.app/
+Lyrebird.app/
 ├── Contents/
 │   ├── Info.plist           (rendered from Resources/Info.plist)
 │   ├── MacOS/
-│   │   └── Jellify          (arm64 Mach-O, signed + hardened runtime)
+│   │   └── Lyrebird          (arm64 Mach-O, signed + hardened runtime)
 │   ├── Resources/
 │   │   ├── AppIcon.icns     (optional — soft-dependency on icon pipeline)
-│   │   └── Jellify_Jellify.bundle/   (SPM-processed fonts bundle)
+│   │   └── Lyrebird_Lyrebird.bundle/   (SPM-processed fonts bundle)
 │   └── _CodeSignature/
 ```
 
@@ -209,16 +209,16 @@ ROADMAP) and will live at `Contents/Frameworks/Sparkle.framework`.
 
 ### `build-core.sh`
 
-Builds `libjellify_core.a` for `aarch64-apple-darwin` (in release mode;
+Builds `liblyrebird_core.a` for `aarch64-apple-darwin` (in release mode;
 LTO is pinned in `Cargo.toml`). The UniFFI Swift binding is regenerated
 from the `.dylib`, and both the headers and the static lib go into
-`macos/Jellify.xcframework`, which the SPM `binaryTarget` consumes.
+`macos/Lyrebird.xcframework`, which the SPM `binaryTarget` consumes.
 
 Apple Silicon only — Intel was dropped from M4 distribution (#660 wontfix).
 
 ### `make-bundle.sh`
 
-Assembles `macos/build/Jellify.app` from the `swift build` output.
+Assembles `macos/build/Lyrebird.app` from the `swift build` output.
 Copies `macos/Resources/Info.plist` into `Contents/Info.plist`, then
 uses `plutil -replace` to inject `$VERSION` and `$BUILD`. Runs
 `plutil -lint` on the result — a drift in the template that breaks
@@ -261,8 +261,8 @@ post-mortem; cleans up on success.
 
 ### What users see on first run
 
-After downloading `Jellify-<version>.dmg` from GitHub Releases and dragging
-`Jellify.app` to `/Applications`, macOS assigns the app the quarantine flag
+After downloading `Lyrebird-<version>.dmg` from GitHub Releases and dragging
+`Lyrebird.app` to `/Applications`, macOS assigns the app the quarantine flag
 (`com.apple.quarantine`). On double-click macOS Gatekeeper checks that
 attribute before allowing the app to run.
 
@@ -270,7 +270,7 @@ attribute before allowing the app to run.
 stapled into the bundle and presents a one-time confirmation dialog — not an
 error:
 
-> *"Jellify is an app downloaded from the Internet. Are you sure you want to
+> *"Lyrebird is an app downloaded from the Internet. Are you sure you want to
 > open it?"*
 
 Click **Open**. The quarantine flag is cleared and the app launches normally.
@@ -284,12 +284,12 @@ Clicking it is all that is required.
 ### macOS 15 (Sequoia) and later
 
 Apple tightened the first-launch flow in Sequoia. The initial double-click
-dismisses with "Apple cannot verify the developer of Jellify" and no
+dismisses with "Apple cannot verify the developer of Lyrebird" and no
 **Open** button is shown. To proceed:
 
 1. Open **System Settings → Privacy & Security**.
 2. Scroll to the **Security** section. A notice appears:
-   *"Jellify was blocked from use because it is not from an identified
+   *"Lyrebird was blocked from use because it is not from an identified
    developer."*
 3. Click **Open Anyway** next to the notice.
 4. A final confirmation sheet asks "Are you sure you want to open it?" —
@@ -301,20 +301,20 @@ subsequent runs.
 ### Why this happens
 
 Apple's Gatekeeper quarantines every file downloaded from the Internet.
-For Developer ID–signed and notarized apps (like Jellify), the stapled
+For Developer ID–signed and notarized apps (like Lyrebird), the stapled
 notarization ticket allows Gatekeeper to approve the app without a network
 call, but the one-time confirmation is still required by design. This is
 expected behavior and is **not** a sign of a broken or malicious build.
 
 ### What a broken build looks like
 
-If users see **"Jellify cannot be opened because the developer cannot be
+If users see **"Lyrebird cannot be opened because the developer cannot be
 verified"** (the "unidentified developer" dialog, with only **Move to Trash**
 and **Cancel** options), the code-signing or notarization chain is broken.
 Treat this as a release-blocker. Do not ship the DMG until it is resolved —
 see the Troubleshooting section and re-run `sign.sh` + `notarize.sh`.
 
-The `xattr -d com.apple.quarantine Jellify.app` terminal command removes the
+The `xattr -d com.apple.quarantine Lyrebird.app` terminal command removes the
 quarantine attribute and bypasses Gatekeeper entirely. Do **not** advertise
 this to end users; it is a developer diagnostic tool, not a user-facing
 workaround, and it carries real security implications.
@@ -380,7 +380,7 @@ terminal session.
 
 ### Entitlements rejected: "Unsupported entitlement"
 
-Check that `Jellify.entitlements` does not contain MAS-only keys like
+Check that `Lyrebird.entitlements` does not contain MAS-only keys like
 `com.apple.application-identifier` or sandbox keys. We are Developer
 ID, not MAS.
 
@@ -391,7 +391,7 @@ ID, not MAS.
 ## CI, release workflow, and auto-update
 
 
-How we get a Jellify build from a tag in git to a signed, notarized,
+How we get a Lyrebird build from a tag in git to a signed, notarized,
 auto-updating `.app` on someone's Mac.
 
 ## Pipeline at a glance
@@ -401,14 +401,14 @@ auto-updating `.app` on someone's Mac.
        │
        ├─ build arm64 xcframework (Apple Silicon only — see #660)
        ├─ swift build -c release
-       ├─ make-iconset.sh            → Resources/Jellify.icns
-       ├─ make-bundle.sh             → build/Jellify.app
+       ├─ make-iconset.sh            → Resources/Lyrebird.icns
+       ├─ make-bundle.sh             → build/Lyrebird.app
        ├─ sign.sh                    → codesign + hardened runtime
-       ├─ make-dmg.sh                → build/Jellify-<ver>.dmg
+       ├─ make-dmg.sh                → build/Lyrebird-<ver>.dmg
        ├─ notarize.sh                → Apple notary + stapled ticket
        ├─ gh release create          → DMG attached to v0.2.0
        ├─ generate-appcast.sh        → docs/appcast.xml
-       └─ push to gh-pages           → https://skalthoff.github.io/jellify-desktop/appcast.xml
+       └─ push to gh-pages           → https://skalthoff.github.io/lyrebird-desktop/appcast.xml
 ```
 
 Sparkle on the client side polls the appcast URL, pulls the new DMG,
@@ -428,7 +428,7 @@ fails fast if any are missing.
 | `APPLE_DEVELOPER_ID_IDENTITY` | Common-name of the identity codesign looks up (e.g. `Developer ID Application: Soren Althoff (XXXXXXXXXX)`). | `security find-identity -v -p codesigning` on a machine with the cert installed. Copy the `"..."` string. |
 | `APPLE_TEAM_ID` | 10-character team identifier. | Apple Developer → Membership → Team ID. |
 | `APPLE_ID` | Apple ID email used for notarization. | Usually the account that owns the developer program. |
-| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated for notarization. | appleid.apple.com → Sign-In and Security → App-Specific Passwords. Label it "Jellify notarization". |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated for notarization. | appleid.apple.com → Sign-In and Security → App-Specific Passwords. Label it "Lyrebird notarization". |
 | `APPLE_NOTARY_PROFILE` | Profile name used by `xcrun notarytool store-credentials` if notarize.sh relies on a stored profile rather than raw credentials. | Pick any slug; `notarize.sh` regenerates the profile from the three secrets above on each run. |
 | `SPARKLE_PUBLIC_ED_KEY` | Base64 Ed25519 **public** key. Substituted into Info.plist at build time. | `generate_keys` (see below) prints both halves. |
 | `SPARKLE_ED25519_PRIVATE` | Base64 Ed25519 **private** key. Never leaves the runner; only used by `generate-appcast.sh`. | Same generator. |
@@ -468,7 +468,7 @@ cd "Sparkle-${SPARKLE_VERSION}"
 ```
 
 Rotating these keys is a breaking change for every already-installed
-Jellify — older copies won't trust feeds signed by the new key. If a
+Lyrebird — older copies won't trust feeds signed by the new key. If a
 rotation is ever required, bump the feed URL to a new path (e.g.
 `appcast-v2.xml`) and ship one last update against the old key that
 points existing installs at the new URL.
@@ -477,7 +477,7 @@ points existing installs at the new URL.
 
 `Scripts/make-iconset.sh` looks for the icon source in this order:
 
-1. `design/icons/jellify-app.svg` — the canonical path once the final
+1. `design/icons/lyrebird-app.svg` — the canonical path once the final
    app icon is designed.
 2. `design/project/assets/teal-icon.svg` — placeholder currently in the
    repo.
@@ -533,18 +533,18 @@ If everything looks right, push a tag:
 
 ```bash
 git switch main
-git tag -s v0.2.0 -m "Jellify 0.2.0"
+git tag -s v0.2.0 -m "Lyrebird 0.2.0"
 git push origin v0.2.0
 ```
 
 The workflow takes ~20 minutes on `macos-14`. Watch the
-[Actions](https://github.com/skalthoff/jellify-desktop/actions) tab
+[Actions](https://github.com/skalthoff/lyrebird-desktop/actions) tab
 for progress.
 
 ## Hosting the appcast
 
 GitHub Pages serves `gh-pages:/appcast.xml` at
-`https://skalthoff.github.io/jellify-desktop/appcast.xml`. That URL is
+`https://skalthoff.github.io/lyrebird-desktop/appcast.xml`. That URL is
 baked into every release's Info.plist as `SUFeedURL`, so it must remain
 stable. If GitHub Pages ever moves (custom domain, etc.) the `SUFeedURL`
 value in `macos/Resources/Info.plist` has to change in lockstep with a

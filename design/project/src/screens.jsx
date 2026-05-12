@@ -1,4 +1,4 @@
-// Jellify desktop — screens
+// Lyrebird desktop — screens
 
 // ─── Home ──────────────────────────────────────────────────────────────
 function HomeScreen({ t, onPlay, current }) {

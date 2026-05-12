@@ -1,13 +1,13 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Build jellify_core.dll for Windows x64 and arm64, stage into Jellify.Core/native/.
+    Build lyrebird_core.dll for Windows x64 and arm64, stage into Lyrebird.Core/native/.
 
 .DESCRIPTION
     Cross-targets `x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc` from
     a single host (any Windows machine with Rust + the MSVC toolchain
     installed). Both targets ship a `cdylib` plus its import library; we
-    copy each pair into `windows/Jellify.Core/native/{win-x64,win-arm64}/`
+    copy each pair into `windows/Lyrebird.Core/native/{win-x64,win-arm64}/`
     where the csproj picks them up via per-RID `<None>` items.
 
     Skip arm64 with `-SkipArm64` when iterating locally on an x64 host
@@ -40,9 +40,9 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = Resolve-Path (Join-Path $ScriptDir '..' '..')
-$NativeDir = Join-Path $RepoRoot 'windows' 'Jellify.Core' 'native'
+$NativeDir = Join-Path $RepoRoot 'windows' 'Lyrebird.Core' 'native'
 
-$CargoArgs = @('build', '-p', 'jellify_core')
+$CargoArgs = @('build', '-p', 'lyrebird_core')
 if ($Configuration -eq 'Release') {
     $CargoArgs += '--release'
 }
@@ -74,13 +74,13 @@ foreach ($t in $Targets) {
     $DestDir    = Join-Path $NativeDir $t.Rid
     New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
 
-    foreach ($file in @('jellify_core.dll', 'jellify_core.dll.lib', 'jellify_core.pdb')) {
+    foreach ($file in @('lyrebird_core.dll', 'lyrebird_core.dll.lib', 'lyrebird_core.pdb')) {
         $src = Join-Path $SourceDir $file
         if (Test-Path $src) {
             Copy-Item -Force $src $DestDir
             Write-Host "    staged $file -> $DestDir"
         }
-        elseif ($file -ne 'jellify_core.pdb') {
+        elseif ($file -ne 'lyrebird_core.pdb') {
             # PDB is debug-only; missing PDB on Release isn't an error.
             throw "Missing $file under $SourceDir after cargo build."
         }

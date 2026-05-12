@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using Jellify.Core;
+using Lyrebird.Core;
 
-namespace Jellify.App.ViewModels;
+namespace Lyrebird.App.ViewModels;
 
 /// <summary>
 /// Library tab view model — albums, artists, tracks, playlists pivots.

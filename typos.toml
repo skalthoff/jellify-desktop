@@ -26,5 +26,5 @@ extend-exclude = [
     "target/**",
     ".build/**",
     "macos/.build/**",
-    "macos/Jellify.xcframework/**",
+    "macos/Lyrebird.xcframework/**",
 ]

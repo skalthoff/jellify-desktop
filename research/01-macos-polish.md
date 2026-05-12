@@ -1,4 +1,4 @@
-# Jellify macOS — SwiftUI + AppKit Polish Plan
+# Lyrebird macOS — SwiftUI + AppKit Polish Plan
 
 Research target: take the M2 MVP (custom three-pane shell, no menu bar, no toolbar,
 no shortcuts, no restoration) to Apple Music / Doppler / Marvis-Pro-level chrome
@@ -6,11 +6,11 @@ and interaction quality. Scope is **macOS shell / chrome / interaction layer onl
 not MediaPlayer/MPRemoteCommandCenter (separate agent), not distribution, not the
 visual polish of individual screens beyond what the chrome dictates.
 
-Current app entry (`macos/Sources/Jellify/JellifyApp.swift`) is a single
+Current app entry (`macos/Sources/Lyrebird/LyrebirdApp.swift`) is a single
 `WindowGroup` with `.windowToolbarStyle(.unifiedCompact)` but **no** `.commands {}`
 block, no toolbar content, no scene storage, no NavigationStack, no focus values,
 no `NSApplicationDelegateAdaptor`. The `AppModel` is `@MainActor @Observable` and
-imports `JellifyCore` with `@preconcurrency`, which is the seam we have to keep
+imports `LyrebirdCore` with `@preconcurrency`, which is the seam we have to keep
 an eye on for Swift 6.
 
 Issues below assume SwiftUI on macOS 14+ as the minimum deployment target
@@ -36,8 +36,8 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 **Effort:** M
 **Depends on:** 1
 
-- Design (see `design/project/Jellify Desktop.html`) has the sidebar going all the way to the top of the window with the traffic lights floating over it — the same look as Apple Music, Music for Classical, Reeder, Spark. Today we use `.windowToolbarStyle(.unifiedCompact)` but no `windowStyle`, so we get the default titled bar carving out a strip above the sidebar.
-- Add `.windowStyle(.hiddenTitleBar)` to the `WindowGroup` in `JellifyApp.swift`. This sets `titlebarAppearsTransparent = true` and inserts `.fullSizeContentView` into the `styleMask` automatically, letting our content flow under the traffic lights.
+- Design (see `design/project/Lyrebird Desktop.html`) has the sidebar going all the way to the top of the window with the traffic lights floating over it — the same look as Apple Music, Music for Classical, Reeder, Spark. Today we use `.windowToolbarStyle(.unifiedCompact)` but no `windowStyle`, so we get the default titled bar carving out a strip above the sidebar.
+- Add `.windowStyle(.hiddenTitleBar)` to the `WindowGroup` in `LyrebirdApp.swift`. This sets `titlebarAppearsTransparent = true` and inserts `.fullSizeContentView` into the `styleMask` automatically, letting our content flow under the traffic lights.
 - Keep `.windowToolbarStyle(.unifiedCompact)` so `.toolbar {}` content (Issue 6) still lands in the correct unified strip.
 - Content behind traffic lights is our sidebar, which is always dark, so contrast is not a problem, but we still need to reserve ~74px of leading space at the top of the sidebar for the lights. Do this with a `.safeAreaPadding(.top, 28)` on the sidebar's brand header when on macOS only.
 - References: [NSWindow.titlebarAppearsTransparent](https://developer.apple.com/documentation/appkit/nswindow/titlebarappearstransparent), Luka Kerr's NSWindowStyles showcase.
@@ -71,9 +71,9 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 **Effort:** L
 **Depends on:** 4, 7, 11
 
-- Currently `JellifyApp` has no `.commands {}` block — we get only the default Apple-supplied menus, no Playback menu, no Jellify-specific items. This is the biggest gap vs. Apple Music.
-- Add a dedicated `JellifyCommands: Commands` struct that composes:
-  - **Jellify menu** (app name): `CommandGroup(replacing: .appInfo) { Button("About Jellify") { openWindow(id: "about") } }`, then the default Services/Hide/Quit.
+- Currently `LyrebirdApp` has no `.commands {}` block — we get only the default Apple-supplied menus, no Playback menu, no Lyrebird-specific items. This is the biggest gap vs. Apple Music.
+- Add a dedicated `LyrebirdCommands: Commands` struct that composes:
+  - **Lyrebird menu** (app name): `CommandGroup(replacing: .appInfo) { Button("About Lyrebird") { openWindow(id: "about") } }`, then the default Services/Hide/Quit.
   - **File menu** — `CommandGroup(replacing: .newItem) { Button("New Window") { openWindow(id: "main") }.keyboardShortcut("n") }`, `Button("New Mini Player")` (Issue 12, Cmd+Shift+M), `Divider()`, `Button("Sign Out…") { model.logout() }`, `Button("Switch Server…")`, `Divider()`, `Button("Close Window").keyboardShortcut("w")` (default handles this).
   - **Edit menu** — keep default pasteboard/undo, append `CommandGroup(after: .pasteboard) { Button("Find") { /* focus toolbar search */ }.keyboardShortcut("f") }`.
   - **View menu** — `CommandGroup(before: .toolbar) { Toggle("Show Sidebar", isOn: sidebarBinding).keyboardShortcut("s", modifiers: [.command, .control]); Toggle("Show Up Next", isOn: inspectorBinding).keyboardShortcut("u", modifiers: [.command, .option]); Button("Full Player").keyboardShortcut("f", modifiers: [.command, .shift]); Button("Tweaks…") }`.
@@ -81,7 +81,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
   - **CommandMenu("Controls")** — Shuffle toggle, Repeat mode cycle, Favorite (love) current track.
   - **CommandMenu("Go")** — Back (Cmd+[), Forward (Cmd+]), Home (Cmd+1), Library (Cmd+2), Search (Cmd+3), Now Playing (Cmd+L).
   - **Window menu** — `CommandGroup(after: .windowArrangement) { Button("Minimize").keyboardShortcut("m"); Button("Zoom"); Button("Mini Player").keyboardShortcut("m", modifiers: [.command, .option]) }`.
-  - **Help menu** — `CommandGroup(replacing: .help) { Button("Jellify Help") { openURL(docsURL) }; Button("Keyboard Shortcuts").keyboardShortcut("?", modifiers: [.command]); Button("Report Issue…") }`.
+  - **Help menu** — `CommandGroup(replacing: .help) { Button("Lyrebird Help") { openURL(docsURL) }; Button("Keyboard Shortcuts").keyboardShortcut("?", modifiers: [.command]); Button("Report Issue…") }`.
 - Pipe all actions through `@FocusedValue(\.appModel)` so per-window state is respected. Fallback to `NSApp.keyWindow` model when no scene is focused.
 - References: [CommandGroup](https://developer.apple.com/documentation/swiftui/commandgroup), [Customizing the macOS menu bar in SwiftUI — danielsaidi.com](https://danielsaidi.com/blog/2023/11/22/customizing-the-macos-menu-bar-in-swiftui).
 
@@ -127,7 +127,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 **Depends on:** -
 
 - Apple Music claims the system media-key handler by default. Any serious Mac music app must register with `MPRemoteCommandCenter` so F7/F8/F9, AirPods double-tap, and Bluetooth headset controls land in our app when we're the "focused now-playing app". This is technically MediaPlayer framework territory (owned by the other agent) but the SwiftUI-side glue lives here: we need to make sure `AppModel.togglePlayPause`, `skipNext`, `skipPrevious`, seek handlers are exposed as `@MainActor` functions the MediaPlayer agent can call, and that on login success we poke the agent to install remote handlers.
-- Provide a thin internal `PlaybackRemote` protocol in `JellifyAudio` the MediaPlayer integration can conform to, keeping this module decoupled. Issue exists primarily to flag the contract and make sure it's not dropped; the MediaPlayer agent will own the actual `MPRemoteCommandCenter.shared()` wiring.
+- Provide a thin internal `PlaybackRemote` protocol in `LyrebirdAudio` the MediaPlayer integration can conform to, keeping this module decoupled. Issue exists primarily to flag the contract and make sure it's not dropped; the MediaPlayer agent will own the actual `MPRemoteCommandCenter.shared()` wiring.
 - Reference: [MPRemoteCommandCenter](https://developer.apple.com/documentation/mediaplayer/mpremotecommandcenter).
 
 ### Issue 9: Plumb `@FocusedValue` / `focusedSceneValue` so menu items drive the focused window's AppModel
@@ -142,7 +142,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
       get { self[AppModelKey.self] }; set { self[AppModelKey.self] = newValue }
   } }
   ```
-  Then on `RootView`: `.focusedSceneValue(\.appModel, model)`. In `JellifyCommands`: `@FocusedValue(\.appModel) var appModel`. Every button in the menu becomes `Button("Play") { appModel?.togglePlayPause() }.disabled(appModel == nil)`.
+  Then on `RootView`: `.focusedSceneValue(\.appModel, model)`. In `LyrebirdCommands`: `@FocusedValue(\.appModel) var appModel`. Every button in the menu becomes `Button("Play") { appModel?.togglePlayPause() }.disabled(appModel == nil)`.
 - Do the same for navigation path (`focusedSceneValue(\.detailPath, $detailPath)` passes a `Binding<NavigationPath>` so Back/Forward in the menu can mutate the current window's stack).
 - Do the same for the toolbar's search focus state so Cmd+F works from any window.
 - Reference: [The SwiftUI cookbook for focus — WWDC23](https://developer.apple.com/videos/play/wwdc2023/10162/), [SwiftUI FocusedValue, macOS Menus, and the Responder Chain — philz.blog](https://philz.blog/swiftui-focusedvalue-macos-menus-and-the-responder-chain/).
@@ -170,7 +170,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 **Effort:** M
 **Depends on:** 9, 10
 
-- `WindowGroup` already permits multiple windows; we just need the menu items and to make sure `AppModel` is per-window, not a singleton. Today it's created once in `JellifyApp.init()` — that's fine for session/login state, but playback state per-window would be weird (second window would play its own audio over the first). Decision: **session + playback are global**; **navigation state is per-window**. Extract `NavState` to a scene-scoped `@State` struct; keep `AppModel` global via `.environment(model)`.
+- `WindowGroup` already permits multiple windows; we just need the menu items and to make sure `AppModel` is per-window, not a singleton. Today it's created once in `LyrebirdApp.init()` — that's fine for session/login state, but playback state per-window would be weird (second window would play its own audio over the first). Decision: **session + playback are global**; **navigation state is per-window**. Extract `NavState` to a scene-scoped `@State` struct; keep `AppModel` global via `.environment(model)`.
 - Tabbing: set `NSApplicationDelegate.applicationDidFinishLaunching` to `NSWindow.allowsAutomaticWindowTabbing = true`, then File > New Tab (Cmd+T) opens a tab in the current window group. File > New Window (Cmd+N) uses `openWindow(id: "main")` from `@Environment(\.openWindow)`.
 - Verify `Merge All Windows` and `Move Tab to New Window` work (they come for free from `NSWindow.tabbingMode`).
 - Reference: [Multi window SwiftUI macOS app working with menu commands — Medium](https://ondrej-kvasnovsky.medium.com/multi-window-swiftui-macos-app-working-with-menu-commands-4aff7d6c3bd6).
@@ -200,7 +200,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
       .onMove { src, dst in model.reorderQueue(from: src, to: dst) }
   }
   ```
-  `Track` must conform to `Transferable`. Provide both a canonical UTI (`public.jellify.track`) and a `ProxyRepresentation` fallback for text so dragging to TextEdit drops the track title.
+  `Track` must conform to `Transferable`. Provide both a canonical UTI (`public.lyrebird.track`) and a `ProxyRepresentation` fallback for text so dragging to TextEdit drops the track title.
 - For reordering inside `LazyVStack` (since `List` inside inspectors has layout quirks on macOS 14), use a manual `DropDelegate` that updates `@State var draggingID: String?` and swaps rows on hover.
 - Reference: [Moving List Items Using Drag and Drop in SwiftUI Mac Apps — swiftdevjournal.com](https://www.swiftdevjournal.com/moving-list-items-using-drag-and-drop-in-swiftui-mac-apps/), [Enabling drag reordering in SwiftUI lazy grids — danielsaidi.com](https://danielsaidi.com/blog/2023/08/30/enabling-drag-reordering-in-swiftui-lazy-grids).
 
@@ -331,10 +331,10 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 **Effort:** M
 **Depends on:** -
 
-- We're on Swift 5 language mode because UniFFI 0.28's generated types aren't `Sendable` — specifically `JellifyCore`, `Track`, `Album`, `Session`, etc., which we freely pass across `Task.detached` today. Plan:
-  1. Keep `@preconcurrency import JellifyCore` for now (already done in several files).
+- We're on Swift 5 language mode because UniFFI 0.28's generated types aren't `Sendable` — specifically `LyrebirdCore`, `Track`, `Album`, `Session`, etc., which we freely pass across `Task.detached` today. Plan:
+  1. Keep `@preconcurrency import LyrebirdCore` for now (already done in several files).
   2. File/follow an upstream UniFFI issue tracking Sendable annotations on generated records (they're plain structs, just need the annotation). Track: [mozilla/uniffi-rs](https://github.com/mozilla/uniffi-rs).
-  3. Write a local `JellifySendable.swift` that declares unchecked conformance for the generated types we pass across actors:
+  3. Write a local `LyrebirdSendable.swift` that declares unchecked conformance for the generated types we pass across actors:
      ```swift
      extension Track: @unchecked Sendable {}
      extension Album: @unchecked Sendable {}
@@ -356,14 +356,14 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 - Source of truth: a single `AppShortcuts.swift` file containing `struct Shortcut { id: String; name: String; section: Section; key: KeyEquivalent; modifiers: EventModifiers }`. Feed the same struct to the menu command builder (Issue 5) so menu + help window never drift.
 - Triggered from Help > Keyboard Shortcuts, Cmd+? (Cmd+Shift+/ on US keyboards).
 
-### Issue 25: Add a dedicated "About Jellify" window via `CommandGroup(replacing: .appInfo)` with version, build, server, credits
+### Issue 25: Add a dedicated "About Lyrebird" window via `CommandGroup(replacing: .appInfo)` with version, build, server, credits
 **Labels:** `area:macos`, `kind:polish`, `priority:p2`
 **Effort:** S
 **Depends on:** 5
 
 - Default SwiftUI About is a flat panel with icon + version. Custom one lets us show connected server, user, acknowledgements, and a link to the GitHub repo.
-- `Window("About Jellify", id: "about") { AboutView() }.windowStyle(.hiddenTitleBar).windowResizability(.contentSize).restorationBehavior(.disabled).commandsRemoved()`. The `.commandsRemoved()` keeps this window out of the Window menu.
-- Hook the About menu item: `CommandGroup(replacing: .appInfo) { Button("About Jellify") { openWindow(id: "about") } }`.
+- `Window("About Lyrebird", id: "about") { AboutView() }.windowStyle(.hiddenTitleBar).windowResizability(.contentSize).restorationBehavior(.disabled).commandsRemoved()`. The `.commandsRemoved()` keeps this window out of the Window menu.
+- Hook the About menu item: `CommandGroup(replacing: .appInfo) { Button("About Lyrebird") { openWindow(id: "about") } }`.
 - Reference: [Create a fully custom About window for a Mac app in SwiftUI — nilcoalescing.com](https://nilcoalescing.com/blog/FullyCustomAboutWindowForAMacAppInSwiftUI/).
 
 ### Issue 26: Ensure accessibility: VoiceOver labels on transport, focus order in sidebar, keyboard-only reachability
@@ -386,7 +386,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 - We currently have no AppDelegate, so we can't set `NSWindow.allowsAutomaticWindowTabbing`, we can't implement `applicationDockMenu`, we can't react to `NSWorkspace.willSleepNotification` to pause / `didWakeNotification` to reconnect.
 - Add:
   ```swift
-  final class JellifyAppDelegate: NSObject, NSApplicationDelegate {
+  final class LyrebirdAppDelegate: NSObject, NSApplicationDelegate {
       weak var model: AppModel?
       func applicationDidFinishLaunching(_: Notification) {
           NSWindow.allowsAutomaticWindowTabbing = true
@@ -395,7 +395,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
       // + NSWorkspace sleep/wake observers → model.pause() / model.reconnect()
   }
   ```
-  Bind via `@NSApplicationDelegateAdaptor(JellifyAppDelegate.self) var appDelegate` in `JellifyApp`.
+  Bind via `@NSApplicationDelegateAdaptor(LyrebirdAppDelegate.self) var appDelegate` in `LyrebirdApp`.
 - Have the delegate publish the `AppModel` reference back from `init` so it can reach state without a global.
 
 ### Issue 28: Per-window Settings via `Settings` scene + focused bindings, with `Cmd+,` standard shortcut
@@ -403,7 +403,7 @@ most of the focus-value API). Where an API needs 15+ we call it out.
 **Effort:** M
 **Depends on:** 5
 
-- macOS convention: settings live in a separate window opened with Cmd+, via the Jellify > Settings menu (SwiftUI wires this automatically if you use the `Settings` scene).
+- macOS convention: settings live in a separate window opened with Cmd+, via the Lyrebird > Settings menu (SwiftUI wires this automatically if you use the `Settings` scene).
 - Add:
   ```swift
   Settings {

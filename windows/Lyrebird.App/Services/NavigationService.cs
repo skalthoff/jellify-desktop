@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.UI.Xaml.Controls;
 
-namespace Jellify.App.Services;
+namespace Lyrebird.App.Services;
 
 /// <summary>
 /// Concrete <see cref="INavigationService"/>. Holds the shell's content

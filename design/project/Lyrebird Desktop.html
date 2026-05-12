@@ -2,9 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
-<title>Jellify — Desktop</title>
+<title>Lyrebird — Desktop</title>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
-<link rel="stylesheet" href="assets/jellify.css"/>
+<link rel="stylesheet" href="assets/lyrebird.css"/>
 <style>
   html, body { margin:0; padding:0; background:#050210; color-scheme:dark; overflow:hidden; height:100%; }
   * { box-sizing:border-box; }
@@ -34,7 +34,7 @@
 function App() {
   // Persist position (current screen) across reloads
   const persisted = (() => {
-    try { return JSON.parse(localStorage.getItem('jellify-desktop') || '{}'); }
+    try { return JSON.parse(localStorage.getItem('lyrebird-desktop') || '{}'); }
     catch { return {}; }
   })();
 
@@ -58,7 +58,7 @@ function App() {
 
   // Persist
   React.useEffect(() => {
-    localStorage.setItem('jellify-desktop', JSON.stringify({ screen, settings }));
+    localStorage.setItem('lyrebird-desktop', JSON.stringify({ screen, settings }));
   }, [screen, settings]);
 
   // Edit-mode protocol (for Tweaks toolbar)
@@ -118,11 +118,11 @@ function App() {
   else if (screen.startsWith('playlist:')) main = <AlbumScreen t={theme} onPlay={onPlay} current={current} playing={playing}/>;
   else main = <HomeScreen t={theme} onPlay={onPlay} current={current}/>;
 
-  const crumbs = screen === 'home' ? ['Jellify','Home'] :
-    screen === 'library' ? ['Jellify','Library'] :
-    screen === 'album' ? ['Jellify','Library','Albums','The Deep End'] :
-    screen === 'search' ? ['Jellify','Search'] :
-    ['Jellify', screen[0].toUpperCase() + screen.slice(1)];
+  const crumbs = screen === 'home' ? ['Lyrebird','Home'] :
+    screen === 'library' ? ['Lyrebird','Library'] :
+    screen === 'album' ? ['Lyrebird','Library','Albums','The Deep End'] :
+    screen === 'search' ? ['Lyrebird','Search'] :
+    ['Lyrebird', screen[0].toUpperCase() + screen.slice(1)];
 
   // Use screen setting from tweaks if different
   React.useEffect(() => {
@@ -133,7 +133,7 @@ function App() {
 
   return (
     <ScaledStage bg={settings.mode === 'light' ? '#E5DAFF' : '#000'}>
-      <div data-screen-label={`Jellify Desktop · ${screen}`} style={{
+      <div data-screen-label={`Lyrebird Desktop · ${screen}`} style={{
         width:1440, height:900,
         borderRadius:12, overflow:'hidden', position:'relative',
         background:theme.bg, color:theme.ink,

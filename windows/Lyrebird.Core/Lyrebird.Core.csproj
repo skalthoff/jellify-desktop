@@ -3,8 +3,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <RootNamespace>Jellify.Core</RootNamespace>
-    <AssemblyName>Jellify.Core</AssemblyName>
+    <RootNamespace>Lyrebird.Core</RootNamespace>
+    <AssemblyName>Lyrebird.Core</AssemblyName>
 
     <!--
       The UniFFI-generated C# bindings rely on `unsafe` blocks for the
@@ -17,17 +17,17 @@
 
   <!--
     The native Rust DLL is produced by `windows/tools/build-core.ps1` into
-    `native/{rid}/`. We surface it to the consumer (Jellify.App) via per-RID
+    `native/{rid}/`. We surface it to the consumer (Lyrebird.App) via per-RID
     `<None>` items that copy to the output directory; the App's RuntimeIdentifier
     selects which one is staged at build time.
   -->
   <ItemGroup>
-    <None Include="native\win-x64\jellify_core.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64' AND Exists('native\win-x64\jellify_core.dll')">
-      <Link>jellify_core.dll</Link>
+    <None Include="native\win-x64\lyrebird_core.dll" Condition="'$(RuntimeIdentifier)' == 'win-x64' AND Exists('native\win-x64\lyrebird_core.dll')">
+      <Link>lyrebird_core.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="native\win-arm64\jellify_core.dll" Condition="'$(RuntimeIdentifier)' == 'win-arm64' AND Exists('native\win-arm64\jellify_core.dll')">
-      <Link>jellify_core.dll</Link>
+    <None Include="native\win-arm64\lyrebird_core.dll" Condition="'$(RuntimeIdentifier)' == 'win-arm64' AND Exists('native\win-arm64\lyrebird_core.dll')">
+      <Link>lyrebird_core.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -49,8 +49,8 @@
     this guard is so that misconfigured CI fails loudly.
   -->
   <Target Name="VerifyNativeCorePresent" BeforeTargets="Build" Condition="'$(RuntimeIdentifier)' != ''">
-    <Error Condition="!Exists('native\$(RuntimeIdentifier)\jellify_core.dll')"
-           Text="Missing native\$(RuntimeIdentifier)\jellify_core.dll. Run windows\tools\build-core.ps1 before building." />
+    <Error Condition="!Exists('native\$(RuntimeIdentifier)\lyrebird_core.dll')"
+           Text="Missing native\$(RuntimeIdentifier)\lyrebird_core.dll. Run windows\tools\build-core.ps1 before building." />
   </Target>
 
 </Project>

@@ -4,8 +4,8 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
-    <RootNamespace>Jellify.App</RootNamespace>
-    <AssemblyName>Jellify</AssemblyName>
+    <RootNamespace>Lyrebird.App</RootNamespace>
+    <AssemblyName>Lyrebird</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
 
     <!--
@@ -28,7 +28,7 @@
 
     <!--
       The Rust core ships as a native .dll loaded via P/Invoke from
-      Jellify.Core. Disable trimming so DllImport entries survive ILLink, and
+      Lyrebird.Core. Disable trimming so DllImport entries survive ILLink, and
       keep ReadyToRun off until we have a publish profile to test against.
     -->
     <PublishTrimmed>false</PublishTrimmed>
@@ -52,7 +52,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Jellify.Core\Jellify.Core.csproj" />
+    <ProjectReference Include="..\Lyrebird.Core\Lyrebird.Core.csproj" />
   </ItemGroup>
 
   <!--

@@ -1,5 +1,5 @@
 /* ============================================================
-   Jellify Design System — Colors + Type
+   Lyrebird Design System — Colors + Type
    Source of truth: src/configs/tamagui.config.ts + fonts.config.ts
    ============================================================ */
 
@@ -54,7 +54,7 @@
 }
 
 :root {
-  /* ---------- Brand palette (Purple preset — the Jellify default) ---------- */
+  /* ---------- Brand palette (Purple preset — the Lyrebird default) ---------- */
   --jf-purple-deep: #0C0622;          /* darkest brand purple, Figma BG */
   --jf-purple: #100538;                /* tamagui 'purple' */
   --jf-purple-gray: #66617B;
@@ -146,7 +146,7 @@
   --font-sans: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
                Roboto, 'Helvetica Neue', Arial, sans-serif;
 
-  /* Figma used Inter; Jellify app code uses Figtree (font identity). We use Figtree everywhere. */
+  /* Figma used Inter; Lyrebird app code uses Figtree (font identity). We use Figtree everywhere. */
 
   --fs-10: 10px;  /* metadata, tab labels */
   --fs-12: 12px;  /* section headers uppercase, captions */

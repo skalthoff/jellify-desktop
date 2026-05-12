@@ -1,7 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using Jellify.Core;
+using Lyrebird.Core;
 
-namespace Jellify.App.ViewModels;
+namespace Lyrebird.App.ViewModels;
 
 /// <summary>
 /// Home tab view model — recently played, latest albums, suggested

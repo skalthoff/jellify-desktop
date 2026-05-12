@@ -1,9 +1,9 @@
-using Jellify.App.Services;
-using Jellify.App.ViewModels;
+using Lyrebird.App.Services;
+using Lyrebird.App.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.UI.Xaml.Controls;
 
-namespace Jellify.App.Pages;
+namespace Lyrebird.App.Pages;
 
 /// <summary>
 /// Top-level chrome — left-pane <c>NavigationView</c> + content

@@ -1,4 +1,4 @@
-// Jellify desktop — design tokens + Icon + Artwork placeholder
+// Lyrebird desktop — design tokens + Icon + Artwork placeholder
 
 const JF = /*EDITMODE-BEGIN*/{
   "theme": "purple",

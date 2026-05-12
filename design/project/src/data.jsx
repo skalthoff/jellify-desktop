@@ -1,4 +1,4 @@
-// Jellify desktop — demo data
+// Lyrebird desktop — demo data
 
 const ARTISTS = [
   { name:'Grateful Dead', genre:'Rock · Live', albums:38, tracks:1204 },

@@ -6,13 +6,13 @@
   IgnorableNamespaces="uap rescap">
 
   <Identity
-    Name="org.jellify.desktop"
-    Publisher="CN=Jellify"
+    Name="org.lyrebird.desktop"
+    Publisher="CN=Lyrebird"
     Version="0.1.0.0" />
 
   <Properties>
-    <DisplayName>Jellify</DisplayName>
-    <PublisherDisplayName>Jellify</PublisherDisplayName>
+    <DisplayName>Lyrebird</DisplayName>
+    <PublisherDisplayName>Lyrebird</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
 
@@ -25,9 +25,9 @@
   </Resources>
 
   <Applications>
-    <Application Id="App" Executable="Jellify.exe" EntryPoint="Jellify.App.App">
+    <Application Id="App" Executable="Lyrebird.exe" EntryPoint="Lyrebird.App.App">
       <uap:VisualElements
-        DisplayName="Jellify"
+        DisplayName="Lyrebird"
         Description="Native Windows client for Jellyfin music libraries."
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"

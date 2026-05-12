@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml.Controls;
 
-namespace Jellify.App.Services;
+namespace Lyrebird.App.Services;
 
 /// <summary>
 /// View-model-driven navigation. Pages register themselves against a

@@ -6,9 +6,9 @@ A user mocked up designs in HTML/CSS/JS using an AI design tool, then exported t
 
 ## What you should do — IMPORTANT
 
-**Read the chat transcripts first.** There are 1 chat transcript(s) in `jellify-desktop/chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
+**Read the chat transcripts first.** There are 1 chat transcript(s) in `lyrebird-desktop/chats/`. The transcripts show the full back-and-forth between the user and the design assistant — they tell you **what the user actually wants** and **where they landed** after iterating. Don't skip them. The final HTML files are the output, but the chat is where the intent lives.
 
-**Read `jellify-desktop/project/Jellify Desktop.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
+**Read `lyrebird-desktop/project/Lyrebird Desktop.html` in full.** The user had this file open when they triggered the handoff, so it's almost certainly the primary design they want built. Read it top to bottom — don't skim. Then **follow its imports**: open every file it pulls in (shared components, CSS, scripts) so you understand how the pieces fit together before you start implementing.
 
 **If anything is ambiguous, ask the user to confirm before you start implementing.** It's much cheaper to clarify scope up front than to build the wrong thing.
 
@@ -20,6 +20,6 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 
 ## Bundle contents
 
-- `jellify-desktop/README.md` — this file
-- `jellify-desktop/chats/` — conversation transcripts (read these!)
-- `jellify-desktop/project/` — the `Jellify desktop` project files (HTML prototypes, assets, components)
+- `lyrebird-desktop/README.md` — this file
+- `lyrebird-desktop/chats/` — conversation transcripts (read these!)
+- `lyrebird-desktop/project/` — the `Lyrebird desktop` project files (HTML prototypes, assets, components)

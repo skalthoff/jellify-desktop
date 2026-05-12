@@ -1,4 +1,4 @@
-// Jellify desktop — reusable content pieces (rows, cards, sections)
+// Lyrebird desktop — reusable content pieces (rows, cards, sections)
 
 function SectionHeader({ title, subtitle, t, trailing, size = 'md' }) {
   return (

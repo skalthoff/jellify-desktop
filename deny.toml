@@ -45,7 +45,7 @@ deny = []
 
 [licenses]
 version = 2
-# Jellify is GPL-3.0-only, so GPL/AGPL-compatible deps are fine. Anything
+# Lyrebird is GPL-3.0-only, so GPL/AGPL-compatible deps are fine. Anything
 # outside this allowlist needs an explicit decision — add it here (with a
 # note) or vendor a compatible alternative. Keep alphabetical.
 allow = [

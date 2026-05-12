@@ -1,6 +1,6 @@
 using Microsoft.UI.Xaml;
 
-namespace Jellify.App;
+namespace Lyrebird.App;
 
 /// <summary>
 /// The single top-level <see cref="Window"/>. Hosts the

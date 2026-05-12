@@ -1,4 +1,4 @@
-# Jellify Desktop — Roadmap
+# Lyrebird Desktop — Roadmap
 
 > Living document. Status as of initial-scoping sprint; revise with every milestone close.
 
@@ -10,7 +10,7 @@ Ship a **native desktop Jellyfin client** — no Electron, no webview — that f
 
 - **M1 — Rust core foundation** ✅ Completed. Jellyfin REST client, SQLite cache, keyring credential store, queue state, UniFFI bindings. `cargo test --workspace` passes.
 - **M2 — macOS app MVP** ✅ Completed. SwiftUI shell (Login, Library grid, Album detail, Search, PlayerBar), AVPlayer-backed streaming, headless `SmokeTest` integration verifier. End-to-end playback validated against a real Jellyfin server.
-- **M3 — macOS polish** 🔵 In progress. Driven by the research sprint captured in [/tmp/jellify-research](../..//tmp/jellify-research) and the issues filed under the `M3 — macOS polish` milestone.
+- **M3 — macOS polish** 🔵 In progress. Driven by the research sprint captured in [/tmp/lyrebird-research](../..//tmp/lyrebird-research) and the issues filed under the `M3 — macOS polish` milestone.
 - **M4 — macOS distribution** 🟡 Scoped. Signing, notarization, DMG, Sparkle auto-update, GitHub Release CI.
 - **M5 — Windows port** ⚪ Scoped. WinUI 3 + UniFFI .NET bindings + SMTC + MSIX.
 - **M6 — Linux port** ⚪ Scoped. GTK4 + libadwaita + GStreamer + MPRIS2 + Flathub.
@@ -32,7 +32,7 @@ Key work — see issues under `milestone:M3 — macOS polish`:
 
 ### M4 — macOS distribution
 
-Deliverable: `gh release create vX.Y.Z` produces a signed, notarized, stapled `Jellify.dmg` that launches without Gatekeeper prompts on a clean Mac. Sparkle appcast serves updates.
+Deliverable: `gh release create vX.Y.Z` produces a signed, notarized, stapled `Lyrebird.dmg` that launches without Gatekeeper prompts on a clean Mac. Sparkle appcast serves updates.
 
 Key work:
 - Developer ID signing + hardened runtime entitlements.
