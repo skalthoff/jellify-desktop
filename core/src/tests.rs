@@ -5387,8 +5387,11 @@ async fn non_cert_transport_error_stays_network() {
 #[test]
 fn login_rejects_whitespace_only_username() {
     // Error fires before any HTTP call — no server needed.
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
     let config = CoreConfig {
-        data_dir: String::new(),
+        data_dir: tmp.path().to_string_lossy().to_string(),
         device_name: "Test".into(),
     };
     let core = LyrebirdCore::new(config).unwrap();
@@ -5425,12 +5428,16 @@ async fn login_trims_credentials_before_auth() {
         .await;
 
     let server_url = server.uri();
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
     // LyrebirdCore::login is a sync FFI wrapper that block_on's its own runtime;
     // run it in spawn_blocking so we don't nest runtimes.
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
         let core = LyrebirdCore::new(CoreConfig {
-            data_dir: String::new(),
+            data_dir: tmp_path,
             device_name: "Test".into(),
         })
         .unwrap();
@@ -5563,10 +5570,14 @@ async fn login_keyring_write_is_not_silenced() {
         .await;
 
     let server_url = server.uri();
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
         let core = LyrebirdCore::new(CoreConfig {
-            data_dir: String::new(),
+            data_dir: tmp_path,
             device_name: "Test".into(),
         })
         .unwrap();
@@ -6527,10 +6538,14 @@ async fn with_client_releases_inner_lock_before_http() {
         .await;
 
     let server_url = server.uri();
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         let core = std::sync::Arc::new(
             LyrebirdCore::new(CoreConfig {
-                data_dir: String::new(),
+                data_dir: tmp_path,
                 device_name: "Test".into(),
             })
             .unwrap(),
