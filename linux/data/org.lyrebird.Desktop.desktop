@@ -1,11 +1,11 @@
 [Desktop Entry]
-Name=Jellify
+Name=Lyrebird
 Comment=Music player for Jellyfin
-Exec=jellify-desktop %U
-Icon=org.jellify.Desktop
+Exec=lyrebird-desktop %U
+Icon=org.lyrebird.Desktop
 Type=Application
 Categories=AudioVideo;Audio;Player;GNOME;GTK;
 StartupNotify=true
 Keywords=music;audio;jellyfin;player;
-MimeType=x-scheme-handler/jellify;
+MimeType=x-scheme-handler/lyrebird;
 X-GNOME-UsesNotifications=true

@@ -28,7 +28,7 @@ use lyrebird_core::{Album, Artist, CoreConfig, LyrebirdCore, Track};
 /// Device name reported to the Jellyfin server during authentication.
 /// Shows up under "Dashboard → Sessions" on the server; matches the macOS
 /// client's pattern so admins can visually distinguish Linux desktops.
-const DEVICE_NAME: &str = "Jellify Desktop (Linux)";
+const DEVICE_NAME: &str = "Lyrebird Desktop (Linux)";
 
 /// Top-level app state. One instance per window, held by the window behind
 /// `Rc<AppModel>`. Children reach it via `window.model()`.

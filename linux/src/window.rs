@@ -29,7 +29,7 @@ mod imp {
     use super::*;
 
     #[derive(Debug, Default, gtk4::CompositeTemplate)]
-    #[template(resource = "/org/jellify/Desktop/window.ui")]
+    #[template(resource = "/org/lyrebird/Desktop/window.ui")]
     pub struct LyrebirdWindow {
         #[template_child]
         pub header_bar: gtk4::TemplateChild<adw::HeaderBar>,
@@ -74,7 +74,7 @@ mod imp {
 }
 
 glib::wrapper! {
-    /// Top-level `AdwApplicationWindow` for Jellify. Created once per primary
+    /// Top-level `AdwApplicationWindow` for Lyrebird. Created once per primary
     /// instance in `main.rs::activate`.
     pub struct LyrebirdWindow(ObjectSubclass<imp::LyrebirdWindow>)
         @extends adw::ApplicationWindow, gtk4::ApplicationWindow, gtk4::Window, gtk4::Widget,

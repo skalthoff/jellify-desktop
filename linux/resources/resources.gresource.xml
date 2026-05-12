@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Resources bundled into the `jellify-desktop` binary at build time by
+  Resources bundled into the `lyrebird-desktop` binary at build time by
   `build.rs` (glib-build-tools). Referenced paths are resolved against the
   `source_dirs` passed to `compile_resources` — currently `src/` and
   `resources/`.
@@ -10,7 +10,7 @@
   self-contained.
 -->
 <gresources>
-  <gresource prefix="/org/jellify/Desktop">
+  <gresource prefix="/org/lyrebird/Desktop">
     <file preprocess="xml-stripblanks" compressed="true">window.ui</file>
   </gresource>
 </gresources>

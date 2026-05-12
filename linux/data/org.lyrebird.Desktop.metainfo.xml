@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>org.jellify.Desktop</id>
+  <id>org.lyrebird.Desktop</id>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
 
-  <name>Jellify</name>
+  <name>Lyrebird</name>
   <summary>Native music player for Jellyfin</summary>
 
   <description>
     <p>
-      Jellify is a native desktop music player for Jellyfin, built for listeners
+      Lyrebird is a native desktop music player for Jellyfin, built for listeners
       who want their self-hosted library to feel like a first-class music app.
     </p>
     <p>Features:</p>
@@ -25,8 +25,8 @@
     </ul>
   </description>
 
-  <!-- The referenced org.jellify.Desktop.desktop file is added in PR #468, merging in parallel. -->
-  <launchable type="desktop-id">org.jellify.Desktop.desktop</launchable>
+  <!-- The referenced org.lyrebird.Desktop.desktop file is added in PR #468, merging in parallel. -->
+  <launchable type="desktop-id">org.lyrebird.Desktop.desktop</launchable>
 
   <developer id="io.github.skalthoff">
     <name>Soren Althoff</name>
@@ -39,24 +39,24 @@
   -->
   <screenshots>
     <screenshot type="default">
-      <image type="source">https://raw.githubusercontent.com/skalthoff/jellify-desktop/main/linux/data/screenshots/library.png</image>
+      <image type="source">https://raw.githubusercontent.com/skalthoff/lyrebird-desktop/main/linux/data/screenshots/library.png</image>
       <caption>Browsing your music library</caption>
     </screenshot>
     <screenshot>
-      <image type="source">https://raw.githubusercontent.com/skalthoff/jellify-desktop/main/linux/data/screenshots/album-detail.png</image>
+      <image type="source">https://raw.githubusercontent.com/skalthoff/lyrebird-desktop/main/linux/data/screenshots/album-detail.png</image>
       <caption>Album detail view with track listing</caption>
     </screenshot>
     <screenshot>
-      <image type="source">https://raw.githubusercontent.com/skalthoff/jellify-desktop/main/linux/data/screenshots/now-playing.png</image>
+      <image type="source">https://raw.githubusercontent.com/skalthoff/lyrebird-desktop/main/linux/data/screenshots/now-playing.png</image>
       <caption>Now playing with artwork and queue</caption>
     </screenshot>
   </screenshots>
 
-  <url type="homepage">https://github.com/skalthoff/jellify-desktop</url>
-  <url type="bugtracker">https://github.com/skalthoff/jellify-desktop/issues</url>
-  <url type="vcs-browser">https://github.com/skalthoff/jellify-desktop</url>
-  <url type="help">https://github.com/skalthoff/jellify-desktop</url>
-  <url type="translate">https://github.com/skalthoff/jellify-desktop</url>
+  <url type="homepage">https://github.com/skalthoff/lyrebird-desktop</url>
+  <url type="bugtracker">https://github.com/skalthoff/lyrebird-desktop/issues</url>
+  <url type="vcs-browser">https://github.com/skalthoff/lyrebird-desktop</url>
+  <url type="help">https://github.com/skalthoff/lyrebird-desktop</url>
+  <url type="translate">https://github.com/skalthoff/lyrebird-desktop</url>
 
   <categories>
     <category>AudioVideo</category>
@@ -101,7 +101,7 @@
   <releases>
     <release version="0.1.0" date="2026-04-21">
       <description>
-        <p>Initial pre-release of the Jellify desktop client.</p>
+        <p>Initial pre-release of the Lyrebird desktop client.</p>
       </description>
     </release>
   </releases>
