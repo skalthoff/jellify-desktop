@@ -18,7 +18,7 @@ Adopt [Nuke](https://github.com/kean/Nuke) (Swift-native, zero-dep, widely used,
 
 Implementation:
 - Add `NukeUI` (built-in `LazyImage` + `FetchImage`) via SwiftPM.
-- Wrap in `JellifyArtwork(itemID:tag:size:)` that builds the size-hinted URL via `core.image_url(item_id, tag, max_width: 2 * pointSize * screenScale)` — Jellyfin already supports `maxWidth`/`quality`, use it.
+- Wrap in `LyrebirdArtwork(itemID:tag:size:)` that builds the size-hinted URL via `core.image_url(item_id, tag, max_width: 2 * pointSize * screenScale)` — Jellyfin already supports `maxWidth`/`quality`, use it.
 - Configure `ImagePipeline.shared` once on launch with `dataCache: DataCache(name: "com.lyrebird.images", sizeLimit: 500 MB)` and an LRU `ImageCache(costLimit: 100 MB, countLimit: 200)`.
 - Set `request.processors = [ImageProcessors.Resize(size: targetPointSize, contentMode: .aspectFill)]` so we never hold full-res bitmaps for a 180-pt cell.
 - Add `Lyrebird` directory to `Library/Caches` for on-device eviction behaviour.
@@ -96,7 +96,7 @@ Design:
 - Persist `albums`, `artists`, `tracks` metadata into `album_cache` / `artist_cache` / `track_cache` as JSON rows (already schema-prepared) the first time we fetch them. Keyed by ID, with `updated_at`.
 - On app launch: emit cached rows to the UI immediately (< 50 ms path via `core.list_cached_albums(limit)`), then asynchronously fetch from the server. Diff (by ID + a hash of the `Etag` / `DateLastMediaAdded` / `DateModified` field Jellyfin returns) and push only changed rows through a `core.library_changes` event channel.
 - Jellyfin exposes `Users/{userId}/Items?IncludeItemTypes=MusicAlbum&Fields=DateLastMediaAdded&MinDateLastSaved=<iso8601>` — use the `MinDateLastSaved` filter for delta sync. Store the server's `last_successful_sync` timestamp per user in `settings`.
-- Add a `JellifyLibrary` service in Rust that wraps `JellyfinClient + Database`. SwiftUI observes via an async stream surfaced over UniFFI (`uniffi::CallbackInterface`).
+- Add a `LyrebirdLibrary` service in Rust that wraps `JellyfinClient + Database`. SwiftUI observes via an async stream surfaced over UniFFI (`uniffi::CallbackInterface`).
 
 Acceptance: warm launch shows the library in < 150 ms; background revalidation completes in < 3 s for a 5k-album library; delta sync transfers ≤ 1% of the full payload on a no-op day.
 

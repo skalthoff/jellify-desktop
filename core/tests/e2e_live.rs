@@ -28,11 +28,13 @@ fn e2e_url() -> Option<String> {
 }
 
 fn e2e_user() -> String {
-    std::env::var("LYREBIRD_E2E_USER").unwrap_or_else(|_| "test".to_string())
+    std::env::var("LYREBIRD_E2E_USER")
+        .expect("LYREBIRD_E2E_USER must be set when LYREBIRD_E2E_URL is set")
 }
 
 fn e2e_pass() -> String {
-    std::env::var("LYREBIRD_E2E_PASS").unwrap_or_else(|_| "test".to_string())
+    std::env::var("LYREBIRD_E2E_PASS")
+        .expect("LYREBIRD_E2E_PASS must be set when LYREBIRD_E2E_URL is set")
 }
 
 fn make_core() -> Arc<LyrebirdCore> {

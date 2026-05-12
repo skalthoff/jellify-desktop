@@ -7,8 +7,10 @@
     Runs `uniffi-bindgen-cs` against a freshly built `lyrebird_core.dll`. The
     bindgen reads the embedded UniFFI metadata from the DLL itself, so the
     DLL must already exist (run `tools/build-core.ps1` first). Output goes
-    to `windows/Lyrebird.Core/Generated/lyrebird_core.cs`, which is committed
-    so dev machines don't all need uniffi-bindgen-cs installed.
+    to `windows/Lyrebird.Core/Generated/lyrebird_core.cs`, which is
+    gitignored — dev machines must run this script once after cloning (and
+    again whenever the Rust UniFFI surface changes) to materialize the file
+    before `dotnet build`.
 
     Install the bindgen once with:
 

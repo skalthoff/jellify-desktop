@@ -803,7 +803,7 @@
 **Labels:** `area:macos`, `kind:polish`, `priority:p0`
 **Effort:** S
 
-- "Your library is empty." + "Add music to your Jellyfin server — Jellify will sync it automatically." + `Open Jellyfin dashboard` button.
+- "Your library is empty." + "Add music to your Jellyfin server — Lyrebird will sync it automatically." + `Open Jellyfin dashboard` button.
 
 ### Issue 96: No search results
 **Labels:** `area:macos`, `kind:polish`, `priority:p0`

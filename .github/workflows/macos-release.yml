@@ -196,7 +196,8 @@ jobs:
         env:
           # notarize.sh reads $NOTARY_PROFILE and takes the DMG path as $1.
           NOTARY_PROFILE: ${{ secrets.APPLE_NOTARY_PROFILE }}
-        run: ./Scripts/notarize.sh "build/Lyrebird-${{ steps.version.outputs.version }}.dmg"
+          VERSION: ${{ steps.version.outputs.version }}
+        run: ./Scripts/notarize.sh "build/Lyrebird-${VERSION}.dmg"
 
       # ------------------------------------------------------------------
       # Publish the release.

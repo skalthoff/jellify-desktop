@@ -693,7 +693,7 @@ First launch. User hasn't logged in, or logged in but library is syncing.
 **Labels:** `area:macos`, `area:ux`, `kind:feat`, `priority:p0`
 **Effort:** M
 
-First launch shows a centered login card: Jellify logo, "Connect to your Jellyfin server," server URL field (with Bonjour/mDNS-discovered servers as a dropdown below if any are found on the local network), Continue button. Second step: username + password, Quick Connect code option. Remember URL history in dropdown for future logins.
+First launch shows a centered login card: Lyrebird logo, "Connect to your Jellyfin server," server URL field (with Bonjour/mDNS-discovered servers as a dropdown below if any are found on the local network), Continue button. Second step: username + password, Quick Connect code option. Remember URL history in dropdown for future logins.
 
 Acceptance: Bonjour discovery for `_jellyfin._tcp`; Quick Connect fallback link; clear error messages for cert / auth / network issues.
 
