@@ -1,4 +1,4 @@
-# Jellify Windows Port — Issue Roadmap
+# Lyrebird Windows Port — Issue Roadmap
 
 This roadmap takes `windows/` (currently an empty placeholder) to parity with the macOS MVP and on to Apple Music–level polish. The stack is WinUI 3 (Windows App SDK 1.8.x stable, latest as of March 2026) on `net8.0-windows10.0.22621.0`, MVVM via `CommunityToolkit.Mvvm`, audio via `Windows.Media.Playback.MediaPlayer` + `MediaPlaybackList`, and the Rust core embedded through UniFFI C# bindings.
 
@@ -29,12 +29,12 @@ Stand up the C# solution under `windows/` so everything else can layer on. Targe
 Structure:
 ```
 windows/
-  Jellify.sln
+  Lyrebird.sln
   src/
-    Jellify.App/              # WinUI 3 app (Microsoft.WindowsAppSDK)
-    Jellify.Core/             # P/Invoke + UniFFI wrapper around jellify_core.dll
-    Jellify.Player/           # MediaPlayer + SMTC + MediaPlaybackList
-    Jellify.Domain/           # DTOs, VMs, navigation contracts
+    Lyrebird.App/              # WinUI 3 app (Microsoft.WindowsAppSDK)
+    Lyrebird.Core/             # P/Invoke + UniFFI wrapper around lyrebird_core.dll
+    Lyrebird.Player/           # MediaPlayer + SMTC + MediaPlaybackList
+    Lyrebird.Domain/           # DTOs, VMs, navigation contracts
   tools/
     build-core.ps1
     gen-bindings.ps1
@@ -42,7 +42,7 @@ windows/
 
 NuGet floor: `Microsoft.WindowsAppSDK 1.8.250312004` (or latest 1.8.x at time of work), `CommunityToolkit.Mvvm 8.x`, `Microsoft.Extensions.DependencyInjection 8.0`, `Microsoft.Extensions.Hosting 8.0`.
 
-Acceptance: `dotnet build windows/Jellify.sln` succeeds on `windows-latest`; `dotnet run --project windows/src/Jellify.App -c Debug` launches a bare WinUI 3 window on a Win11 VM.
+Acceptance: `dotnet build windows/Lyrebird.sln` succeeds on `windows-latest`; `dotnet run --project windows/src/Lyrebird.App -c Debug` launches a bare WinUI 3 window on a Win11 VM.
 
 ### Issue 2: Bump core to uniffi-rs 0.29 and lock UniFFI toolchain
 **Labels:** `area:windows`, `area:core`, `kind:chore`, `priority:p0`
@@ -50,35 +50,35 @@ Acceptance: `dotnet build windows/Jellify.sln` succeeds on `windows-latest`; `do
 
 `uniffi-bindgen-cs v0.10.0` tracks uniffi-rs 0.29.4; the workspace `Cargo.toml` pins `uniffi = "0.28"`. Bump to `0.29` in `Cargo.toml` and fix the small breaking changes (mostly `FfiConverter` trait edits). Re-run the macOS build to verify no regression there. Document the toolchain triple in `CONTRIBUTING.md`: Rust ≥ 1.88 (uniffi-bindgen-cs requirement), cargo-ndk not needed on Windows.
 
-Acceptance: `cargo build -p jellify_core --target x86_64-pc-windows-msvc` succeeds on CI; macOS xcframework still builds.
+Acceptance: `cargo build -p lyrebird_core --target x86_64-pc-windows-msvc` succeeds on CI; macOS xcframework still builds.
 
-### Issue 3: Build script — produce `jellify_core.dll` for x64 and arm64
+### Issue 3: Build script — produce `lyrebird_core.dll` for x64 and arm64
 **Labels:** `area:windows`, `area:core`, `kind:chore`, `priority:p0`
 **Effort:** M
 
-Add `windows/tools/build-core.ps1` that runs `cargo build --release -p jellify_core --target x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, then copies `jellify_core.dll` + `jellify_core.dll.lib` to `windows/src/Jellify.Core/native/{win-x64,win-arm64}/`. Wire via MSBuild `<None Include="...dll" CopyToOutputDirectory="PreserveNewest"/>` scoped per-RID. Add a `BeforeBuild` target that invokes the script if the DLL is missing or stale (mtime vs `core/src/**`).
+Add `windows/tools/build-core.ps1` that runs `cargo build --release -p lyrebird_core --target x86_64-pc-windows-msvc` and `aarch64-pc-windows-msvc`, then copies `lyrebird_core.dll` + `lyrebird_core.dll.lib` to `windows/src/Lyrebird.Core/native/{win-x64,win-arm64}/`. Wire via MSBuild `<None Include="...dll" CopyToOutputDirectory="PreserveNewest"/>` scoped per-RID. Add a `BeforeBuild` target that invokes the script if the DLL is missing or stale (mtime vs `core/src/**`).
 
 Cross-compile to arm64 from an x64 host using `rustup target add aarch64-pc-windows-msvc` — no LLVM shenanigans needed.
 
-Acceptance: Fresh clone → `dotnet build` on x64 produces `jellify_core.dll` in `bin\Debug\net8.0-windows10.0.22621.0\win-x64\native\`; arm64 publish produces the arm64 variant.
+Acceptance: Fresh clone → `dotnet build` on x64 produces `lyrebird_core.dll` in `bin\Debug\net8.0-windows10.0.22621.0\win-x64\native\`; arm64 publish produces the arm64 variant.
 
-### Issue 4: Generate C# UniFFI bindings and wrap in `Jellify.Core`
+### Issue 4: Generate C# UniFFI bindings and wrap in `Lyrebird.Core`
 **Labels:** `area:windows`, `area:core`, `kind:feat`, `priority:p0`
 **Effort:** L
 
 Install `uniffi-bindgen-cs` as a binstall. Add `windows/tools/gen-bindings.ps1`:
 ```
 uniffi-bindgen-cs \
-  --library target\release\jellify_core.dll \
-  --out-dir windows\src\Jellify.Core\Generated \
+  --library target\release\lyrebird_core.dll \
+  --out-dir windows\src\Lyrebird.Core\Generated \
   --config uniffi.toml
 ```
 
-Add `uniffi.toml` with `[bindings.csharp]` section setting `namespace = "Jellify.Core.Native"` and `library_name = "jellify_core"`. The generated bindings require `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` in the csproj — set that.
+Add `uniffi.toml` with `[bindings.csharp]` section setting `namespace = "Lyrebird.Core.Native"` and `library_name = "lyrebird_core"`. The generated bindings require `<AllowUnsafeBlocks>true</AllowUnsafeBlocks>` in the csproj — set that.
 
-Wrap the generated types in hand-written idiomatic C# facades (`JellyfinClient`, `QueueStore`, `PlaybackStateStore`) that live in `Jellify.Core/` (not `Generated/`) so we can shape the public API without fighting the generator. Regenerate as a CI step; commit the generated files so the build doesn't require `uniffi-bindgen-cs` on every dev machine.
+Wrap the generated types in hand-written idiomatic C# facades (`JellyfinClient`, `QueueStore`, `PlaybackStateStore`) that live in `Lyrebird.Core/` (not `Generated/`) so we can shape the public API without fighting the generator. Regenerate as a CI step; commit the generated files so the build doesn't require `uniffi-bindgen-cs` on every dev machine.
 
-Acceptance: Unit test in `windows/tests/Jellify.Core.Tests/` instantiates a `JellyfinClient`, calls `ping()` via wiremock, and asserts success.
+Acceptance: Unit test in `windows/tests/Lyrebird.Core.Tests/` instantiates a `JellyfinClient`, calls `ping()` via wiremock, and asserts success.
 
 ### Issue 5: Dependency injection + app host
 **Labels:** `area:windows`, `kind:feat`, `priority:p0`
@@ -110,11 +110,11 @@ Fall back to the drawn-by-us title bar on Win10 (no Mica) — detect via `Enviro
 
 Acceptance: On Win11, dragging the title bar region moves the window; double-click maximizes; min/max/close buttons show the correct theme color. Mica tint is visible through the sidebar.
 
-### Issue 8: Theme system — 5 Jellify presets × 3 modes (dark/oled/light)
+### Issue 8: Theme system — 5 Lyrebird presets × 3 modes (dark/oled/light)
 **Labels:** `area:windows`, `kind:feat`, `priority:p1`
 **Effort:** L
 
-Port `macos/Sources/Jellify/Theme/Theme.swift` tokens to a WinUI `ResourceDictionary.ThemeDictionaries` structure. Presets (matches Tamagui/macOS): `purple` (default, `#0C0622` bg / `#887BFF` primary / `#CC2F71` accent), `blue`, `teal`, `red`, `gold`. Modes: Light, Dark, OLED (pure black bg overrides). Expose `JellifyBrandBackgroundBrush`, `JellifyBrandPrimaryBrush`, `JellifyAccentBrush`, `JellifyInkBrush`, `JellifyInk2Brush`, `JellifyInk3Brush`, `JellifyBorderBrush` as `{ThemeResource}` entries.
+Port `macos/Sources/Lyrebird/Theme/Theme.swift` tokens to a WinUI `ResourceDictionary.ThemeDictionaries` structure. Presets (matches Tamagui/macOS): `purple` (default, `#0C0622` bg / `#887BFF` primary / `#CC2F71` accent), `blue`, `teal`, `red`, `gold`. Modes: Light, Dark, OLED (pure black bg overrides). Expose `LyrebirdBrandBackgroundBrush`, `LyrebirdBrandPrimaryBrush`, `LyrebirdAccentBrush`, `LyrebirdInkBrush`, `LyrebirdInk2Brush`, `LyrebirdInk3Brush`, `LyrebirdBorderBrush` as `{ThemeResource}` entries.
 
 Implementation: generate 5 sets of 3 `ResourceDictionary` files (`Theme.Purple.Dark.xaml`, etc.) and swap at runtime by rebuilding `Application.Resources.MergedDictionaries` and walking the visual tree resetting `RequestedTheme`. Persist selection via `ApplicationData.Current.LocalSettings`.
 
@@ -126,7 +126,7 @@ Acceptance: Settings combo box switches preset and mode live without app restart
 **Labels:** `area:windows`, `kind:feat`, `priority:p0`
 **Effort:** M
 
-Port `macos/Sources/Jellify/Screens/LoginView.swift`. Form: server URL (`TextBox` with `InputScope="Url"`), username, password (`PasswordBox`). Submit button triggers `IJellyfinClient.Authenticate`. On success, store token via Credential Manager (Issue 19) and `NavigateTo<HomeViewModel>`. Show validation errors inline (`InfoBar` with `Severity="Error"`). Remember last server URL.
+Port `macos/Sources/Lyrebird/Screens/LoginView.swift`. Form: server URL (`TextBox` with `InputScope="Url"`), username, password (`PasswordBox`). Submit button triggers `IJellyfinClient.Authenticate`. On success, store token via Credential Manager (Issue 19) and `NavigateTo<HomeViewModel>`. Show validation errors inline (`InfoBar` with `Severity="Error"`). Remember last server URL.
 
 Discovery: if the user types `http://` without a port, try both `:8096` and the entered value.
 
@@ -158,7 +158,7 @@ Most of this is automatic — `MediaPlayer` instantiated in a WinUI app with a w
 
 Required manual work: set `SystemMediaTransportControls.IsEnabled = true` explicitly (defaults vary), subscribe to `ButtonPressed` for edge cases (seek buttons if added later).
 
-Acceptance: Press Win+K media dialog — shows Jellify as the active session; keyboard Play/Pause toggles playback while focus is elsewhere.
+Acceptance: Press Win+K media dialog — shows Lyrebird as the active session; keyboard Play/Pause toggles playback while focus is elsewhere.
 
 ### Issue 12: Home screen — recent, recommended, continue listening
 **Labels:** `area:windows`, `kind:feat`, `priority:p1`
@@ -234,7 +234,7 @@ Acceptance: Right-click taskbar icon → jump list shows recent albums; clicking
 **Labels:** `area:windows`, `kind:feat`, `priority:p0`
 **Effort:** S
 
-The Rust `keyring` crate already has a Windows backend (Generic credentials via `windows_native_keyring_store`). Core already stores tokens there — verify that the Windows DLL links the `wincred` feature (no feature flag needed, it's the default on `windows-msvc`). Expose `saveToken`/`loadToken` via UniFFI, call from the C# `AuthService`. Target name convention: `Jellify/<server_url>`.
+The Rust `keyring` crate already has a Windows backend (Generic credentials via `windows_native_keyring_store`). Core already stores tokens there — verify that the Windows DLL links the `wincred` feature (no feature flag needed, it's the default on `windows-msvc`). Expose `saveToken`/`loadToken` via UniFFI, call from the C# `AuthService`. Target name convention: `Lyrebird/<server_url>`.
 
 Acceptance: Log in, restart app, auto-login works; "Forget server" deletes the credential.
 
@@ -280,7 +280,7 @@ Acceptance: Narrator walkthrough of login → play flow reads correctly; High Co
 **Labels:** `area:windows`, `kind:chore`, `priority:p1`
 **Effort:** S
 
-**Fonts**: bundle Figtree `.ttf` files under `src/Jellify.App/Assets/Fonts/`. Register via `<FontFamily>ms-appx:///Assets/Fonts/Figtree-Regular.ttf#Figtree</FontFamily>` in a merged resource dictionary.
+**Fonts**: bundle Figtree `.ttf` files under `src/Lyrebird.App/Assets/Fonts/`. Register via `<FontFamily>ms-appx:///Assets/Fonts/Figtree-Regular.ttf#Figtree</FontFamily>` in a merged resource dictionary.
 
 **Icons**: source from `design/` SVG → export via `makepri` / Image Tool to all required sizes:
 - `Square44x44Logo` (scales 100/125/150/200/400)
@@ -288,13 +288,13 @@ Acceptance: Narrator walkthrough of login → play flow reads correctly; High Co
 - `StoreLogo`, `SplashScreen` (620x300)
 Place in `Assets/`, reference from `Package.appxmanifest`.
 
-Acceptance: Start menu tile shows Jellify icon at all scales; splash shows brand purple bg + logo.
+Acceptance: Start menu tile shows Lyrebird icon at all scales; splash shows brand purple bg + logo.
 
 ### Issue 25: Single-project MSIX packaging
 **Labels:** `area:windows`, `kind:chore`, `priority:p0`
 **Effort:** M
 
-Enable single-project MSIX in `Jellify.App.csproj`: `<WindowsPackageType>MSIX</WindowsPackageType>`, `<EnableMsixTooling>true</EnableMsixTooling>`. Fill in `Package.appxmanifest`: Publisher (matches cert subject), Identity Name (`Jellify.Desktop`), Display Name, Description, Logo paths, Capabilities (`internetClient`, `backgroundMediaPlayback`).
+Enable single-project MSIX in `Lyrebird.App.csproj`: `<WindowsPackageType>MSIX</WindowsPackageType>`, `<EnableMsixTooling>true</EnableMsixTooling>`. Fill in `Package.appxmanifest`: Publisher (matches cert subject), Identity Name (`Lyrebird.Desktop`), Display Name, Description, Logo paths, Capabilities (`internetClient`, `backgroundMediaPlayback`).
 
 Build both packaged (`.msix`) and unpackaged (`dotnet publish -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true`) variants. Unpackaged produces a portable `.exe` folder we can zip for non-Store distribution.
 
@@ -304,7 +304,7 @@ Acceptance: `dotnet publish` produces both a signed `.msix` and a self-contained
 **Labels:** `area:windows`, `kind:chore`, `priority:p0`
 **Effort:** M
 
-**Dev**: Generate a self-signed cert via `New-SelfSignedCertificate -Subject "CN=Jellify Dev, O=Jellify" -Type CodeSigningCert -CertStoreLocation cert:\CurrentUser\My`. Export `.pfx`. Document install into `Trusted Root` + `Trusted People` so packages are double-click-installable during dev.
+**Dev**: Generate a self-signed cert via `New-SelfSignedCertificate -Subject "CN=Lyrebird Dev, O=Lyrebird" -Type CodeSigningCert -CertStoreLocation cert:\CurrentUser\My`. Export `.pfx`. Document install into `Trusted Root` + `Trusted People` so packages are double-click-installable during dev.
 
 **Prod**: Use Azure Trusted Signing (Microsoft's modern replacement for EV certs). Configure `SignTool.exe` with `/dlib Azure.CodeSigning.Dlib.dll` + metadata JSON pointing at the Azure Trusted Signing account. Timestamps **must** be applied (`/td sha256 /tr http://timestamp.acs.microsoft.com`) or the signature expires with the cert.
 
@@ -316,7 +316,7 @@ Acceptance: Signed MSIX installs on a clean Win11 VM without SmartScreen warning
 
 For Store-distributed users, the Store handles updates. For direct-download `.exe` users (primary channel for a FOSS app), use Velopack (successor to Squirrel.Windows, Rust-based, ~2s updates, delta packages). Add the `Velopack` NuGet, wrap in `UpdateService`:
 ```
-var mgr = new UpdateManager("https://updates.jellify.org/win");
+var mgr = new UpdateManager("https://updates.lyrebird.org/win");
 var newVer = await mgr.CheckForUpdatesAsync();
 if (newVer != null) { await mgr.DownloadUpdatesAsync(newVer); mgr.ApplyUpdatesAndRestart(); }
 ```
@@ -334,9 +334,9 @@ Workflow `.github/workflows/windows.yml`:
 1. Cache cargo (`~/.cargo/registry`, `target/`) keyed on `Cargo.lock`.
 2. `rustup target add x86_64-pc-windows-msvc aarch64-pc-windows-msvc`.
 3. `cargo binstall uniffi-bindgen-cs --version 0.10.0`.
-4. Run `windows/tools/build-core.ps1` → `jellify_core.dll` for both RIDs.
+4. Run `windows/tools/build-core.ps1` → `lyrebird_core.dll` for both RIDs.
 5. Run `windows/tools/gen-bindings.ps1` → verify no drift (fail if git-diff dirty).
-6. `dotnet test windows/Jellify.sln`.
+6. `dotnet test windows/Lyrebird.sln`.
 7. `dotnet publish -c Release -r win-x64 -p:WindowsPackageType=MSIX`.
 8. Sign with cert stored in `secrets.WIN_SIGN_CERT_PFX_BASE64` (decoded to disk, SignTool against it, then `shred`). Pin: import cert to current user store, sign, remove.
 9. Upload MSIX + unpackaged zip as artifacts; on tagged release, push to GitHub Releases + Velopack feed.

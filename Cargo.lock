@@ -1299,61 +1299,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
-name = "jellify-cli"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "jellify_core",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "jellify-desktop"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "async-channel",
- "gio",
- "glib",
- "glib-build-tools",
- "gtk4",
- "jellify_core",
- "libadwaita",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "jellify_core"
-version = "1.0.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "chrono",
- "futures",
- "insta",
- "keyring",
- "parking_lot",
- "reqwest",
- "rusqlite",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uniffi",
- "url",
- "uuid",
- "wiremock",
-]
-
-[[package]]
 name = "js-sys"
 version = "0.3.95"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1471,6 +1416,61 @@ name = "lru-slab"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
+
+[[package]]
+name = "lyrebird-cli"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "lyrebird_core",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "lyrebird-desktop"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "gio",
+ "glib",
+ "glib-build-tools",
+ "gtk4",
+ "libadwaita",
+ "lyrebird_core",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "lyrebird_core"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "futures",
+ "insta",
+ "keyring",
+ "parking_lot",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uniffi",
+ "url",
+ "uuid",
+ "wiremock",
+]
 
 [[package]]
 name = "matchers"

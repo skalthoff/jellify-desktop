@@ -4,7 +4,7 @@
 //! MediaPlayer on Windows, GStreamer on Linux). The core only tracks what
 //! *should* be playing; the platform reports back via status updates.
 
-use crate::error::{JellifyError, Result};
+use crate::error::{LyrebirdError, Result};
 use crate::models::Track;
 use parking_lot::Mutex;
 
@@ -129,14 +129,14 @@ impl Player {
 
     /// Set the queue and mark `tracks[start_index]` as the current track.
     ///
-    /// Returns `Err(JellifyError::InvalidIndex)` when `start_index` is
+    /// Returns `Err(LyrebirdError::InvalidIndex)` when `start_index` is
     /// out-of-bounds for the supplied `tracks` slice, so callers learn about
     /// the bad index instead of silently playing the wrong track. An empty
     /// `tracks` vec is also rejected because there is no valid index into it.
     pub fn set_queue(&self, tracks: Vec<Track>, start_index: u32) -> Result<()> {
         let idx = start_index as usize;
         if idx >= tracks.len() {
-            return Err(JellifyError::InvalidIndex {
+            return Err(LyrebirdError::InvalidIndex {
                 index: idx,
                 len: tracks.len(),
             });
@@ -371,22 +371,22 @@ mod tests {
 
     #[test]
     fn set_queue_rejects_out_of_bounds_start_index() {
-        use crate::error::JellifyError;
+        use crate::error::LyrebirdError;
         let player = Player::new();
         let result = player.set_queue(vec![track("a"), track("b")], 5);
         match result {
-            Err(JellifyError::InvalidIndex { index: 5, len: 2 }) => {}
+            Err(LyrebirdError::InvalidIndex { index: 5, len: 2 }) => {}
             other => panic!("expected InvalidIndex {{ 5, 2 }}, got {other:?}"),
         }
     }
 
     #[test]
     fn set_queue_rejects_empty_queue() {
-        use crate::error::JellifyError;
+        use crate::error::LyrebirdError;
         let player = Player::new();
         let result = player.set_queue(vec![], 0);
         match result {
-            Err(JellifyError::InvalidIndex { .. }) => {}
+            Err(LyrebirdError::InvalidIndex { .. }) => {}
             other => panic!("expected InvalidIndex for empty queue, got {other:?}"),
         }
     }

@@ -5,7 +5,7 @@
 # that diffs a directory of DMGs against an existing appcast, signs each
 # new entry with the Ed25519 private key, and rewrites the feed XML.
 #
-# This script wraps that binary with the Jellify-specific bits:
+# This script wraps that binary with the Lyrebird-specific bits:
 #   - Downloads every *.dmg asset from recent GitHub releases into a
 #     throwaway staging directory.
 #   - Feeds the private Ed25519 key via `SPARKLE_ED25519_PRIVATE` (base64)
@@ -14,11 +14,11 @@
 #     (not the raw gh-pages host) so installers fetch the DMG directly
 #     from the release, not a Pages mirror.
 #   - Rewrites the output into docs/ so the `gh-pages` push in the
-#     release workflow publishes it at skalthoff.github.io/jellify-desktop/appcast.xml.
+#     release workflow publishes it at skalthoff.github.io/lyrebird-desktop/appcast.xml.
 #
 # Environment:
 #   SPARKLE_ED25519_PRIVATE   base64 private key (required)
-#   GITHUB_REPOSITORY         owner/repo (optional, defaults to skalthoff/jellify-desktop)
+#   GITHUB_REPOSITORY         owner/repo (optional, defaults to skalthoff/lyrebird-desktop)
 #   GITHUB_TOKEN              used by gh for release downloads (optional for public repos)
 #   SPARKLE_VERSION           pinned Sparkle release used to fetch generate_appcast
 #                             (optional, defaults to 2.6.4)
@@ -35,7 +35,7 @@ DMG_DIR="$STAGING/dmgs"
 SPARKLE_DIR="$STAGING/sparkle"
 
 : "${SPARKLE_VERSION:=2.6.4}"
-: "${GITHUB_REPOSITORY:=skalthoff/jellify-desktop}"
+: "${GITHUB_REPOSITORY:=skalthoff/lyrebird-desktop}"
 
 if [[ -z "${SPARKLE_ED25519_PRIVATE:-}" ]]; then
   echo "error: SPARKLE_ED25519_PRIVATE is not set. Export the base64 private key before running." >&2
@@ -86,8 +86,8 @@ if [[ -z "$TAGS" ]]; then
 <?xml version="1.0" standalone="yes"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
   <channel>
-    <title>Jellify</title>
-    <link>https://skalthoff.github.io/jellify-desktop/appcast.xml</link>
+    <title>Lyrebird</title>
+    <link>https://skalthoff.github.io/lyrebird-desktop/appcast.xml</link>
     <description>Most recent changes</description>
     <language>en</language>
   </channel>
@@ -141,7 +141,7 @@ echo "==> Running generate_appcast"
 "$SPARKLE_BIN" \
   --ed-key-file "$KEY_FILE" \
   --download-url-prefix "$DOWNLOAD_URL_PREFIX/" \
-  --link "https://skalthoff.github.io/jellify-desktop/" \
+  --link "https://skalthoff.github.io/lyrebird-desktop/" \
   --maximum-deltas 0 \
   -o "$DOCS/appcast.xml" \
   "$DMG_DIR"
@@ -151,7 +151,7 @@ echo "==> Running generate_appcast"
 # so the filename → tag mapping is unambiguous: query each tag for its
 # uploaded asset names and rewrite ${PREFIX}/<filename> →
 # ${PREFIX}/<tag>/<filename>. Files Sparkle generates as deltas
-# (Jellify<build>-<deltaFrom>.delta) are uploaded to the most recent tag,
+# (Lyrebird<build>-<deltaFrom>.delta) are uploaded to the most recent tag,
 # so we rewrite delta enclosures using the latest tag. Fixes #742.
 echo "==> Injecting tag segments into enclosure URLs"
 for tag in "${TAG_ARRAY[@]}"; do
@@ -173,7 +173,7 @@ rm -f "$DOCS/appcast.xml.bak"
 # (the #742 bug), every Sparkle client would 404 silently. This grep
 # fails the build before publish so a broken appcast never hits gh-pages.
 if grep -qE 'enclosure url="[^"]*/releases/download/[^/"]+\.(dmg|delta)"' "$DOCS/appcast.xml"; then
-  echo "error: appcast contains tag-less enclosure URL. Each <enclosure url> must include the tag segment (e.g. .../releases/download/v1.0.0/Jellify-1.0.0.dmg). See #742." >&2
+  echo "error: appcast contains tag-less enclosure URL. Each <enclosure url> must include the tag segment (e.g. .../releases/download/v1.0.0/Lyrebird-1.0.0.dmg). See #742." >&2
   grep -nE 'enclosure url="[^"]*/releases/download/[^/"]+\.(dmg|delta)"' "$DOCS/appcast.xml" >&2 | head -5
   exit 1
 fi

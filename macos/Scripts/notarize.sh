@@ -3,11 +3,11 @@
 # wait for the verdict, and staple the ticket on success.
 #
 # Uses a keychain profile (see the one-time bootstrap below). The profile
-# name defaults to `jellify-notary` but can be overridden via $NOTARY_PROFILE.
+# name defaults to `lyrebird-notary` but can be overridden via $NOTARY_PROFILE.
 #
 # One-time local bootstrap (do this once per machine):
 #
-#   xcrun notarytool store-credentials jellify-notary \
+#   xcrun notarytool store-credentials lyrebird-notary \
 #     --apple-id       "$APPLE_ID" \
 #     --team-id        "$APPLE_TEAM_ID" \
 #     --password       "$APPLE_NOTARY_APP_PASSWORD"
@@ -17,7 +17,7 @@
 # page in the developer portal.
 #
 # Usage:
-#   ./macos/Scripts/notarize.sh path/to/Jellify-0.2.0.dmg
+#   ./macos/Scripts/notarize.sh path/to/Lyrebird-0.2.0.dmg
 #   NOTARY_PROFILE=other-profile ./macos/Scripts/notarize.sh some.dmg
 set -euo pipefail
 
@@ -31,7 +31,7 @@ if [[ $# -lt 1 || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 TARGET="$1"
-PROFILE="${NOTARY_PROFILE:-jellify-notary}"
+PROFILE="${NOTARY_PROFILE:-lyrebird-notary}"
 
 if [[ ! -e "$TARGET" ]]; then
     echo "error: target not found: $TARGET" >&2
@@ -48,7 +48,7 @@ fi
 
 # Work inside a temp dir so a failed / cancelled run doesn't litter logs
 # alongside the target artifact.
-SCRATCH="$(mktemp -d -t jellify-notarize.XXXXXX)"
+SCRATCH="$(mktemp -d -t lyrebird-notarize.XXXXXX)"
 LOG="$SCRATCH/submit.json"
 LOG_DETAIL="$SCRATCH/detail.json"
 

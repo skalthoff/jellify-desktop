@@ -1,6 +1,6 @@
 # Performance, Reliability, and Observability
 
-Research brief for `jellify-desktop` (Rust core + SwiftUI + AVPlayer macOS shell) covering the work needed to make the app stable, fast, and debuggable at scale. Current state (M2 MVP): plays music; the library call is a single `list_albums(0, 200)`; artwork uses `SwiftUI.AsyncImage` directly; the `AppModel` polls `core.status()` every 0.5s on a `Timer`; `storage.rs` has minimal indices; `error.rs` has a flat set of typed errors with no retry layer and no panic hook.
+Research brief for `lyrebird-desktop` (Rust core + SwiftUI + AVPlayer macOS shell) covering the work needed to make the app stable, fast, and debuggable at scale. Current state (M2 MVP): plays music; the library call is a single `list_albums(0, 200)`; artwork uses `SwiftUI.AsyncImage` directly; the `AppModel` polls `core.status()` every 0.5s on a `Timer`; `storage.rs` has minimal indices; `error.rs` has a flat set of typed errors with no retry layer and no panic hook.
 
 Real Jellyfin libraries trend towards 50k tracks / 5k albums / 1k artists / 10+ GB of artwork. The goals below target those scales.
 
@@ -18,10 +18,10 @@ Adopt [Nuke](https://github.com/kean/Nuke) (Swift-native, zero-dep, widely used,
 
 Implementation:
 - Add `NukeUI` (built-in `LazyImage` + `FetchImage`) via SwiftPM.
-- Wrap in `JellifyArtwork(itemID:tag:size:)` that builds the size-hinted URL via `core.image_url(item_id, tag, max_width: 2 * pointSize * screenScale)` — Jellyfin already supports `maxWidth`/`quality`, use it.
-- Configure `ImagePipeline.shared` once on launch with `dataCache: DataCache(name: "com.jellify.images", sizeLimit: 500 MB)` and an LRU `ImageCache(costLimit: 100 MB, countLimit: 200)`.
+- Wrap in `LyrebirdArtwork(itemID:tag:size:)` that builds the size-hinted URL via `core.image_url(item_id, tag, max_width: 2 * pointSize * screenScale)` — Jellyfin already supports `maxWidth`/`quality`, use it.
+- Configure `ImagePipeline.shared` once on launch with `dataCache: DataCache(name: "com.lyrebird.images", sizeLimit: 500 MB)` and an LRU `ImageCache(costLimit: 100 MB, countLimit: 200)`.
 - Set `request.processors = [ImageProcessors.Resize(size: targetPointSize, contentMode: .aspectFill)]` so we never hold full-res bitmaps for a 180-pt cell.
-- Add `Jellify` directory to `Library/Caches` for on-device eviction behaviour.
+- Add `Lyrebird` directory to `Library/Caches` for on-device eviction behaviour.
 
 Acceptance: library grid scroll sustains 60 fps (90 fps on ProMotion) at 5k albums; memory delta for artwork cache ≤ 150 MB; a warm library open shows ≥ 80% of visible thumbnails within 200 ms.
 
@@ -96,7 +96,7 @@ Design:
 - Persist `albums`, `artists`, `tracks` metadata into `album_cache` / `artist_cache` / `track_cache` as JSON rows (already schema-prepared) the first time we fetch them. Keyed by ID, with `updated_at`.
 - On app launch: emit cached rows to the UI immediately (< 50 ms path via `core.list_cached_albums(limit)`), then asynchronously fetch from the server. Diff (by ID + a hash of the `Etag` / `DateLastMediaAdded` / `DateModified` field Jellyfin returns) and push only changed rows through a `core.library_changes` event channel.
 - Jellyfin exposes `Users/{userId}/Items?IncludeItemTypes=MusicAlbum&Fields=DateLastMediaAdded&MinDateLastSaved=<iso8601>` — use the `MinDateLastSaved` filter for delta sync. Store the server's `last_successful_sync` timestamp per user in `settings`.
-- Add a `JellifyLibrary` service in Rust that wraps `JellyfinClient + Database`. SwiftUI observes via an async stream surfaced over UniFFI (`uniffi::CallbackInterface`).
+- Add a `LyrebirdLibrary` service in Rust that wraps `JellyfinClient + Database`. SwiftUI observes via an async stream surfaced over UniFFI (`uniffi::CallbackInterface`).
 
 Acceptance: warm launch shows the library in < 150 ms; background revalidation completes in < 3 s for a 5k-album library; delta sync transfers ≤ 1% of the full payload on a no-op day.
 
@@ -107,7 +107,7 @@ Acceptance: warm launch shows the library in < 150 ms; background revalidation c
 We have no measurement for "launch to playable". Establish the budget and instrument it.
 
 - Add `os_signpost` intervals around: `launch`, `swiftui_first_frame`, `core_init`, `credentials_load`, `library_cache_paint`, `library_server_sync`.
-- Add a Rust-side `tracing` span for `JellifyCore::new`, `login`, `listAlbums`; forward to the Swift `Logger` via a subscriber (Issue 25).
+- Add a Rust-side `tracing` span for `LyrebirdCore::new`, `login`, `listAlbums`; forward to the Swift `Logger` via a subscriber (Issue 25).
 - Run under Instruments Time Profiler + Points of Interest. Establish a CI-runnable perf check via `xcrun xctrace record` in a headless harness (no UI) measuring `core_init`.
 - Budget: cold launch (unsigned, un-notarized dev build) to first interactive pixel < 800 ms on M1; signed release build < 600 ms. Time to "click play on a cached album" < 1.2 s cold, < 400 ms warm.
 
@@ -144,7 +144,7 @@ AVPlayer alone has a baseline of 15–25 MB per active item (sample buffers, dec
 
 Plan:
 - Register `DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical])` on the main queue. On `.warning`: drop image cache to 50 MB, drop un-visible album track caches from `AppModel.albumTracks`, flush `track_cache` rows older than 7 days. On `.critical`: additionally evict the full Nuke `ImageCache`, tear down any second AVPlayer prefetched for gapless.
-- Add a Rust-side `JellifyCore::trim_memory(level)` entry point that the Swift handler calls to clear in-core caches.
+- Add a Rust-side `LyrebirdCore::trim_memory(level)` entry point that the Swift handler calls to clear in-core caches.
 - Ship a debug Heap-allocations Instruments baseline run for a 5k-album library; budget steady-state < 150 MB.
 
 Acceptance: `footprint` column in Xcode debug navigator stays < 150 MB during a 5-minute listen session; pressure callbacks reduce to < 80 MB in < 500 ms.
@@ -215,11 +215,11 @@ Acceptance: pulling the ethernet cable mid-track results in "Reconnecting..." st
 **Labels:** `area:reliability`, `kind:feat`, `priority:p0`
 **Effort:** M
 
-Jellyfin access tokens can be invalidated server-side (admin reset, token rotation, user re-auth from another device). Today a 401 surfaces as `JellifyError::Server { status: 401, ... }` and we just show the message.
+Jellyfin access tokens can be invalidated server-side (admin reset, token rotation, user re-auth from another device). Today a 401 surfaces as `LyrebirdError::Server { status: 401, ... }` and we just show the message.
 
 - Intercept 401 in the reqwest middleware chain (Issue 13). If the response came from a session-bearing endpoint, clear `self.token` and invoke `refresh_session()`.
 - `refresh_session()` reads `server_url`, `username` from `settings`, pulls the password from `keyring`, calls `authenticate_by_name` again, stores the new token in the keyring.
-- If keyring-stored creds are missing, surface a `JellifyError::ReauthRequired` variant and the Swift side routes back to `LoginView` with the server URL pre-filled.
+- If keyring-stored creds are missing, surface a `LyrebirdError::ReauthRequired` variant and the Swift side routes back to `LoginView` with the server URL pre-filled.
 - Add a simple race guard: a `Mutex<Option<JoinHandle>>` for the in-flight refresh; concurrent callers await the same handle.
 
 Acceptance: invalidating a token on the server and then clicking "Play" results in a silent re-auth and successful playback, with no visible state change beyond a 500-ms blip.
@@ -257,21 +257,21 @@ Acceptance: panicking a `debug_assert!` in a dev build fires a Sentry event cont
 `tracing` is already a workspace dep. It's used nowhere. `os_log` / Swift `Logger` is also unused. Both should be the standard.
 
 Plan:
-- In `core/`, add a `tracing_subscriber::Registry` with an `EnvFilter` and a custom `tracing_subscriber::Layer` that maps `tracing::Event` → Swift `Logger.log(level:message:)` via a UniFFI callback. One subsystem `com.jellify.core`; categories per module: `client`, `storage`, `player`, `auth`.
+- In `core/`, add a `tracing_subscriber::Registry` with an `EnvFilter` and a custom `tracing_subscriber::Layer` that maps `tracing::Event` → Swift `Logger.log(level:message:)` via a UniFFI callback. One subsystem `com.lyrebird.core`; categories per module: `client`, `storage`, `player`, `auth`.
 - Instrument: every public `JellyfinClient` fn with `#[tracing::instrument(skip(self, password))]`, every DB migration, every retry.
-- Swift side: category loggers: `Logger(subsystem: "com.jellify.macos", category: "app" / "audio" / "ui")`.
-- Respect `JELLIFY_LOG=debug,jellify_core::client=trace` on launch. In release builds, default to `warn`.
+- Swift side: category loggers: `Logger(subsystem: "com.lyrebird.macos", category: "app" / "audio" / "ui")`.
+- Respect `JELLIFY_LOG=debug,lyrebird_core::client=trace` on launch. In release builds, default to `warn`.
 - Add a "Show Logs" menu item (Help → Show Logs) that opens Console.app filtered to our subsystems, or exports a bundle of the last 500 lines.
 
-Acceptance: logs are queryable via `log stream --subsystem com.jellify.core` and contain span timings. A 1-hour session produces < 2 MB of on-disk log data.
+Acceptance: logs are queryable via `log stream --subsystem com.lyrebird.core` and contain span timings. A 1-hour session produces < 2 MB of on-disk log data.
 
 ### Issue 19: Human-readable error surface across the FFI
 **Labels:** `area:reliability`, `kind:chore`, `priority:p1`
 **Effort:** S
 
-`JellifyError` already uses `#[uniffi(flat_error)]` which gives us `error.localizedDescription` with the `Display` output. But messages like `"network error: operation timed out"` are not user-friendly, and `"server returned an error: 401 "` leaks status codes into the UI.
+`LyrebirdError` already uses `#[uniffi(flat_error)]` which gives us `error.localizedDescription` with the `Display` output. But messages like `"network error: operation timed out"` are not user-friendly, and `"server returned an error: 401 "` leaks status codes into the UI.
 
-- Add a `user_message()` method on `JellifyError` that returns a localized, action-oriented string:
+- Add a `user_message()` method on `LyrebirdError` that returns a localized, action-oriented string:
   - `Network(_)` → `"We can't reach your server. Check your internet connection and try again."`
   - `Server { status: 401, .. }` → `"Your session expired. Please sign in again."`
   - `Server { status: 5xx, .. }` → `"Your Jellyfin server is having trouble. Try again in a moment."`
@@ -380,7 +380,7 @@ Acceptance: dashboard in TelemetryDeck with p50/p90 cold-start time. We can dete
 Runtime toggles for experimental work without shipping a new binary.
 
 Simplest workable design:
-- A `~/Library/Application Support/Jellify/flags.json` that `JellifyCore` reads on startup + on SIGUSR1 (so a power user can edit it live).
+- A `~/Library/Application Support/lyrebird-desktop/flags.json` that `LyrebirdCore` reads on startup + on SIGUSR1 (so a power user can edit it live).
 - Schema: `{ "crossfade_ms": 0, "gapless_playback": false, "debug_panel_enabled": true, "library_delta_sync": true, ... }`.
 - Expose via Settings → Experiments → (hidden unless `debug_panel_enabled`) with toggles for each.
 - No remote config / no server roundtrip. Keeping it local avoids a privacy vector and a failure mode.
@@ -427,7 +427,7 @@ Acceptance: PR flow blocks regressions automatically; humans are not the perf wa
 **Labels:** `area:observability`, `kind:feat`, `priority:p2`
 **Effort:** S
 
-One-click "Export diagnostics" in Help menu produces a `jellify-diagnostics-<date>.zip` containing:
+One-click "Export diagnostics" in Help menu produces a `lyrebird-diagnostics-<date>.zip` containing:
 - Redacted app logs (last 24 h).
 - DB schema + row counts (no row content).
 - Debug panel snapshot.

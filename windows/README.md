@@ -1,4 +1,4 @@
-# Jellify — Windows
+# Lyrebird — Windows
 
 WinUI 3 + Windows App SDK 1.8 client for Jellyfin. Wraps the shared Rust
 core (`core/`) via UniFFI-generated C# bindings; transport playback uses
@@ -13,10 +13,10 @@ Rust-backed services land in subsequent batches.
 
 ```
 windows/
-  Jellify.sln
+  Lyrebird.sln
   Directory.Build.props      # WinAppSDK / Toolkit floor (one place to bump)
   uniffi.toml                # bindgen config consumed by tools/gen-bindings.ps1
-  Jellify.App/               # WinUI 3 packaged app — XAML, VMs, navigation
+  Lyrebird.App/               # WinUI 3 packaged app — XAML, VMs, navigation
     App.xaml(.cs)            # Composition root — HostApplicationBuilder + DI
     MainWindow.xaml(.cs)
     Pages/
@@ -30,14 +30,14 @@ windows/
       LibraryViewModel.cs
     Package.appxmanifest     # MSIX manifest (Win10 1809+ device family)
     app.manifest             # PerMonitorV2 DPI, UTF-8 ACP, OS compat
-  Jellify.Core/              # Wraps generated UniFFI bindings + native DLL
+  Lyrebird.Core/              # Wraps generated UniFFI bindings + native DLL
     IJellyfinClient.cs       # Hand-written facade over the Rust core (shape)
     IQueueStore.cs
     IPlaybackStateStore.cs
     Generated/               # uniffi-bindgen-cs output (gitignored)
     native/
-      win-x64/jellify_core.dll      # produced by tools/build-core.ps1
-      win-arm64/jellify_core.dll
+      win-x64/lyrebird_core.dll      # produced by tools/build-core.ps1
+      win-arm64/lyrebird_core.dll
   tools/
     build-core.ps1           # cargo build --target … for x64 + arm64
     gen-bindings.ps1         # uniffi-bindgen-cs --library …
@@ -93,8 +93,8 @@ pwsh windows/tools/build-core.ps1
 pwsh windows/tools/gen-bindings.ps1
 
 # 3. Build + run the app.
-dotnet build windows/Jellify.sln -c Debug -p:Platform=x64
-dotnet run --project windows/Jellify.App -c Debug
+dotnet build windows/Lyrebird.sln -c Debug -p:Platform=x64
+dotnet run --project windows/Lyrebird.App -c Debug
 ```
 
 Skipping arm64 during local iteration is fine:
@@ -107,9 +107,9 @@ pwsh windows/tools/build-core.ps1 -SkipArm64
 
 The acceptance build runs on `windows-latest`:
 
-1. `cargo build --workspace --target x86_64-pc-windows-msvc -p jellify_core --release`
+1. `cargo build --workspace --target x86_64-pc-windows-msvc -p lyrebird_core --release`
 2. `pwsh windows/tools/gen-bindings.ps1 -Configuration Release`
-3. `dotnet build windows/Jellify.sln -c Release -p:Platform=x64`
+3. `dotnet build windows/Lyrebird.sln -c Release -p:Platform=x64`
 
 The shell-launches smoke test (CI is headless so this is a process-spawn
 check, not a UI assertion) lives in a follow-up issue.

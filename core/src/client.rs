@@ -1,5 +1,5 @@
 use crate::enums::{self, ImageType, ItemField, ItemKind, ItemSortBy, SortOrder};
-use crate::error::{JellifyError, Result};
+use crate::error::{LyrebirdError, Result};
 use crate::models::*;
 use crate::query::ItemsQuery;
 use parking_lot::Mutex;
@@ -22,7 +22,7 @@ pub struct PaginatedItems<T> {
     pub total_count: u32,
 }
 
-const CLIENT_NAME: &str = "Jellify Desktop";
+const CLIENT_NAME: &str = "Lyrebird Desktop";
 const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Maximum number of HTTP attempts per logical request, inclusive of the
@@ -46,9 +46,9 @@ const RETRY_AFTER_CAP: Duration = Duration::from_secs(5);
 /// interceptor; see [`JellyfinClient::set_refresh_callback`].
 ///
 /// Implementations return the new access token on success, or a concrete
-/// [`JellifyError`] on failure. A `None` return means "credentials are
+/// [`LyrebirdError`] on failure. A `None` return means "credentials are
 /// still valid but the keyring has no fresher token" — callers treat that
-/// the same as a failure and surface [`JellifyError::AuthExpired`].
+/// the same as a failure and surface [`LyrebirdError::AuthExpired`].
 pub type RefreshTokenFn = dyn Fn() -> Result<Option<String>> + Send + Sync;
 
 /// Optional Cloudflare Access service-token headers, sourced from the
@@ -105,14 +105,14 @@ pub struct JellyfinClient {
     user_id: Option<String>,
     library_cache: Mutex<LibraryCache>,
     /// Optional silent re-auth hook invoked on the first 401 per request.
-    /// Wired by [`crate::JellifyCore`] at login / resume time; tests may
+    /// Wired by [`crate::LyrebirdCore`] at login / resume time; tests may
     /// leave it unset to exercise the "no refresh available" fallback.
     refresh_cb: Mutex<Option<Arc<RefreshTokenFn>>>,
     /// Cancellation signal shared with any background task (e.g. the
     /// heartbeat scheduler) that holds a reference to this client. When
     /// cancelled, the internal retry loop abandons any pending backoff
     /// sleep between retry attempts and returns
-    /// [`JellifyError::Other`]`("cancelled")` immediately. See issue #605.
+    /// [`LyrebirdError::Other`]`("cancelled")` immediately. See issue #605.
     pub cancel: CancellationToken,
 }
 
@@ -128,7 +128,7 @@ impl JellyfinClient {
             .timeout(std::time::Duration::from_secs(30))
             .default_headers(cf_access_headers())
             .build()
-            .map_err(|e| JellifyError::Network(e.to_string()))?;
+            .map_err(|e| LyrebirdError::Network(e.to_string()))?;
         Ok(Self {
             http,
             base_url: url,
@@ -170,8 +170,8 @@ impl JellyfinClient {
     ///
     /// The callback is called at most once per logical request — if it
     /// surfaces a new token the request is retried with it, otherwise the
-    /// client returns [`JellifyError::AuthExpired`] so the UI can drive the
-    /// re-auth sheet. Wired by [`crate::JellifyCore`] at login/resume so the
+    /// client returns [`LyrebirdError::AuthExpired`] so the UI can drive the
+    /// re-auth sheet. Wired by [`crate::LyrebirdCore`] at login/resume so the
     /// callback can re-read the OS credential store without the client
     /// having to know about the [`crate::storage::Database`].
     pub fn set_refresh_callback(&self, cb: Arc<RefreshTokenFn>) {
@@ -214,7 +214,7 @@ impl JellyfinClient {
         headers.insert(
             AUTHORIZATION,
             HeaderValue::from_str(&self.auth_header())
-                .map_err(|e| JellifyError::InvalidInput(e.to_string()))?,
+                .map_err(|e| LyrebirdError::InvalidInput(e.to_string()))?,
         );
         Ok(headers)
     }
@@ -224,14 +224,14 @@ impl JellyfinClient {
         self.base_url.join(trimmed).map_err(Into::into)
     }
 
-    /// Bail out with [`JellifyError::NotAuthenticated`] when no access token
+    /// Bail out with [`LyrebirdError::NotAuthenticated`] when no access token
     /// is present. Mirrors the old inline `self.token.as_ref().ok_or(...)?`
     /// idiom now that the field lives behind a `Mutex`.
     fn require_token(&self) -> Result<()> {
         if self.token.lock().is_some() {
             Ok(())
         } else {
-            Err(JellifyError::NotAuthenticated)
+            Err(LyrebirdError::NotAuthenticated)
         }
     }
 
@@ -335,7 +335,7 @@ impl JellyfinClient {
     /// [`Self::is_retriable_transport_error`]; backoff ladder lives in
     /// [`BACKOFF_BASE_MS`]. `401` is handled specially: if a refresh
     /// callback is wired and returns a new token, the request is retried
-    /// once; otherwise this returns [`JellifyError::AuthExpired`].
+    /// once; otherwise this returns [`LyrebirdError::AuthExpired`].
     async fn send_with_retry_raw<F>(&self, mut build: F) -> Result<Response>
     where
         F: FnMut() -> Result<RequestBuilder>,
@@ -364,10 +364,10 @@ impl JellyfinClient {
                                 );
                                 continue;
                             }
-                            Ok(false) => return Err(JellifyError::AuthExpired),
+                            Ok(false) => return Err(LyrebirdError::AuthExpired),
                             Err(e) => {
                                 tracing::warn!(error = %e, "token refresh failed");
-                                return Err(JellifyError::AuthExpired);
+                                return Err(LyrebirdError::AuthExpired);
                             }
                         }
                     }
@@ -389,7 +389,7 @@ impl JellyfinClient {
                         tokio::select! {
                             _ = tokio::time::sleep(delay) => {}
                             _ = self.cancel.cancelled() => {
-                                return Err(JellifyError::Other("request cancelled".into()));
+                                return Err(LyrebirdError::Other("request cancelled".into()));
                             }
                         }
                         continue;
@@ -410,13 +410,13 @@ impl JellyfinClient {
                         tokio::select! {
                             _ = tokio::time::sleep(delay) => {}
                             _ = self.cancel.cancelled() => {
-                                return Err(JellifyError::Other("request cancelled".into()));
+                                return Err(LyrebirdError::Other("request cancelled".into()));
                             }
                         }
                         continue;
                     }
                     // Route through `From<reqwest::Error>` so cert-validation
-                    // failures are mapped to `JellifyError::SelfSignedCertificate`
+                    // failures are mapped to `LyrebirdError::SelfSignedCertificate`
                     // rather than the generic `Network` variant.
                     return Err(err.into());
                 }
@@ -535,7 +535,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         // `Artists/AlbumArtists` is a dedicated endpoint, not a standard
         // `/Items` query, so we issue the request directly rather than
         // going through [`ItemsQuery::execute`]. We still format the params
@@ -674,7 +674,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let limit = paging.limit.max(1);
         let server_limit = paging.offset.saturating_add(limit).max(1);
         let mut url = self.endpoint("Items/Latest")?;
@@ -855,7 +855,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Items")?;
         {
             let mut q = url.query_pairs_mut();
@@ -894,7 +894,7 @@ impl JellyfinClient {
     /// non-audio rows regardless of what the server returns.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn playlist_tracks(
         &self,
         playlist_id: &str,
@@ -914,7 +914,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Items")?;
         {
             let mut q = url.query_pairs_mut();
@@ -969,7 +969,7 @@ impl JellyfinClient {
     /// Callers should invalidate their `playlist_tracks` cache on success.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn add_to_playlist(
         &self,
         playlist_id: &str,
@@ -979,7 +979,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Playlists/{playlist_id}/Items"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1022,7 +1022,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1078,7 +1078,7 @@ impl JellyfinClient {
     /// soft cap. See #156.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn tracks_by_artist(
         &self,
         artist_id: &str,
@@ -1087,7 +1087,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Users/{user_id}/Items"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1155,7 +1155,7 @@ impl JellyfinClient {
     /// artist page.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn artist_top_tracks(&self, artist_id: &str, limit: u32) -> Result<Vec<Track>> {
         let page = ItemsQuery::new()
             .artist(artist_id)
@@ -1188,12 +1188,12 @@ impl JellyfinClient {
     /// context-menu entry in the app.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn instant_mix(&self, item_id: &str, limit: u32) -> Result<Vec<Track>> {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Items/{item_id}/InstantMix"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1230,12 +1230,12 @@ impl JellyfinClient {
     /// typically only needs a short shelf (12 is a reasonable default).
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn suggestions(&self, limit: u32) -> Result<Vec<Track>> {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Items/Suggestions")?;
         {
             let mut q = url.query_pairs_mut();
@@ -1262,7 +1262,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Artists/{artist_id}/Similar"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1289,7 +1289,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Albums/{album_id}/Similar"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1323,7 +1323,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint(&format!("Items/{item_id}/Similar"))?;
         {
             let mut q = url.query_pairs_mut();
@@ -1381,7 +1381,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Genres")?;
         {
             let mut q = url.query_pairs_mut();
@@ -1441,12 +1441,12 @@ impl JellyfinClient {
     /// Last.fm / Discogs shortcut icons).
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn artist_detail(&self, artist_id: &str) -> Result<ArtistDetail> {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Items")?;
         {
             let mut q = url.query_pairs_mut();
@@ -1476,14 +1476,14 @@ impl JellyfinClient {
             .items
             .into_iter()
             .next()
-            .ok_or_else(|| JellifyError::NotFound(format!("artist not found: {artist_id}")))?;
+            .ok_or_else(|| LyrebirdError::NotFound(format!("artist not found: {artist_id}")))?;
         Ok(ArtistDetail::from(first))
     }
 
     /// Fetch lyrics for a track via `GET /Audio/{itemId}/Lyrics`. Returns
     /// `Ok(None)` when the server reports `404` — lyrics are opt-in
     /// metadata and missing-lyrics is the common case. Other errors
-    /// propagate as [`JellifyError`].
+    /// propagate as [`LyrebirdError`].
     ///
     /// Handles both timed (`IsSynced = true`, LRC-style) and plain-text
     /// (`IsSynced = false`, a single line at `Start = 0`) payloads. The
@@ -1511,16 +1511,16 @@ impl JellyfinClient {
     /// whichever fields they asked for without this layer pre-projecting.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     ///
-    /// Returns [`JellifyError::Server`] with status `404` when the server
+    /// Returns [`LyrebirdError::Server`] with status `404` when the server
     /// responds successfully but the `Items` array is empty (item not
     /// found or not visible to the current user).
     pub async fn fetch_item(&self, item_id: &str, fields: &[&str]) -> Result<serde_json::Value> {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Items")?;
         {
             let mut q = url.query_pairs_mut();
@@ -1538,10 +1538,12 @@ impl JellyfinClient {
             .get_mut("Items")
             .and_then(|v| v.as_array_mut())
             .ok_or_else(|| {
-                JellifyError::Decode("fetch_item: response missing Items array".into())
+                LyrebirdError::Decode("fetch_item: response missing Items array".into())
             })?;
         if items.is_empty() {
-            return Err(JellifyError::NotFound(format!("item not found: {item_id}")));
+            return Err(LyrebirdError::NotFound(format!(
+                "item not found: {item_id}"
+            )));
         }
         Ok(items.swap_remove(0))
     }
@@ -1558,7 +1560,7 @@ impl JellyfinClient {
     /// without refetching the item.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn set_favorite(&self, item_id: &str) -> Result<FavoriteState> {
         self.require_token()?;
 
@@ -1605,7 +1607,7 @@ impl JellyfinClient {
     /// without refetching the item.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn unset_favorite(&self, item_id: &str) -> Result<FavoriteState> {
         self.require_token()?;
 
@@ -1669,7 +1671,7 @@ impl JellyfinClient {
     /// this on an album does not increment per-track play counts).
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set. See #133.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set. See #133.
     pub async fn mark_played(&self, item_id: &str) -> Result<UserItemData> {
         self.require_token()?;
 
@@ -1718,7 +1720,7 @@ impl JellyfinClient {
     /// no-refetch UI refresh as [`Self::mark_played`].
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set. See #133.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set. See #133.
     pub async fn mark_unplayed(&self, item_id: &str) -> Result<UserItemData> {
         self.require_token()?;
 
@@ -1780,7 +1782,7 @@ impl JellyfinClient {
     /// record (e.g. via [`JellyfinClient::fetch_item`]) if they need it.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn create_playlist(
         &self,
         name: &str,
@@ -1790,7 +1792,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Playlists")?;
         if let Some(pos) = position {
             url.query_pairs_mut()
@@ -1825,7 +1827,7 @@ impl JellyfinClient {
     /// Jellyfin's 100-ns tick units (i.e. `seconds * 10_000_000`).
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] when no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] when no token is set.
     pub async fn report_playback_progress(&self, info: PlaybackProgressInfo) -> Result<()> {
         self.require_token()?;
 
@@ -1908,7 +1910,7 @@ impl JellyfinClient {
     ///
     /// Scoped to music by default
     /// (`includeItemTypes=Audio,MusicAlbum,MusicArtist,Playlist`). Requires
-    /// an authenticated session; returns [`JellifyError::NotAuthenticated`]
+    /// an authenticated session; returns [`LyrebirdError::NotAuthenticated`]
     /// if no `user_id` is set.
     ///
     /// `paging.offset` maps to Jellyfin's `startIndex` so callers can page
@@ -1919,7 +1921,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("Search/Hints")?;
         {
             let mut q = url.query_pairs_mut();
@@ -1952,7 +1954,7 @@ impl JellyfinClient {
     /// Callers invoke this on track end, user-driven skip, and app quit.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn report_playback_stopped(&self, info: PlaybackStopInfo) -> Result<()> {
         self.require_token()?;
         let url = self.endpoint("Sessions/Playing/Stopped")?;
@@ -1980,7 +1982,7 @@ impl JellyfinClient {
     /// unused flags don't flip the server's default behaviour.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn report_playback_started(&self, info: PlaybackStartInfo) -> Result<()> {
         self.require_token()?;
         let url = self.endpoint("Sessions/Playing")?;
@@ -2003,7 +2005,7 @@ impl JellyfinClient {
     /// local cleanup — an unreachable server must not block a sign-out.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn post_logout_session(&self) -> Result<()> {
         self.require_token()?;
         let url = self.endpoint("Sessions/Logout")?;
@@ -2028,7 +2030,7 @@ impl JellyfinClient {
     /// "Play on macOS" option never appears.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn post_capabilities(&self, caps: ClientCapabilities) -> Result<()> {
         self.require_token()?;
         let url = self.endpoint("Sessions/Capabilities/Full")?;
@@ -2057,7 +2059,7 @@ impl JellyfinClient {
     /// body or as a query arg, and we prefer the body.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn playback_info(
         &self,
         item_id: &str,
@@ -2066,7 +2068,7 @@ impl JellyfinClient {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         // Fill in the user id from the live session if the caller did not
         // override it. Jellyfin accepts either the body's `UserId` or a
         // `?userId=` query param; the body wins when both are supplied.
@@ -2097,12 +2099,12 @@ impl JellyfinClient {
     /// music library id, `"playlists"` for the playlists library id.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no `user_id` is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
     pub async fn user_views(&self) -> Result<Vec<Library>> {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let mut url = self.endpoint("UserViews")?;
         url.query_pairs_mut().append_pair("userId", user_id);
         let resp = self
@@ -2116,8 +2118,8 @@ impl JellyfinClient {
     /// `CollectionType == "music"`. Cached on the client after the first
     /// call; invalidated on [`JellyfinClient::set_session`].
     ///
-    /// Errors with [`JellifyError::NotAuthenticated`] if no session is
-    /// active, or [`JellifyError::Server`] with status 404 when the
+    /// Errors with [`LyrebirdError::NotAuthenticated`] if no session is
+    /// active, or [`LyrebirdError::Server`] with status 404 when the
     /// server has no music library (a genuinely empty install).
     pub async fn music_library_id(&self) -> Result<String> {
         if let Some(id) = self.library_cache.lock().music.clone() {
@@ -2128,7 +2130,9 @@ impl JellyfinClient {
             .into_iter()
             .find(|v| v.collection_type.as_deref() == Some("music"))
             .map(|v| v.id)
-            .ok_or_else(|| JellifyError::NotFound("no music library found in user views".into()))?;
+            .ok_or_else(|| {
+                LyrebirdError::NotFound("no music library found in user views".into())
+            })?;
         self.library_cache.lock().music = Some(id.clone());
         Ok(id)
     }
@@ -2149,8 +2153,8 @@ impl JellyfinClient {
     /// `{ Type: "UserView", CollectionType: "playlists", Id: <viewId> }`
     /// and that id returns the 78 user playlists when used as `ParentId`.
     ///
-    /// Errors with [`JellifyError::NotAuthenticated`] if no session is
-    /// active, or [`JellifyError::Server`] with status 404 when the
+    /// Errors with [`LyrebirdError::NotAuthenticated`] if no session is
+    /// active, or [`LyrebirdError::Server`] with status 404 when the
     /// server has no playlists library (rare — Jellyfin synthesises one
     /// the first time a playlist is created).
     pub async fn playlist_library_id(&self) -> Result<String> {
@@ -2163,7 +2167,7 @@ impl JellyfinClient {
             .find(|v| v.collection_type.as_deref() == Some("playlists"))
             .map(|v| v.id)
             .ok_or_else(|| {
-                JellifyError::NotFound("no playlists library found in user views".into())
+                LyrebirdError::NotFound("no playlists library found in user views".into())
             })?;
         self.library_cache.lock().playlist = Some(id.clone());
         Ok(id)
@@ -2190,7 +2194,7 @@ impl JellyfinClient {
     /// the selection can be cleared after checkbox toggles.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn remove_from_playlist(
         &self,
         playlist_id: &str,
@@ -2215,12 +2219,12 @@ impl JellyfinClient {
     /// `Name` changed. Responds 204 on success.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn rename_playlist(&self, playlist_id: &str, new_name: &str) -> Result<()> {
         let user_id = self
             .user_id
             .as_ref()
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         // Fetch the current item to prefill required fields.
         let existing = self.fetch_item(playlist_id, &[]).await?;
         // Build the update body from the existing item, overwriting Name.
@@ -2248,7 +2252,7 @@ impl JellyfinClient {
     /// the item from any in-memory caches after this returns.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn delete_playlist(&self, playlist_id: &str) -> Result<()> {
         self.require_token()?;
         let url = self.endpoint(&format!("Items/{playlist_id}"))?;
@@ -2268,7 +2272,7 @@ impl JellyfinClient {
     /// `playlist_tracks` cache so the UI reflects the server order.
     ///
     /// Requires an authenticated session; returns
-    /// [`JellifyError::NotAuthenticated`] if no token is set.
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
     pub async fn reorder_playlist_track(
         &self,
         playlist_id: &str,
@@ -2402,12 +2406,12 @@ impl JellyfinClient {
 }
 
 /// Classify a [`reqwest::Response`] as success or a structured
-/// [`JellifyError`] variant. Shared between [`JellyfinClient::check`] and
+/// [`LyrebirdError`] variant. Shared between [`JellyfinClient::check`] and
 /// the query-layer helpers in [`crate::query`].
 ///
 /// On non-2xx responses this reads the `Retry-After` header (for 429
 /// rate-limit responses) and the body text (for the general `Server`
-/// variant), and dispatches via [`JellifyError::from_status`] so the caller
+/// variant), and dispatches via [`LyrebirdError::from_status`] so the caller
 /// can match on the narrow error kind rather than parsing a message.
 pub(crate) async fn check_response(resp: Response) -> Result<Response> {
     let status = resp.status();
@@ -2420,7 +2424,7 @@ pub(crate) async fn check_response(resp: Response) -> Result<Response> {
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.trim().parse::<u64>().ok());
     let body = resp.text().await.unwrap_or_default();
-    Err(JellifyError::from_status(
+    Err(LyrebirdError::from_status(
         status.as_u16(),
         body,
         retry_after,

@@ -7,7 +7,7 @@
 # Flatpak manifest references to vendor all crate dependencies.
 #
 # Prerequisites:
-#   - git (run from within the jellify-desktop git checkout)
+#   - git (run from within the lyrebird-desktop git checkout)
 #   - python3
 #   - pip install aiohttp toml
 #
@@ -30,12 +30,12 @@
 set -euo pipefail
 
 if ! command -v git >/dev/null 2>&1; then
-	echo "error: gen-sources.sh requires git; install git and run from within the jellify-desktop git checkout" >&2
+	echo "error: gen-sources.sh requires git; install git and run from within the lyrebird-desktop git checkout" >&2
 	exit 1
 fi
 
 if ! REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-	echo "error: gen-sources.sh must be run from within the jellify-desktop git checkout" >&2
+	echo "error: gen-sources.sh must be run from within the lyrebird-desktop git checkout" >&2
 	exit 1
 fi
 

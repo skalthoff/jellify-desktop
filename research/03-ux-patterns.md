@@ -1,4 +1,4 @@
-# UX Patterns Research — Jellify Desktop (macOS)
+# UX Patterns Research — Lyrebird Desktop (macOS)
 
 Research brief for building a polished, premium-feeling Jellyfin music client on macOS. This document extracts concrete, actionable patterns from shipping apps (Apple Music, Spotify, Doppler, Cider, Tidal, Marvis Pro) and translates them into specific GitHub issues.
 
@@ -485,7 +485,7 @@ Right-click a track in any list. Menu order (Apple Music + Spotify convention, g
 9. **Favorite** / **Unfavorite** (♥ toggle)
 10. **Mark as Played** / **Mark as Unplayed**
 — divider —
-11. **Copy Link** (copies a Jellify-scheme URL)
+11. **Copy Link** (copies a Lyrebird-scheme URL)
 12. **Share** (macOS share sheet)
 — divider —
 13. **Edit Metadata…** (opens metadata editor if user has admin rights)
@@ -693,7 +693,7 @@ First launch. User hasn't logged in, or logged in but library is syncing.
 **Labels:** `area:macos`, `area:ux`, `kind:feat`, `priority:p0`
 **Effort:** M
 
-First launch shows a centered login card: Jellify logo, "Connect to your Jellyfin server," server URL field (with Bonjour/mDNS-discovered servers as a dropdown below if any are found on the local network), Continue button. Second step: username + password, Quick Connect code option. Remember URL history in dropdown for future logins.
+First launch shows a centered login card: Lyrebird logo, "Connect to your Jellyfin server," server URL field (with Bonjour/mDNS-discovered servers as a dropdown below if any are found on the local network), Continue button. Second step: username + password, Quick Connect code option. Remember URL history in dropdown for future logins.
 
 Acceptance: Bonjour discovery for `_jellyfin._tcp`; Quick Connect fallback link; clear error messages for cert / auth / network issues.
 
@@ -787,7 +787,7 @@ Acceptance: fallback is async and cached locally per track; failure is silent.
 **Labels:** `area:macos`, `area:ux`, `kind:feat`, `priority:p2`
 **Effort:** S
 
-**Track change notifications** (on/off). **Only when Jellify is in the background** (toggle). **Show album art** (toggle). These use `UNNotificationCenter` with rich content.
+**Track change notifications** (on/off). **Only when Lyrebird is in the background** (toggle). **Show album art** (toggle). These use `UNNotificationCenter` with rich content.
 
 Acceptance: notifications match macOS native look; respect Do Not Disturb; user-revocable.
 

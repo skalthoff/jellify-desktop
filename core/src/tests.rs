@@ -1,9 +1,9 @@
 use crate::client::JellyfinClient;
 use crate::enums::ImageType;
-use crate::error::JellifyError;
+use crate::error::LyrebirdError;
 use crate::models::Paging;
 use crate::storage::{CredentialStore, Database};
-use crate::{CoreConfig, JellifyCore};
+use crate::{CoreConfig, LyrebirdCore};
 use serde_json::json;
 use std::sync::Once;
 use wiremock::matchers::{method, path, query_param};
@@ -608,7 +608,7 @@ async fn list_tracks_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -846,7 +846,7 @@ async fn instant_mix_requires_authenticated_session() {
     let client = mock_client(&server.uri());
     let err = client.instant_mix("seed-1", 25).await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -911,7 +911,7 @@ async fn suggestions_requires_authenticated_session() {
     let client = mock_client(&server.uri());
     let err = client.suggestions(12).await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -1347,7 +1347,7 @@ async fn artist_detail_returns_server_404_on_empty_items() {
     // Post-refactor: the 404 local-miss case uses the dedicated
     // `NotFound` variant rather than the coarse `Server { status: 404 }`.
     assert!(
-        matches!(err, crate::error::JellifyError::NotFound(_)),
+        matches!(err, crate::error::LyrebirdError::NotFound(_)),
         "expected NotFound, got {err:?}"
     );
 }
@@ -1454,7 +1454,7 @@ async fn lyrics_requires_authenticated_session() {
     let client = mock_client(&server.uri());
     let err = client.lyrics("any").await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -1746,7 +1746,7 @@ async fn latest_albums_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -1925,7 +1925,7 @@ async fn playlists_require_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
     let err = client
@@ -1933,7 +1933,7 @@ async fn playlists_require_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -2078,7 +2078,7 @@ async fn playlist_tracks_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -2165,7 +2165,7 @@ async fn fetch_item_empty_items_returns_not_found() {
     // Post-refactor: the local empty-items miss raises `NotFound` rather
     // than the coarse `Server { status: 404 }`.
     assert!(
-        matches!(err, crate::error::JellifyError::NotFound(_)),
+        matches!(err, crate::error::LyrebirdError::NotFound(_)),
         "expected NotFound, got {err:?}"
     );
 }
@@ -2180,7 +2180,7 @@ async fn fetch_item_without_session_returns_not_authenticated() {
     let client = mock_client(&server.uri());
     let err = client.fetch_item("anything", &[]).await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -2388,7 +2388,7 @@ async fn search_hints_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -2498,7 +2498,7 @@ async fn search_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -2782,7 +2782,7 @@ async fn set_favorite_without_session_returns_not_authenticated() {
     let client = mock_client(&server.uri());
     let err = client.set_favorite("anything").await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -2793,7 +2793,7 @@ async fn unset_favorite_without_session_returns_not_authenticated() {
     let client = mock_client(&server.uri());
     let err = client.unset_favorite("anything").await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -3026,7 +3026,7 @@ async fn report_playback_progress_propagates_server_errors() {
         .await
         .unwrap_err();
     match err {
-        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 500),
+        crate::error::LyrebirdError::Server { status, .. } => assert_eq!(status, 500),
         other => panic!("expected Server 500, got {other:?}"),
     }
 }
@@ -3049,7 +3049,7 @@ async fn report_playback_progress_without_session_returns_not_authenticated() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -3143,7 +3143,7 @@ async fn report_playback_stopped_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -3297,7 +3297,7 @@ async fn create_playlist_propagates_server_errors() {
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.create_playlist("x", &[], None).await.unwrap_err();
     match err {
-        crate::error::JellifyError::Server { status, .. } => assert_eq!(status, 500),
+        crate::error::LyrebirdError::Server { status, .. } => assert_eq!(status, 500),
         other => panic!("expected Server 500, got {other:?}"),
     }
 }
@@ -3312,7 +3312,7 @@ async fn create_playlist_requires_authenticated_session() {
     let client = mock_client(&server.uri());
     let err = client.create_playlist("x", &[], None).await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -3376,7 +3376,7 @@ async fn add_to_playlist_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -3705,7 +3705,7 @@ async fn report_playback_started_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -3799,7 +3799,7 @@ async fn post_capabilities_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -3893,7 +3893,7 @@ async fn playback_info_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -4009,7 +4009,7 @@ async fn music_library_id_returns_404_when_no_music_view() {
     // Post-refactor: a missing "music" collection view surfaces as
     // `NotFound` rather than the coarse `Server { status: 404 }`.
     assert!(
-        matches!(err, crate::error::JellifyError::NotFound(_)),
+        matches!(err, crate::error::LyrebirdError::NotFound(_)),
         "expected NotFound, got {err:?}"
     );
 }
@@ -4072,17 +4072,17 @@ async fn library_resolution_requires_authenticated_session() {
     let client = mock_client(&server.uri());
     let err = client.user_views().await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated on user_views, got {err:?}"
     );
     let err = client.music_library_id().await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated on music_library_id, got {err:?}"
     );
     let err = client.playlist_library_id().await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated on playlist_library_id, got {err:?}"
     );
 }
@@ -4225,7 +4225,7 @@ async fn remove_from_playlist_propagates_server_errors() {
     // Post-refactor: 403 responses surface as the dedicated `Forbidden`
     // variant rather than the coarse `Server { status: 403 }`.
     assert!(
-        matches!(err, crate::error::JellifyError::Forbidden(_)),
+        matches!(err, crate::error::LyrebirdError::Forbidden(_)),
         "expected Forbidden, got {err:?}"
     );
 }
@@ -4239,7 +4239,7 @@ async fn remove_from_playlist_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -4567,12 +4567,12 @@ fn play_history_counts() {
 // Session auto-restore (resume_session / login persistence)
 // ---------------------------------------------------------------------------
 
-/// Build a temp-backed `JellifyCore` so each test gets its own `jellify.db`
+/// Build a temp-backed `LyrebirdCore` so each test gets its own `lyrebird.db`
 /// without colliding with other tests or leaking into the user's real data
 /// directory.
-fn resume_test_core(tmp: &tempfile::TempDir) -> std::sync::Arc<JellifyCore> {
+fn resume_test_core(tmp: &tempfile::TempDir) -> std::sync::Arc<LyrebirdCore> {
     install_mock_keyring();
-    JellifyCore::new(CoreConfig {
+    LyrebirdCore::new(CoreConfig {
         data_dir: tmp.path().to_string_lossy().into_owned(),
         device_name: "Test".into(),
     })
@@ -4707,7 +4707,7 @@ async fn login_persists_user_id_and_supports_resume() {
     // pointed at the same data dir and assert `resume_session` hands back the
     // same session without a network round-trip.
     //
-    // `JellifyCore::login` is a sync FFI wrapper that `block_on`s its own
+    // `LyrebirdCore::login` is a sync FFI wrapper that `block_on`s its own
     // tokio runtime, so we route it through `spawn_blocking` to keep it off
     // the test harness's current-thread runtime (otherwise tokio refuses
     // with "Cannot start a runtime from within a runtime").
@@ -4737,7 +4737,7 @@ async fn login_persists_user_id_and_supports_resume() {
     let server_url_for_login = server_url.clone();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path_for_login,
             device_name: "Test".into(),
         })
@@ -4770,7 +4770,7 @@ async fn login_persists_user_id_and_supports_resume() {
     let tmp_path_for_resume = tmp_path.clone();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core2 = JellifyCore::new(CoreConfig {
+        let core2 = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path_for_resume,
             device_name: "Test".into(),
         })
@@ -4818,7 +4818,7 @@ async fn logout_clears_persisted_settings() {
     let server_url = server.uri();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path.clone(),
             device_name: "Test".into(),
         })
@@ -4843,7 +4843,7 @@ async fn logout_clears_persisted_settings() {
         );
 
         // Resume on a brand-new core over the same data dir should now bail.
-        let core2 = JellifyCore::new(CoreConfig {
+        let core2 = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path,
             device_name: "Test".into(),
         })
@@ -4881,7 +4881,7 @@ async fn forget_token_preserves_server_url_and_username() {
     let server_url = server.uri();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path,
             device_name: "Test".into(),
         })
@@ -4931,7 +4931,7 @@ async fn forget_token_preserves_server_url_and_username() {
 
 /// `503` on the first two attempts, then `200`. The retry layer should
 /// swallow the early failures and return the eventual success payload —
-/// callers never see a `JellifyError::Server { 503, .. }`.
+/// callers never see a `LyrebirdError::Server { 503, .. }`.
 #[tokio::test]
 async fn retry_recovers_from_transient_5xx() {
     let server = MockServer::start().await;
@@ -4986,7 +4986,7 @@ async fn retry_does_not_loop_on_501_not_implemented() {
     let client = mock_client(&server.uri());
     let err = client.public_info().await.unwrap_err();
     match err {
-        JellifyError::Server { status, .. } => assert_eq!(status, 501),
+        LyrebirdError::Server { status, .. } => assert_eq!(status, 501),
         other => panic!("expected Server {{ 501 }}, got {other:?}"),
     }
     let hits = server
@@ -5000,7 +5000,7 @@ async fn retry_does_not_loop_on_501_not_implemented() {
 }
 
 /// Exhausting the retry budget (three 5xx in a row) surfaces the last
-/// server error as `JellifyError::Server`, not as `Network(_)`.
+/// server error as `LyrebirdError::Server`, not as `Network(_)`.
 #[tokio::test]
 async fn retry_surfaces_last_server_error_when_budget_exhausted() {
     let server = MockServer::start().await;
@@ -5013,7 +5013,7 @@ async fn retry_surfaces_last_server_error_when_budget_exhausted() {
     let client = mock_client(&server.uri());
     let err = client.public_info().await.unwrap_err();
     match err {
-        JellifyError::Server { status, .. } => assert_eq!(status, 502),
+        LyrebirdError::Server { status, .. } => assert_eq!(status, 502),
         other => panic!("expected Server {{ 502 }}, got {other:?}"),
     }
     let hits = server
@@ -5054,7 +5054,7 @@ async fn auth_401_without_callback_returns_auth_expired() {
         .await
         .expect_err("401 without refresh must fail");
     assert!(
-        matches!(err, JellifyError::AuthExpired),
+        matches!(err, LyrebirdError::AuthExpired),
         "expected AuthExpired, got {err:?}"
     );
 }
@@ -5148,7 +5148,7 @@ async fn auth_401_with_callback_returning_none_surfaces_expired() {
     client.set_refresh_callback(std::sync::Arc::new(|| Ok(None)));
 
     let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
-    assert!(matches!(err, JellifyError::AuthExpired));
+    assert!(matches!(err, LyrebirdError::AuthExpired));
 }
 
 /// When the callback hands back the *same* token the client already has,
@@ -5176,7 +5176,7 @@ async fn auth_401_with_same_token_does_not_loop() {
     client.set_refresh_callback(std::sync::Arc::new(|| Ok(Some("same-token".to_string()))));
 
     let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
-    assert!(matches!(err, JellifyError::AuthExpired));
+    assert!(matches!(err, LyrebirdError::AuthExpired));
 
     // Crucial: only the initial 401 hit, no loop.
     let hits = server
@@ -5246,7 +5246,7 @@ fn shuffle_repeat_round_trips_all_variants() {
     // runs do not collide. Best-effort removal at the end — it is fine if
     // the process exits before the remove; the OS will clean up temp files.
     let tmp = std::env::temp_dir().join(format!(
-        "jellify_test_sr_{}.db",
+        "lyrebird_test_sr_{}.db",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())
@@ -5315,8 +5315,8 @@ fn self_signed_cert_error_detected_from_error_chain() {
 }
 
 /// End-to-end mapping test: a reqwest request to a server using a self-signed
-/// certificate must produce `JellifyError::SelfSignedCertificate { host }`,
-/// not `JellifyError::Network`.
+/// certificate must produce `LyrebirdError::SelfSignedCertificate { host }`,
+/// not `LyrebirdError::Network`.
 ///
 /// This test hits `https://self-signed.badssl.com/` (a public test endpoint
 /// intentionally using a self-signed cert). It is tagged `#[ignore]` so it
@@ -5325,7 +5325,7 @@ fn self_signed_cert_error_detected_from_error_chain() {
 #[tokio::test]
 #[ignore = "requires outbound HTTPS to self-signed.badssl.com"]
 async fn cert_error_maps_to_structured_variant() {
-    use crate::error::JellifyError;
+    use crate::error::LyrebirdError;
 
     // A default reqwest client uses rustls and will reject the self-signed cert.
     let result = reqwest::Client::builder()
@@ -5336,10 +5336,10 @@ async fn cert_error_maps_to_structured_variant() {
         .await;
 
     let reqwest_err = result.expect_err("badssl.com must fail cert validation");
-    let jellify_err: JellifyError = reqwest_err.into();
+    let lyrebird_err: LyrebirdError = reqwest_err.into();
 
-    match jellify_err {
-        JellifyError::SelfSignedCertificate { ref host } => {
+    match lyrebird_err {
+        LyrebirdError::SelfSignedCertificate { ref host } => {
             assert!(
                 host.contains("badssl.com"),
                 "host should be 'self-signed.badssl.com', got '{host}'"
@@ -5350,10 +5350,10 @@ async fn cert_error_maps_to_structured_variant() {
 }
 
 /// Confirm that a plain connection-refused error (not a cert issue) continues
-/// to map to `JellifyError::Network`, not `SelfSignedCertificate`.
+/// to map to `LyrebirdError::Network`, not `SelfSignedCertificate`.
 #[tokio::test]
 async fn non_cert_transport_error_stays_network() {
-    use crate::error::JellifyError;
+    use crate::error::LyrebirdError;
 
     // Connect to a port that is (almost certainly) not listening.  This
     // produces a connect-refused transport error, not a cert error.
@@ -5368,11 +5368,11 @@ async fn non_cert_transport_error_stays_network() {
     let Some(reqwest_err) = result.err() else {
         return;
     };
-    let jellify_err: JellifyError = reqwest_err.into();
+    let lyrebird_err: LyrebirdError = reqwest_err.into();
 
     assert!(
-        matches!(jellify_err, JellifyError::Network(_)),
-        "connection-refused must map to Network, got {jellify_err:?}"
+        matches!(lyrebird_err, LyrebirdError::Network(_)),
+        "connection-refused must map to Network, got {lyrebird_err:?}"
     );
 }
 
@@ -5387,17 +5387,20 @@ async fn non_cert_transport_error_stays_network() {
 #[test]
 fn login_rejects_whitespace_only_username() {
     // Error fires before any HTTP call — no server needed.
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
     let config = CoreConfig {
-        data_dir: String::new(),
+        data_dir: tmp.path().to_string_lossy().to_string(),
         device_name: "Test".into(),
     };
-    let core = JellifyCore::new(config).unwrap();
+    let core = LyrebirdCore::new(config).unwrap();
 
     let err = core
         .login("http://localhost:1".into(), "   ".into(), "password".into())
         .unwrap_err();
     assert!(
-        matches!(err, JellifyError::InvalidCredentials),
+        matches!(err, LyrebirdError::InvalidCredentials),
         "whitespace-only username should return InvalidCredentials, got {err:?}"
     );
 }
@@ -5425,12 +5428,16 @@ async fn login_trims_credentials_before_auth() {
         .await;
 
     let server_url = server.uri();
-    // JellifyCore::login is a sync FFI wrapper that block_on's its own runtime;
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
+    // LyrebirdCore::login is a sync FFI wrapper that block_on's its own runtime;
     // run it in spawn_blocking so we don't nest runtimes.
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
-            data_dir: String::new(),
+        let core = LyrebirdCore::new(CoreConfig {
+            data_dir: tmp_path,
             device_name: "Test".into(),
         })
         .unwrap();
@@ -5520,7 +5527,7 @@ fn auth_header_truncates_long_device_name() {
 /// callers can surface a diagnostic to the user.
 #[test]
 fn keyring_write_error_variant_is_displayable() {
-    let err = JellifyError::KeyringWrite {
+    let err = LyrebirdError::KeyringWrite {
         reason: "OS keychain busy".into(),
     };
     let msg = err.to_string();
@@ -5534,7 +5541,7 @@ fn keyring_write_error_variant_is_displayable() {
 /// `KeyringWrite` rather than swallowing it. This is verified by running
 /// `login` against the shared mock keyring (which succeeds), then asserting
 /// that a simulated write failure at the `CredentialStore` level is correctly
-/// mapped to `JellifyError::KeyringWrite`.
+/// mapped to `LyrebirdError::KeyringWrite`.
 ///
 /// Because `keyring`'s global builder is set once per process we cannot inject
 /// a failing backend without racing other tests. We therefore verify the error
@@ -5563,10 +5570,14 @@ async fn login_keyring_write_is_not_silenced() {
         .await;
 
     let server_url = server.uri();
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
-            data_dir: String::new(),
+        let core = LyrebirdCore::new(CoreConfig {
+            data_dir: tmp_path,
             device_name: "Test".into(),
         })
         .unwrap();
@@ -5579,7 +5590,7 @@ async fn login_keyring_write_is_not_silenced() {
         // Any other error variant indicates a regression.
         match result {
             Ok(_) => {}
-            Err(JellifyError::KeyringWrite { .. }) => {}
+            Err(LyrebirdError::KeyringWrite { .. }) => {}
             Err(other) => panic!("unexpected error from login: {other:?}"),
         }
     })
@@ -5620,7 +5631,7 @@ async fn logout_calls_sessions_logout_endpoint() {
 
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path,
             device_name: "Test".into(),
         })
@@ -5668,7 +5679,7 @@ async fn logout_clears_user_data() {
 
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path.clone(),
             device_name: "Test".into(),
         })
@@ -5707,7 +5718,7 @@ async fn logout_clears_user_data() {
             "keyring token must be deleted on logout"
         );
 
-        let core2 = JellifyCore::new(CoreConfig {
+        let core2 = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path,
             device_name: "Test".into(),
         })
@@ -5744,7 +5755,7 @@ async fn logout_tolerates_server_post_failure() {
 
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path.clone(),
             device_name: "Test".into(),
         })
@@ -5836,7 +5847,7 @@ async fn rename_playlist_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -5879,7 +5890,7 @@ async fn delete_playlist_requires_authenticated_session() {
     let client = mock_client(&server.uri());
     let err = client.delete_playlist("pl-1").await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -5929,7 +5940,7 @@ async fn reorder_playlist_track_requires_authenticated_session() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -5985,7 +5996,7 @@ async fn playlist_tracks_populates_playlist_item_id() {
 // ---------------------------------------------------------------------------
 
 /// Helper: spawn a heartbeat loop directly using `JellyfinClient` (not
-/// `JellifyCore`) so the test can run inside a `#[tokio::test]` without
+/// `LyrebirdCore`) so the test can run inside a `#[tokio::test]` without
 /// fighting the core's embedded `tokio::runtime::Runtime`.
 ///
 /// Returns an `AbortHandle` — the test cancels the task when done.
@@ -6028,7 +6039,7 @@ async fn spawn_heartbeat_for_test(
 /// instantaneously without real wall-clock delays.
 ///
 /// The test operates on `JellyfinClient` directly to avoid the nested-
-/// runtime conflict that arises when `JellifyCore`'s embedded `block_on`
+/// runtime conflict that arises when `LyrebirdCore`'s embedded `block_on`
 /// runs inside the test's tokio executor. See issue #594.
 #[tokio::test]
 async fn heartbeat_fires_at_expected_cadence() {
@@ -6199,7 +6210,7 @@ async fn heartbeat_stops_after_abort() {
 
 /// When the `CancellationToken` on a `JellyfinClient` is cancelled while
 /// the retry loop is sleeping through its backoff delay, the request must
-/// return `JellifyError::Other("request cancelled")` immediately rather than
+/// return `LyrebirdError::Other("request cancelled")` immediately rather than
 /// waiting out the full delay or completing the retry.
 #[tokio::test]
 async fn cancelled_token_aborts_retry_backoff() {
@@ -6234,7 +6245,7 @@ async fn cancelled_token_aborts_retry_backoff() {
         "cancellation should abort the retry sleep quickly, elapsed={elapsed:?}"
     );
     match err {
-        JellifyError::Other(ref msg) if msg.contains("cancelled") => {}
+        LyrebirdError::Other(ref msg) if msg.contains("cancelled") => {}
         other => panic!("expected Other(\"request cancelled\"), got {other:?}"),
     }
 }
@@ -6527,10 +6538,14 @@ async fn with_client_releases_inner_lock_before_http() {
         .await;
 
     let server_url = server.uri();
+    // Per-test tempdir avoids parallel-test SQLite contention with other
+    // tests that share the default data_dir (see #781).
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         let core = std::sync::Arc::new(
-            JellifyCore::new(CoreConfig {
-                data_dir: String::new(),
+            LyrebirdCore::new(CoreConfig {
+                data_dir: tmp_path,
                 device_name: "Test".into(),
             })
             .unwrap(),
@@ -6693,7 +6708,7 @@ async fn items_query_builder_requires_user_id() {
     let client = mock_client(&server.uri());
     let err = ItemsQuery::new().execute(&client).await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
 }
@@ -6703,7 +6718,7 @@ async fn structured_error_auth_maps_401() {
     // A 401 on an authenticated library call goes through the silent
     // re-auth path in `send_with_retry_raw`; with no refresh callback
     // wired (and therefore no fresh keyring token to grab), the caller
-    // sees [`JellifyError::AuthExpired`] rather than the raw `Auth(body)`.
+    // sees [`LyrebirdError::AuthExpired`] rather than the raw `Auth(body)`.
     // The raw `Auth(_)` variant is still the target of `from_status` for
     // endpoints that bypass the retry layer — verified separately on
     // `from_status` directly.
@@ -6726,15 +6741,15 @@ async fn structured_error_auth_maps_401() {
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::AuthExpired),
+        matches!(err, crate::error::LyrebirdError::AuthExpired),
         "expected AuthExpired for 401 on authenticated call, got {err:?}"
     );
 
     // And the raw mapping (`from_status`) still lands on `Auth(body)` —
     // which is what endpoints that bypass the retry layer will see.
-    let raw = crate::error::JellifyError::from_status(401, "unauthorized".into(), None);
+    let raw = crate::error::LyrebirdError::from_status(401, "unauthorized".into(), None);
     assert!(
-        matches!(raw, crate::error::JellifyError::Auth(_)),
+        matches!(raw, crate::error::LyrebirdError::Auth(_)),
         "from_status(401) must be Auth, got {raw:?}"
     );
 }
@@ -6760,7 +6775,7 @@ async fn structured_error_forbidden_maps_403() {
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::Forbidden(_)),
+        matches!(err, crate::error::LyrebirdError::Forbidden(_)),
         "expected Forbidden for 403, got {err:?}"
     );
 }
@@ -6790,7 +6805,7 @@ async fn structured_error_rate_limit_parses_retry_after() {
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
     match err {
-        crate::error::JellifyError::RateLimit { retry_after } => {
+        crate::error::LyrebirdError::RateLimit { retry_after } => {
             assert_eq!(retry_after, Some(42));
         }
         other => panic!("expected RateLimit, got {other:?}"),
@@ -6818,7 +6833,7 @@ async fn structured_error_server_5xx_is_retryable() {
     client.authenticate_by_name("n", "pw").await.unwrap();
     let err = client.albums(Paging::new(0, 10)).await.unwrap_err();
     match &err {
-        crate::error::JellifyError::Server { status, .. } => assert_eq!(*status, 503),
+        crate::error::LyrebirdError::Server { status, .. } => assert_eq!(*status, 503),
         other => panic!("expected Server, got {other:?}"),
     }
     assert!(err.is_retryable(), "5xx must be retryable");
@@ -6826,17 +6841,17 @@ async fn structured_error_server_5xx_is_retryable() {
 
 #[test]
 fn structured_error_is_retryable_classification() {
-    use crate::error::JellifyError;
+    use crate::error::LyrebirdError;
 
     // Retryable: RateLimit, Network, Server 5xx.
-    assert!(JellifyError::RateLimit { retry_after: None }.is_retryable());
-    assert!(JellifyError::Network("boom".into()).is_retryable());
-    assert!(JellifyError::Server {
+    assert!(LyrebirdError::RateLimit { retry_after: None }.is_retryable());
+    assert!(LyrebirdError::Network("boom".into()).is_retryable());
+    assert!(LyrebirdError::Server {
         status: 500,
         body: "".into(),
     }
     .is_retryable());
-    assert!(JellifyError::Server {
+    assert!(LyrebirdError::Server {
         status: 599,
         body: "".into(),
     }
@@ -6844,15 +6859,15 @@ fn structured_error_is_retryable_classification() {
 
     // Not retryable: Auth, Forbidden, NotFound, Decode, InvalidInput,
     // NotAuthenticated, NoSession.
-    assert!(!JellifyError::Auth("".into()).is_retryable());
-    assert!(!JellifyError::Forbidden("".into()).is_retryable());
-    assert!(!JellifyError::NotFound("".into()).is_retryable());
-    assert!(!JellifyError::Decode("".into()).is_retryable());
-    assert!(!JellifyError::InvalidInput("".into()).is_retryable());
-    assert!(!JellifyError::NotAuthenticated.is_retryable());
-    assert!(!JellifyError::NoSession.is_retryable());
+    assert!(!LyrebirdError::Auth("".into()).is_retryable());
+    assert!(!LyrebirdError::Forbidden("".into()).is_retryable());
+    assert!(!LyrebirdError::NotFound("".into()).is_retryable());
+    assert!(!LyrebirdError::Decode("".into()).is_retryable());
+    assert!(!LyrebirdError::InvalidInput("".into()).is_retryable());
+    assert!(!LyrebirdError::NotAuthenticated.is_retryable());
+    assert!(!LyrebirdError::NoSession.is_retryable());
     // A 4xx `Server` (unclassified) is NOT retryable — only 5xx is.
-    assert!(!JellifyError::Server {
+    assert!(!LyrebirdError::Server {
         status: 418,
         body: "".into(),
     }
@@ -6861,32 +6876,32 @@ fn structured_error_is_retryable_classification() {
 
 #[test]
 fn structured_error_from_status_dispatches_variants() {
-    use crate::error::JellifyError;
+    use crate::error::LyrebirdError;
     assert!(matches!(
-        JellifyError::from_status(401, "".into(), None),
-        JellifyError::Auth(_)
+        LyrebirdError::from_status(401, "".into(), None),
+        LyrebirdError::Auth(_)
     ));
     assert!(matches!(
-        JellifyError::from_status(403, "".into(), None),
-        JellifyError::Forbidden(_)
+        LyrebirdError::from_status(403, "".into(), None),
+        LyrebirdError::Forbidden(_)
     ));
     assert!(matches!(
-        JellifyError::from_status(404, "".into(), None),
-        JellifyError::NotFound(_)
+        LyrebirdError::from_status(404, "".into(), None),
+        LyrebirdError::NotFound(_)
     ));
     assert!(matches!(
-        JellifyError::from_status(429, "".into(), Some(5)),
-        JellifyError::RateLimit {
+        LyrebirdError::from_status(429, "".into(), Some(5)),
+        LyrebirdError::RateLimit {
             retry_after: Some(5)
         }
     ));
     assert!(matches!(
-        JellifyError::from_status(500, "".into(), None),
-        JellifyError::Server { status: 500, .. }
+        LyrebirdError::from_status(500, "".into(), None),
+        LyrebirdError::Server { status: 500, .. }
     ));
     assert!(matches!(
-        JellifyError::from_status(418, "".into(), None),
-        JellifyError::Server { status: 418, .. }
+        LyrebirdError::from_status(418, "".into(), None),
+        LyrebirdError::Server { status: 418, .. }
     ));
 }
 
@@ -7235,12 +7250,12 @@ async fn mark_played_without_session_returns_not_authenticated() {
     let client = mock_client(&server.uri());
     let err = client.mark_played("anything").await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
     let err = client.mark_unplayed("anything").await.unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
     // No HTTP traffic should have escaped the guard.
@@ -7344,7 +7359,7 @@ async fn tracks_by_artist_without_session_returns_not_authenticated() {
         .await
         .unwrap_err();
     assert!(
-        matches!(err, crate::error::JellifyError::NotAuthenticated),
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
     );
     assert!(
@@ -7387,7 +7402,7 @@ async fn login_forwards_empty_password_to_server() {
     let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path,
             device_name: "Test".into(),
         })
@@ -7444,7 +7459,7 @@ async fn login_forwards_whitespace_only_password_as_empty() {
     let tmp_path = tmp.path().to_string_lossy().to_string();
     tokio::task::spawn_blocking(move || {
         install_mock_keyring();
-        let core = JellifyCore::new(CoreConfig {
+        let core = LyrebirdCore::new(CoreConfig {
             data_dir: tmp_path,
             device_name: "Test".into(),
         })

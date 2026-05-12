@@ -2,7 +2,7 @@
 # Keep names short and stable; update colors/descriptions here.
 
 # -- Area (what part of the project) --
-- { name: "area:core",        color: "1D76DB", description: "Rust core (jellify_core) — API, queue, storage" }
+- { name: "area:core",        color: "1D76DB", description: "Rust core (lyrebird_core) — API, queue, storage" }
 - { name: "area:macos",       color: "000000", description: "macOS app (SwiftUI + AVFoundation)" }
 - { name: "area:windows",     color: "0078D4", description: "Windows app (WinUI 3)" }
 - { name: "area:linux",       color: "E95420", description: "Linux app (GTK4 + libadwaita)" }
@@ -55,14 +55,14 @@
 - { name: "slice:tests",      color: "1D76DB", description: "core/src/tests.rs — Rust test suite" }
 - { name: "slice:screens",    color: "000000", description: "macos Screens/* — full-screen views" }
 - { name: "slice:components", color: "000000", description: "macos Components/* — reusable widgets" }
-- { name: "slice:audio",      color: "000000", description: "macos JellifyAudio/ + Theme/ + System/" }
-- { name: "slice:scaffold",   color: "000000", description: "macos AppModel + JellifyApp + AppDelegate (HOTSPOT)" }
+- { name: "slice:audio",      color: "000000", description: "macos LyrebirdAudio/ + Theme/ + System/" }
+- { name: "slice:scaffold",   color: "000000", description: "macos AppModel + LyrebirdApp + AppDelegate (HOTSPOT)" }
 
 # -- Hotspot locks (managed by Scripts/area-lock.sh; do not assign manually) --
 - { name: "lock:hotspot-clientrs",   color: "B60205", description: "core/src/client.rs has an open fix; do not parallelize" }
 - { name: "lock:hotspot-testsrs",    color: "B60205", description: "core/src/tests.rs has an open fix; do not parallelize" }
 - { name: "lock:hotspot-appmodel",   color: "B60205", description: "AppModel.swift has an open fix; do not parallelize" }
-- { name: "lock:hotspot-jellifyapp", color: "B60205", description: "JellifyApp.swift has an open fix; do not parallelize" }
+- { name: "lock:hotspot-lyrebirdapp", color: "B60205", description: "LyrebirdApp.swift has an open fix; do not parallelize" }
 
 # -- Source (provenance of the issue) --
 - { name: "source:auto-audit", color: "8B5A2B", description: "Filed by the agentic audit pipeline (area-auditor)" }

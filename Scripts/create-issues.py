@@ -2,7 +2,7 @@
 """
 Bulk-create GitHub issues from the research agent output markdown files.
 
-Each file in /tmp/jellify-research/*.md contains issue sections in the shape:
+Each file in /tmp/lyrebird-research/*.md contains issue sections in the shape:
 
     ### Issue N: <Title>
     **Labels:** `a`, `b`, `c`
@@ -27,7 +27,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 
-RESEARCH_DIR = pathlib.Path("/tmp/jellify-research")
+RESEARCH_DIR = pathlib.Path("/tmp/lyrebird-research")
 ISSUE_HEADER_RE = re.compile(r"^###\s+Issue\s+\d+[:.]?\s*(?P<title>.+?)\s*$", re.MULTILINE)
 META_RE = re.compile(r"^\*\*(?P<key>[^:*]+):\*\*\s*(?P<value>.+?)\s*$", re.MULTILINE)
 TICK_RE = re.compile(r"`([^`]+)`")

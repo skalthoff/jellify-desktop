@@ -1,14 +1,16 @@
 #requires -Version 7.0
 <#
 .SYNOPSIS
-    Generate C# UniFFI bindings for jellify_core into Jellify.Core/Generated/.
+    Generate C# UniFFI bindings for lyrebird_core into Lyrebird.Core/Generated/.
 
 .DESCRIPTION
-    Runs `uniffi-bindgen-cs` against a freshly built `jellify_core.dll`. The
+    Runs `uniffi-bindgen-cs` against a freshly built `lyrebird_core.dll`. The
     bindgen reads the embedded UniFFI metadata from the DLL itself, so the
     DLL must already exist (run `tools/build-core.ps1` first). Output goes
-    to `windows/Jellify.Core/Generated/jellify_core.cs`, which is committed
-    so dev machines don't all need uniffi-bindgen-cs installed.
+    to `windows/Lyrebird.Core/Generated/lyrebird_core.cs`, which is
+    gitignored — dev machines must run this script once after cloning (and
+    again whenever the Rust UniFFI surface changes) to materialize the file
+    before `dotnet build`.
 
     Install the bindgen once with:
 
@@ -29,8 +31,8 @@
 
 .EXAMPLE
     pwsh windows/tools/gen-bindings.ps1
-    Reads target/x86_64-pc-windows-msvc/debug/jellify_core.dll, writes
-    windows/Jellify.Core/Generated/jellify_core.cs.
+    Reads target/x86_64-pc-windows-msvc/debug/lyrebird_core.dll, writes
+    windows/Lyrebird.Core/Generated/lyrebird_core.cs.
 #>
 [CmdletBinding()]
 param(
@@ -45,7 +47,7 @@ $ErrorActionPreference = 'Stop'
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RepoRoot  = Resolve-Path (Join-Path $ScriptDir '..' '..')
-$OutDir    = Join-Path $RepoRoot 'windows' 'Jellify.Core' 'Generated'
+$OutDir    = Join-Path $RepoRoot 'windows' 'Lyrebird.Core' 'Generated'
 $Config    = Join-Path $RepoRoot 'windows' 'uniffi.toml'
 
 $Triple = if ($Architecture -eq 'x64') {
@@ -56,7 +58,7 @@ else {
 }
 
 $ProfileDir = if ($Configuration -eq 'Release') { 'release' } else { 'debug' }
-$Dll = Join-Path $RepoRoot 'target' $Triple $ProfileDir 'jellify_core.dll'
+$Dll = Join-Path $RepoRoot 'target' $Triple $ProfileDir 'lyrebird_core.dll'
 
 if (-not (Test-Path $Dll)) {
     throw "Native DLL not found at $Dll. Run windows/tools/build-core.ps1 first."

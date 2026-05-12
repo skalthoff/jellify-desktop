@@ -16,8 +16,8 @@
 //!
 //! See `tests/contract/README.md` for the full workflow.
 
-use jellify_core::client::JellyfinClient;
-use jellify_core::models::Paging;
+use lyrebird_core::client::JellyfinClient;
+use lyrebird_core::models::Paging;
 use std::path::Path;
 use wiremock::matchers::{method, path_regex};
 use wiremock::{Mock, MockServer, ResponseTemplate};

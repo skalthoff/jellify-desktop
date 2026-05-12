@@ -28,9 +28,9 @@ Thanks for your interest. This project is early — shapes and conventions are s
 cd macos
 ./Scripts/build-core.sh   # Re-run whenever core/ changes
 swift build
-./.build/arm64-apple-macosx/debug/Jellify       # unbundled (dev)
+./.build/arm64-apple-macosx/debug/Lyrebird       # unbundled (dev)
 # or
-./Scripts/make-bundle.sh && open build/Jellify.app  # bundled
+./Scripts/make-bundle.sh && open build/Lyrebird.app  # bundled
 ```
 
 ### Windows
@@ -38,9 +38,9 @@ swift build
 See `windows/README.md` for the full prerequisites list. Quick path:
 
 ```pwsh
-pwsh windows/tools/build-core.ps1     # cross-builds jellify_core.dll for x64+arm64
+pwsh windows/tools/build-core.ps1     # cross-builds lyrebird_core.dll for x64+arm64
 pwsh windows/tools/gen-bindings.ps1   # uniffi-bindgen-cs → Generated/*.cs
-dotnet build windows/Jellify.sln -c Debug -p:Platform=x64
+dotnet build windows/Lyrebird.sln -c Debug -p:Platform=x64
 ```
 
 ### Core
@@ -121,23 +121,23 @@ recently active" media app — the app that most recently wrote to
 foreground-app requirement and no accessibility permission to grant;
 whichever media app last announced itself is the target.
 
-Jellify wins that race by populating `MPNowPlayingInfoCenter` from its
+Lyrebird wins that race by populating `MPNowPlayingInfoCenter` from its
 `MediaSession` on every track change and transport action. After any
-play/pause/skip in Jellify, the OS considers Jellify the most-recent
+play/pause/skip in Lyrebird, the OS considers Lyrebird the most-recent
 media app until another player (Music.app, Spotify, a browser playing
 media, etc.) overwrites `nowPlayingInfo`. No separate `HIDManager` /
 private `MediaRemote` keylogger route is needed — that was the
 pre-Sierra workaround and is obsolete.
 
-A common user-facing symptom: "F8 stopped working in Jellify." Nine
+A common user-facing symptom: "F8 stopped working in Lyrebird." Nine
 times out of ten this is because the user opened Music.app or another
 media app afterward and that app stole the most-recent slot. Playing
-anything in Jellify again reclaims it.
+anything in Lyrebird again reclaims it.
 
 To verify media keys work locally:
 
 1. Quit Music.app, Spotify, and any browser tab playing audio.
-2. Play a track in Jellify. This makes Jellify the most-recent media
+2. Play a track in Lyrebird. This makes Lyrebird the most-recent media
    app.
 3. Press F7 / F8 / F9. On many Apple keyboards the function-key row
    acts as media controls unless "Use F1, F2, etc. as standard function

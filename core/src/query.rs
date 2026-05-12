@@ -21,7 +21,7 @@
 
 use crate::client::{JellyfinClient, PaginatedItems, RawItem, RawItems};
 use crate::enums::{self, ItemField, ItemKind, ItemSortBy, SortOrder};
-use crate::error::{JellifyError, Result};
+use crate::error::{LyrebirdError, Result};
 use url::Url;
 
 /// Fluent builder for a Jellyfin `GET /Items`-family request.
@@ -352,7 +352,7 @@ impl ItemsQuery {
             .user_id
             .clone()
             .or_else(|| client.user_id().map(ToOwned::to_owned))
-            .ok_or(JellifyError::NotAuthenticated)?;
+            .ok_or(LyrebirdError::NotAuthenticated)?;
         let path = format!("Users/{effective_user}/Items");
         let mut url = client.endpoint(&path)?;
         self.apply(&mut url);

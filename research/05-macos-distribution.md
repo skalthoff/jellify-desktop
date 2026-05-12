@@ -1,6 +1,6 @@
 # macOS Distribution — Research & Issue Backlog
 
-Scope: ship a signed, notarized, auto-updating macOS `.dmg` of Jellify Desktop
+Scope: ship a signed, notarized, auto-updating macOS `.dmg` of Lyrebird Desktop
 that launches without the Gatekeeper "unidentified developer" popup. Current
 state: `macos/Scripts/make-bundle.sh` wraps a debug `swift build` executable in
 a minimal `Info.plist`-only bundle. No certificate, no notarization, no update
@@ -15,7 +15,7 @@ Conventions:
   bundle → sign → create-dmg → notarize → staple → upload → generate_appcast`.
 - All sensitive material (signing `.p12`, Apple ID, team ID, app-specific
   password, Sparkle private EdDSA key) lives in GitHub Actions secrets.
-- We stay **outside the Mac App Store** because Jellify ships under GPL-3.0;
+- We stay **outside the Mac App Store** because Lyrebird ships under GPL-3.0;
   GPL is incompatible with Apple's MAS distribution agreement. Hardened-runtime
   + Developer ID notarized is the right end state.
 
@@ -47,10 +47,10 @@ Steps:
 4. Export `.p12` from Keychain Access → My Certificates. Select both the
    cert **and** its private key (if the key is missing, export is greyed out).
    Set a long random password. Store the `.p12` and password in 1Password
-   under `jellify-desktop / Apple Developer ID`.
+   under `lyrebird-desktop / Apple Developer ID`.
 5. Note the Team ID (portal → Membership). Save to the same 1Password entry.
 6. Register an App-Specific Password at <https://appleid.apple.com>
-   (Security → App-Specific Passwords → "jellify-notarytool"). Save it.
+   (Security → App-Specific Passwords → "lyrebird-notarytool"). Save it.
 
 Out of this step we produce three durable secrets:
 `DEVELOPER_ID_P12_BASE64`, `DEVELOPER_ID_P12_PASSWORD`, `APPLE_ID`,
@@ -58,20 +58,20 @@ Out of this step we produce three durable secrets:
 
 ---
 
-### Issue 2: Register the bundle ID and reserve `jellify://` URL scheme
+### Issue 2: Register the bundle ID and reserve `lyrebird://` URL scheme
 **Labels:** `area:macos`, `area:dist`, `kind:chore`, `priority:p0`
 **Effort:** S
 
-The current Info.plist already uses `org.jellify.desktop`. Register this exact
+The current Info.plist already uses `org.lyrebird.desktop`. Register this exact
 string as an App ID in the developer portal (*Identifiers → + → App IDs →
 macOS App*) so we can later add capabilities (associated domains, iCloud,
 Sparkle deltas) without a bundle-ID migration. A mismatch between the bundle
 ID and the cert's recognized identifiers is a common notarization surprise.
 
 While here, finalize the custom URL scheme the Rust core will receive auth
-callbacks on. Recommended: `jellify://`. Declare it in `Info.plist` via
-`CFBundleURLTypes` with `CFBundleURLName = org.jellify.desktop` and
-`CFBundleURLSchemes = ["jellify"]`. No App Sandbox → no extra entitlements
+callbacks on. Recommended: `lyrebird://`. Declare it in `Info.plist` via
+`CFBundleURLTypes` with `CFBundleURLName = org.lyrebird.desktop` and
+`CFBundleURLSchemes = ["lyrebird"]`. No App Sandbox → no extra entitlements
 needed for URL scheme handling.
 
 ---
@@ -90,15 +90,15 @@ version fields from `$VERSION` / `$BUILD` env vars. Keys to add:
 - `CFBundleVersion` → monotonic build number (e.g. CI run number)
 - `LSMinimumSystemVersion` → `14.0` (matches `Package.swift`'s
   `.macOS(.v14)`)
-- `NSHumanReadableCopyright` → `© 2026 Jellify. GPL-3.0-only.`
+- `NSHumanReadableCopyright` → `© 2026 Lyrebird. GPL-3.0-only.`
 - `LSApplicationCategoryType` → `public.app-category.music`
 - `NSHighResolutionCapable` → `true` (already set)
 - `NSPrincipalClass` → `NSApplication` (already set)
 - `CFBundleURLTypes` → as per Issue 2
-- `SUFeedURL` → `https://jellify-music.github.io/jellify-desktop/appcast.xml`
+- `SUFeedURL` → `https://skalthoff.github.io/lyrebird-desktop/appcast.xml`
   (Sparkle, see Issue 14)
 - `SUPublicEDKey` → Sparkle EdDSA public key (base64, see Issue 13)
-- `LSUIElement` → **do not set** — Jellify is a dock-visible app.
+- `LSUIElement` → **do not set** — Lyrebird is a dock-visible app.
 - Do *not* add `NSMicrophoneUsageDescription` yet; only add usage-description
   strings once a code path actually triggers TCC, otherwise Apple's notary
   will reject for "unused purpose string" on newer tool versions.
@@ -113,7 +113,7 @@ Output: bundle script produces a bundle that `plutil -lint` passes and
 **Effort:** S
 
 Notarization requires the hardened runtime (`codesign -o runtime`). The app
-needs to keep working under it. Create `macos/Resources/Jellify.entitlements`
+needs to keep working under it. Create `macos/Resources/Lyrebird.entitlements`
 with only what we actually need:
 
 ```xml
@@ -160,19 +160,19 @@ updates at Ventura). Ship one universal `.app` so there's a single DMG.
 Changes to the script:
 
 ```sh
-cargo build --release --target aarch64-apple-darwin -p jellify_core
-cargo build --release --target x86_64-apple-darwin  -p jellify_core
+cargo build --release --target aarch64-apple-darwin -p lyrebird_core
+cargo build --release --target x86_64-apple-darwin  -p lyrebird_core
 
 mkdir -p target/universal-apple-darwin/release
 lipo -create \
-  target/aarch64-apple-darwin/release/libjellify_core.a \
-  target/x86_64-apple-darwin/release/libjellify_core.a \
-  -output target/universal-apple-darwin/release/libjellify_core.a
+  target/aarch64-apple-darwin/release/liblyrebird_core.a \
+  target/x86_64-apple-darwin/release/liblyrebird_core.a \
+  -output target/universal-apple-darwin/release/liblyrebird_core.a
 
 xcodebuild -create-xcframework \
-  -library target/universal-apple-darwin/release/libjellify_core.a \
+  -library target/universal-apple-darwin/release/liblyrebird_core.a \
   -headers "$HEADERS" \
-  -output macos/Jellify.xcframework
+  -output macos/Lyrebird.xcframework
 ```
 
 Then Swift:
@@ -197,7 +197,7 @@ Gotchas:
 **Effort:** M
 
 Signing must be scripted and deterministic; `xcodebuild`-driven signing is
-awkward in an SPM-only project. Write `sign.sh` that takes `Jellify.app` and
+awkward in an SPM-only project. Write `sign.sh` that takes `Lyrebird.app` and
 signs inside-out with the hardened runtime:
 
 ```sh
@@ -205,7 +205,7 @@ signs inside-out with the hardened runtime:
 set -euo pipefail
 APP="$1"
 IDENTITY="${DEVELOPER_ID_IDENTITY:-Developer ID Application}"
-ENTITLEMENTS="$(dirname "$0")/../Resources/Jellify.entitlements"
+ENTITLEMENTS="$(dirname "$0")/../Resources/Lyrebird.entitlements"
 
 # 1. Sign everything nested inside Frameworks/ first (Sparkle, any dylibs).
 find "$APP/Contents/Frameworks" -type d -name "*.framework" -print0 2>/dev/null | \
@@ -253,7 +253,7 @@ exclusively. Add `macos/Scripts/notarize.sh`:
 #!/usr/bin/env bash
 set -euo pipefail
 DMG="$1"
-PROFILE="${NOTARY_PROFILE:-jellify-notary}"
+PROFILE="${NOTARY_PROFILE:-lyrebird-notary}"
 
 xcrun notarytool submit "$DMG" \
   --keychain-profile "$PROFILE" \
@@ -276,7 +276,7 @@ One-time local bootstrap (developer runs this once; CI uses env-var
 variant — see Issue 17):
 
 ```sh
-xcrun notarytool store-credentials jellify-notary \
+xcrun notarytool store-credentials lyrebird-notary \
   --apple-id "$APPLE_ID" \
   --team-id "$APPLE_TEAM_ID" \
   --password "$APPLE_NOTARY_APP_PASSWORD"
@@ -298,18 +298,18 @@ wraps all of that:
 
 ```sh
 create-dmg \
-  --volname "Jellify" \
+  --volname "Lyrebird" \
   --volicon "macos/Resources/AppIcon.icns" \
   --background "macos/Resources/dmg-background.png" \
   --window-pos 200 120 \
   --window-size 660 400 \
   --icon-size 96 \
-  --icon "Jellify.app" 180 170 \
-  --hide-extension "Jellify.app" \
+  --icon "Lyrebird.app" 180 170 \
+  --hide-extension "Lyrebird.app" \
   --app-drop-link 480 170 \
   --codesign "$DEVELOPER_ID_IDENTITY" \
-  --notarize "jellify-notary" \
-  "Jellify-${VERSION}.dmg" \
+  --notarize "lyrebird-notary" \
+  "Lyrebird-${VERSION}.dmg" \
   "build/dist/"
 ```
 
@@ -319,7 +319,7 @@ Notes:
   6/7) and pass only `--codesign` — pick one to avoid double-signing.
 - Produce a separate `dmg-background.png` at `1320×800` (2× of window size)
   for Retina. Keep source at `design/dmg-background.svg`.
-- Output file name: `Jellify-0.1.0.dmg` — matches the Sparkle appcast
+- Output file name: `Lyrebird-0.1.0.dmg` — matches the Sparkle appcast
   enclosure URL convention.
 
 ---
@@ -329,11 +329,11 @@ Notes:
 **Effort:** S
 
 Ship a proper `.icns` — the current bundle has none. Source of truth: a
-single 1024×1024 SVG at `design/icons/jellify-app.svg` (design already lives
+single 1024×1024 SVG at `design/icons/lyrebird-app.svg` (design already lives
 under `design/`). Add `macos/Scripts/make-iconset.sh`:
 
 ```sh
-SRC="design/icons/jellify-app.svg"
+SRC="design/icons/lyrebird-app.svg"
 OUT="macos/Resources/AppIcon.iconset"
 mkdir -p "$OUT"
 for size in 16 32 64 128 256 512 1024; do
@@ -365,16 +365,16 @@ dependencies: [
 ],
 // …
 .executableTarget(
-    name: "Jellify",
+    name: "Lyrebird",
     dependencies: [
-        "JellifyCore", "JellifyAudio",
+        "LyrebirdCore", "LyrebirdAudio",
         .product(name: "Sparkle", package: "Sparkle"),
     ],
     …
 )
 ```
 
-Add an `Updater.swift` in `Sources/Jellify/`:
+Add an `Updater.swift` in `Sources/Lyrebird/`:
 
 ```swift
 import Sparkle
@@ -439,18 +439,18 @@ Sparkle clients poll `SUFeedURL` for a RSS feed describing available
 updates. Host on GitHub Pages — free, global CDN, HTTPS, static.
 
 Setup:
-1. Enable Pages on `jellify-desktop` repo → Source: `gh-pages` branch, or a
-   sibling repo `jellify-desktop-updates` (preferred: keeps the main repo
+1. Enable Pages on `lyrebird-desktop` repo → Source: `gh-pages` branch, or a
+   sibling repo `lyrebird-desktop-updates` (preferred: keeps the main repo
    git history clean).
 2. The `generate_appcast` tool (ships with Sparkle) reads a directory of
    DMGs + their release notes and emits an appcast XML:
    ```sh
    generate_appcast ./updates \
      --ed-key-file sparkle_ed_private.key \
-     --download-url-prefix "https://github.com/Jellify-Music/jellify-desktop/releases/download/" \
-     --full-release-notes-url "https://github.com/Jellify-Music/jellify-desktop/releases"
+     --download-url-prefix "https://github.com/skalthoff/lyrebird-desktop/releases/download/" \
+     --full-release-notes-url "https://github.com/skalthoff/lyrebird-desktop/releases"
    ```
-3. Release notes per version go at `./updates/Jellify-0.1.0.html` (Sparkle
+3. Release notes per version go at `./updates/Lyrebird-0.1.0.html` (Sparkle
    renders this inline in the updater prompt — keep it short and in plain
    HTML, no inline scripts).
 4. CI publishes the freshly-generated `appcast.xml` + `.html` files to the
@@ -461,13 +461,13 @@ Feed shape Sparkle expects:
 ```xml
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
   <channel>
-    <title>Jellify Updates</title>
+    <title>Lyrebird Updates</title>
     <item>
       <title>Version 0.1.0</title>
       <sparkle:version>1</sparkle:version>
       <sparkle:shortVersionString>0.1.0</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/…/Jellify-0.1.0.dmg"
+      <enclosure url="https://github.com/…/Lyrebird-0.1.0.dmg"
                  sparkle:edSignature="…" length="…"
                  type="application/octet-stream"/>
       <sparkle:releaseNotesLink>…/release-notes/0.1.0.html</sparkle:releaseNotesLink>
@@ -483,7 +483,7 @@ Feed shape Sparkle expects:
 **Effort:** M
 
 Sparkle supports binary delta updates (BSDiff over archive contents). A
-Jellify `.dmg` is ~30–60 MB once Rust + Sparkle + fonts are bundled; deltas
+Lyrebird `.dmg` is ~30–60 MB once Rust + Sparkle + fonts are bundled; deltas
 typically shrink to <5 MB. `generate_appcast` will produce both full and
 delta enclosures automatically if an adjacent older DMG is present in the
 updates dir. Defer until 2–3 versions are out, then:
@@ -505,9 +505,9 @@ on the main repo. Git tag drives the version. In CI (Issue 17), on a
 
 ```sh
 gh release create "v${VERSION}" \
-  --title "Jellify ${VERSION}" \
+  --title "Lyrebird ${VERSION}" \
   --notes-file "release-notes/${VERSION}.md" \
-  "dist/Jellify-${VERSION}.dmg#Jellify ${VERSION} (macOS universal)"
+  "dist/Lyrebird-${VERSION}.dmg#Lyrebird ${VERSION} (macOS universal)"
 ```
 
 Versioning: strict semver (`v0.1.0`, `v0.1.1`, `v1.0.0-beta.1`).
@@ -557,7 +557,7 @@ jobs:
 
       - name: Store notary credentials
         run: |
-          xcrun notarytool store-credentials jellify-notary \
+          xcrun notarytool store-credentials lyrebird-notary \
             --apple-id "${{ secrets.APPLE_ID }}" \
             --team-id "${{ secrets.APPLE_TEAM_ID }}" \
             --password "${{ secrets.APPLE_NOTARY_APP_PASSWORD }}"
@@ -575,13 +575,13 @@ jobs:
       - name: Sign .app
         env:
           DEVELOPER_ID_IDENTITY: ${{ secrets.DEVELOPER_ID_IDENTITY }}
-        run: macos/Scripts/sign.sh macos/build/Jellify.app
+        run: macos/Scripts/sign.sh macos/build/Lyrebird.app
 
       - name: Build DMG
         run: macos/Scripts/make-dmg.sh
 
       - name: Notarize DMG
-        run: macos/Scripts/notarize.sh "dist/Jellify-${VERSION}.dmg"
+        run: macos/Scripts/notarize.sh "dist/Lyrebird-${VERSION}.dmg"
 
       - name: Generate appcast
         env:
@@ -592,7 +592,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "$GITHUB_REF_NAME" dist/*.dmg \
-               --title "Jellify ${VERSION}" \
+               --title "Lyrebird ${VERSION}" \
                --notes-file "release-notes/${VERSION}.md"
 
       - name: Publish appcast to Pages
@@ -691,7 +691,7 @@ but two flags to double-check:
   generates none of this.
 - Add to CI: `codesign --test-requirement="=designated => anchor apple
   generic and certificate leaf[field.1.2.840.113635.100.6.1.13]"
-  Jellify.app` — this is the exact predicate Gatekeeper uses for Developer
+  Lyrebird.app` — this is the exact predicate Gatekeeper uses for Developer
   ID and catches certificate-chain breakage before shipping.
 
 ---
@@ -722,7 +722,7 @@ init, symbolication via Sentry dSYM upload, covers Swift + ObjC + signals.
 Alternative is PLCrashReporter (just the crash capture, you manage upload)
 or plain `os_log` + Console.app (no remote telemetry).
 
-Recommendation: Sentry, *strictly opt-in*, matches Jellify's
+Recommendation: Sentry, *strictly opt-in*, matches Lyrebird's
 privacy-first stance.
 
 Integration sketch:
@@ -732,7 +732,7 @@ import Sentry
 if Settings.shared.crashReportsEnabled {
     SentrySDK.start { options in
         options.dsn = "https://…@sentry.io/…"
-        options.releaseName = "jellify@\(Bundle.main.shortVersion)"
+        options.releaseName = "lyrebird@\(Bundle.main.shortVersion)"
         options.enableAppHangTracking = true
         options.enableUncaughtNSExceptionReporting = true  // macOS-only flag
         options.beforeSend = { event in
@@ -785,17 +785,17 @@ backends without a client update.
 **Labels:** `area:macos`, `area:docs`, `kind:chore`, `priority:p1`
 **Effort:** S
 
-Even on a notarized build, first launch after download shows the "Jellify is
+Even on a notarized build, first launch after download shows the "Lyrebird is
 an app downloaded from the Internet. Are you sure you want to open it?"
 dialog — this is normal and is *not* the unidentified-developer popup. Add
 a short `macos/DISTRIBUTION.md` ("First launch") section so support channels
 can link users to it:
 
 - Expected quarantine prompt on first run → click Open.
-- No Gatekeeper popup = success. If users see "Jellify cannot be opened
+- No Gatekeeper popup = success. If users see "Lyrebird cannot be opened
   because the developer cannot be verified", the cert/notarization chain is
   broken — treat as release-blocker.
-- `xattr -d com.apple.quarantine Jellify.app` is a user-level workaround
+- `xattr -d com.apple.quarantine Lyrebird.app` is a user-level workaround
   only, never advertise it.
 
 ---
@@ -804,19 +804,19 @@ can link users to it:
 **Labels:** `area:macos`, `area:docs`, `kind:feat`, `priority:p2`
 **Effort:** S
 
-macOS has no uninstall standard; dragging `Jellify.app` to Trash leaves:
+macOS has no uninstall standard; dragging `Lyrebird.app` to Trash leaves:
 
-- `~/Library/Application Support/jellify-desktop/` — UniFFI SQLite store
+- `~/Library/Application Support/lyrebird-desktop/` — UniFFI SQLite store
   (seen in `CoreConfig.dataDir`).
-- `~/Library/Preferences/org.jellify.desktop.plist` — `UserDefaults`.
-- `~/Library/Caches/org.jellify.desktop/` — URLCache, image cache.
-- Keychain entries under service `org.jellify.desktop` (access token,
+- `~/Library/Preferences/org.lyrebird.desktop.plist` — `UserDefaults`.
+- `~/Library/Caches/org.lyrebird.desktop/` — URLCache, image cache.
+- Keychain entries under service `org.lyrebird.desktop` (access token,
   refresh token — `keyring` crate).
 
 Options:
 1. Document in `macos/DISTRIBUTION.md` + README with a copy-paste `rm -rf`
    block. Lowest effort.
-2. Ship a "Reset Jellify…" menu item that drops all of the above after a
+2. Ship a "Reset Lyrebird…" menu item that drops all of the above after a
    confirmation dialog. Cleaner UX, modest effort.
 
 Recommended: do (1) for v0.1.0, file (2) as a follow-up feature.
@@ -863,26 +863,26 @@ get whichever is newer.
 
 Once the Sparkle-driven DMG pipeline is stable for ~2 releases, submit to
 [homebrew-cask](https://github.com/Homebrew/homebrew-cask). A minimal
-`jellify.rb` cask:
+`lyrebird.rb` cask:
 
 ```ruby
-cask "jellify" do
+cask "lyrebird" do
   version "0.3.0"
-  sha256 "…sha256 of Jellify-0.3.0.dmg…"
+  sha256 "…sha256 of Lyrebird-0.3.0.dmg…"
 
-  url "https://github.com/Jellify-Music/jellify-desktop/releases/download/v#{version}/Jellify-#{version}.dmg"
-  name "Jellify"
+  url "https://github.com/skalthoff/lyrebird-desktop/releases/download/v#{version}/Lyrebird-#{version}.dmg"
+  name "Lyrebird"
   desc "Native desktop client for Jellyfin"
-  homepage "https://github.com/Jellify-Music/jellify-desktop"
+  homepage "https://github.com/skalthoff/lyrebird-desktop"
 
   depends_on macos: ">= :sonoma"
 
-  app "Jellify.app"
+  app "Lyrebird.app"
 
   zap trash: [
-    "~/Library/Application Support/jellify-desktop",
-    "~/Library/Preferences/org.jellify.desktop.plist",
-    "~/Library/Caches/org.jellify.desktop",
+    "~/Library/Application Support/lyrebird-desktop",
+    "~/Library/Preferences/org.lyrebird.desktop.plist",
+    "~/Library/Caches/org.lyrebird.desktop",
   ]
 end
 ```
@@ -923,7 +923,7 @@ items here are either human review steps or break-glass actions.
    3. Stores notary creds.
    4. `build-core.sh --release --universal` → universal xcframework.
    5. `swift build -c release --arch arm64 --arch x86_64`.
-   6. `make-bundle.sh --release` → `Jellify.app`.
+   6. `make-bundle.sh --release` → `Lyrebird.app`.
    7. `sign.sh` → inside-out hardened-runtime signing.
    8. `make-dmg.sh` → signed DMG.
    9. `notarize.sh` → notarytool submit + staple.
@@ -934,11 +934,11 @@ items here are either human review steps or break-glass actions.
    - [ ] Mount, drag to `/Applications`, launch.
    - [ ] Expect: normal "downloaded from internet" prompt → Open →
          app starts. No Gatekeeper popup.
-   - [ ] In-app → Jellify menu → Check for Updates…, confirm it reports
+   - [ ] In-app → Lyrebird menu → Check for Updates…, confirm it reports
          "up to date".
 5. **Post-flight**
    - [ ] Announce on GitHub Discussions / project channel.
-   - [ ] If cask exists: bump version (via `brew bump-cask-pr jellify
+   - [ ] If cask exists: bump version (via `brew bump-cask-pr lyrebird
          --version X.Y.Z` — fully automated).
 6. **Break-glass: rollback**
    - Notarization typically doesn't need revocation for bad builds; just

@@ -4,12 +4,12 @@
 # `windows/tools/gen-bindings.ps1`.
 
 [bindings.csharp]
-# Namespace for every generated type. Hand-written facades in `Jellify.Core/`
-# wrap these; consumers (Jellify.App) depend on the facades, not the raw
+# Namespace for every generated type. Hand-written facades in `Lyrebird.Core/`
+# wrap these; consumers (Lyrebird.App) depend on the facades, not the raw
 # generated types, so the namespace can stay internal-feeling.
-namespace = "Jellify.Core.Native"
+namespace = "Lyrebird.Core.Native"
 
-# Must match the cdylib name produced by `cargo build -p jellify_core`
-# (== `jellify_core.dll` on Windows). The generated `[DllImport]` entries
+# Must match the cdylib name produced by `cargo build -p lyrebird_core`
+# (== `lyrebird_core.dll` on Windows). The generated `[DllImport]` entries
 # look this up via `LoadLibrary`, so it has to line up exactly.
-library_name = "jellify_core"
+library_name = "lyrebird_core"

@@ -1,6 +1,6 @@
 # THIS IS A VIBE CODED PROJECT, WHILE I AM PUTTING REAL THOUGHT AND EFFORT INTO SOME ELEMENTS, it really shouldn't be used by people
 
-# Jellify Desktop
+# Lyrebird Desktop
 
 Native desktop apps for [Jellyfin](https://jellyfin.org) — macOS first, Windows and Linux to follow. Not Electron, not a web wrapper. Each platform is rendered by its own native UI toolkit, sharing a Rust core for API, audio coordination, and storage.
 
@@ -33,10 +33,10 @@ Requirements: macOS 14+, Rust (`brew install rust`), Xcode 15+.
 
 ```sh
 cd macos
-./Scripts/build-core.sh        # Builds the Rust core → Jellify.xcframework
+./Scripts/build-core.sh        # Builds the Rust core → Lyrebird.xcframework
 swift build                     # Builds the SwiftUI app
-./Scripts/make-bundle.sh        # Wraps the binary into Jellify.app
-open build/Jellify.app
+./Scripts/make-bundle.sh        # Wraps the binary into Lyrebird.app
+open build/Lyrebird.app
 ```
 
 ### Headless smoke test

@@ -1,4 +1,4 @@
-// Jellify desktop — right panel (now playing / queue) + full-screen player + tweaks
+// Lyrebird desktop — right panel (now playing / queue) + full-screen player + tweaks
 
 // ─── Right Panel: Now Playing ──────────────────────────────────────────
 function RightPanel({ t, mode, setMode, track, playing, onPlay, onClose }) {

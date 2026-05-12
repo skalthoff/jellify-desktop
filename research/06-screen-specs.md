@@ -1,24 +1,24 @@
-# Jellify Desktop — Per-Screen Design Spec
+# Lyrebird Desktop — Per-Screen Design Spec
 
 **Status:** Source-of-truth spec for the SwiftUI desktop client.
 **Design reference:** `design/project/` prototype (1440×900 locked stage, Figtree, Purple/Ocean/Forest/Sunset/Peanut presets, dark/OLED/light modes).
 **Design direction from user feedback (`chats/chat1.md`):** no gradient washes behind album hero — replaced with editorial type + liner-note stats + dotted-pattern signature. Keep breadcrumbs for "place tracking." Avoid generic AI-app aesthetics.
-**Tokens (the only colors you may introduce):** see `design/project/assets/jellify.css` — `--jf-purple-deep #0C0622`, `--jf-pink-accent #CC2F71`, `--jf-amethyst rgba(126,114,175,1)`, `--jf-teal #57E9C9`, `--jf-primary-dark #887BFF`, `--jf-danger-dark #FF066F`. Type scale: 10/12/14/16/20/24/28/34/48 (add 42, 56, 72 already used in Home + Album + FullPlayer). Radii: 4 / 8 / 12 / 16 / 24 / 999.
-**Data layer:** Rust core (`core/src/client.rs`, `core/src/player.rs`, `core/src/storage.rs`) exposes `JellyfinClient.{artists, albums, album_tracks, search, stream_bytes, stream_url, image_url, authenticate_by_name}`. UniFFI bindings live in `macos/Sources/JellifyCore/Generated`. SwiftUI screens bind via `@Observable` models in `macos/Sources/Jellify/AppModel.swift`.
+**Tokens (the only colors you may introduce):** see `design/project/assets/lyrebird.css` — `--jf-purple-deep #0C0622`, `--jf-pink-accent #CC2F71`, `--jf-amethyst rgba(126,114,175,1)`, `--jf-teal #57E9C9`, `--jf-primary-dark #887BFF`, `--jf-danger-dark #FF066F`. Type scale: 10/12/14/16/20/24/28/34/48 (add 42, 56, 72 already used in Home + Album + FullPlayer). Radii: 4 / 8 / 12 / 16 / 24 / 999.
+**Data layer:** Rust core (`core/src/client.rs`, `core/src/player.rs`, `core/src/storage.rs`) exposes `JellyfinClient.{artists, albums, album_tracks, search, stream_bytes, stream_url, image_url, authenticate_by_name}`. UniFFI bindings live in `macos/Sources/LyrebirdCore/Generated`. SwiftUI screens bind via `@Observable` models in `macos/Sources/Lyrebird/AppModel.swift`.
 **Platform conventions:** macOS first (traffic lights, ⌘K, ⌘,, menubar, drag-window title bar). The design prototype draws custom traffic lights but a real SwiftUI `WindowStyle(.hiddenTitleBar)` will suffice.
 
 ---
 
 ## 1. Login
 
-**Brief.** The front door. Must feel confident and editorial, not like a sign-in dialog. Center a single column at ~420px wide on a dark purple field. Lead with the jellyfish mark, set the word "Jellify" in italic 800, drop into a server URL field, then username / password. No photos, no gradients-behind-glass; use the same dotted-pattern signature the album hero uses for texture. Validate the server inline (ping `/System/Info/Public`) so the user sees "Jellyfin 10.9.11 · Home" before they ever type a password.
+**Brief.** The front door. Must feel confident and editorial, not like a sign-in dialog. Center a single column at ~420px wide on a dark purple field. Lead with the jellyfish mark, set the word "Lyrebird" in italic 800, drop into a server URL field, then username / password. No photos, no gradients-behind-glass; use the same dotted-pattern signature the album hero uses for texture. Validate the server inline (ping `/System/Info/Public`) so the user sees "Jellyfin 10.9.11 · Home" before they ever type a password.
 
 ### Issue 1: Login screen chrome + layout
 **Labels:** `area:macos`, `area:design`, `kind:feat`, `priority:p0`
 **Effort:** M
 
 - Full-window `Color(hex: 0x0C0622)` background, traffic lights on a draggable title bar, no sidebar, no player bar.
-- Center column 420×auto. Brand lockup (30pt jellyfish + "Jellify" italic 800 at 40pt + "DESKTOP" 10pt uppercase letter-spacing 0.08em) top-anchored 120pt from chrome.
+- Center column 420×auto. Brand lockup (30pt jellyfish + "Lyrebird" italic 800 at 40pt + "DESKTOP" 10pt uppercase letter-spacing 0.08em) top-anchored 120pt from chrome.
 - Dotted-pattern signature (radial-gradient dots 8px×8px, `ink3` at 0.35 opacity) top-right 120×60.
 - Three stacked fields: Server URL, Username, Password. Each = pill radius 12, background `surface`, border `border`, 14pt Figtree Medium, 44pt tall.
 - Primary "Sign in" button: accent (`#CC2F71`) pill, 44pt tall, full width of column, shadow `0 10px 24px accent55`.
@@ -456,13 +456,13 @@
 
 ## 9. Radio
 
-**Brief.** Stations, not tracks. Lead with a horizontal row of user's "pinned" stations (persistent radio presets — a Jellify concept, stored locally). Below: Station types (Artist Radio, Song Radio, Genre Radio, Decade Radio, Mood Radio) each a 4-tile row. Running a station replaces the queue and marks `isRadio: true` so Up Next keeps auto-generating.
+**Brief.** Stations, not tracks. Lead with a horizontal row of user's "pinned" stations (persistent radio presets — a Lyrebird concept, stored locally). Below: Station types (Artist Radio, Song Radio, Genre Radio, Decade Radio, Mood Radio) each a 4-tile row. Running a station replaces the queue and marks `isRadio: true` so Up Next keeps auto-generating.
 
 ### Issue 54: Pinned stations row
 **Labels:** `area:macos`, `kind:feat`, `priority:p0`
 **Effort:** M
 
-- User pins stations (e.g., "Grateful Dead Radio", "Jazz Drive Radio"). Stored in MMKV-equivalent (`JellifyStorage.pinned_stations`).
+- User pins stations (e.g., "Grateful Dead Radio", "Jazz Drive Radio"). Stored in MMKV-equivalent (`LyrebirdStorage.pinned_stations`).
 - Tile shows an `on air` dot, station name italic 20pt, subtitle "42 tracks · updated today".
 - "Add station" pill at the end of the row.
 
@@ -573,7 +573,7 @@
 **Labels:** `area:macos`, `kind:feat`, `priority:p2`
 **Effort:** S
 
-- Show logs (opens a log viewer modal tailing `~/Library/Logs/Jellify/*.log`).
+- Show logs (opens a log viewer modal tailing `~/Library/Logs/lyrebird-desktop/*.log`).
 - Clear cookies, reset settings, rebuild database.
 - "Enable experimental features" toggle.
 
@@ -581,7 +581,7 @@
 **Labels:** `area:macos`, `kind:polish`, `priority:p2`
 **Effort:** S
 
-- Jellyfish mark 80pt, "Jellify Desktop" italic 32pt, version + build + commit SHA, "Open source" link, licenses button (opens `NSApp.orderFrontStandardAboutPanel`), copyright line.
+- Jellyfish mark 80pt, "Lyrebird Desktop" italic 32pt, version + build + commit SHA, "Open source" link, licenses button (opens `NSApp.orderFrontStandardAboutPanel`), copyright line.
 
 ---
 
@@ -660,7 +660,7 @@
 
 ## 13. Right panel — Now Playing
 
-**Brief.** Keep the current structure (artwork, title, About this track, Credits) but formalize the "About" and "Credits" blocks as reusable `InfoBlock` components with 10pt uppercase `ink3` headers. Add a tasteful fact line at the bottom: "you've played this {n} times. maybe try something new?" — that italicized copy is pure Jellify character; don't lose it.
+**Brief.** Keep the current structure (artwork, title, About this track, Credits) but formalize the "About" and "Credits" blocks as reusable `InfoBlock` components with 10pt uppercase `ink3` headers. Add a tasteful fact line at the bottom: "you've played this {n} times. maybe try something new?" — that italicized copy is pure Lyrebird character; don't lose it.
 
 ### Issue 79: Now Playing — About block
 **Labels:** `area:macos`, `kind:feat`, `priority:p0`
@@ -775,7 +775,7 @@
 **Labels:** `area:macos`, `kind:feat`, `priority:p1`
 **Effort:** S
 
-- Jellyfish mark 120pt, "Welcome to Jellify" italic 48pt, "Your music, your server, your rules." 16pt `ink2`.
+- Jellyfish mark 120pt, "Welcome to Lyrebird" italic 48pt, "Your music, your server, your rules." 16pt `ink2`.
 - "Get started" primary button, "I already have an account →" link.
 
 ### Issue 93: Connect server step
@@ -803,7 +803,7 @@
 **Labels:** `area:macos`, `kind:polish`, `priority:p0`
 **Effort:** S
 
-- "Your library is empty." + "Add music to your Jellyfin server — Jellify will sync it automatically." + `Open Jellyfin dashboard` button.
+- "Your library is empty." + "Add music to your Jellyfin server — Lyrebird will sync it automatically." + `Open Jellyfin dashboard` button.
 
 ### Issue 96: No search results
 **Labels:** `area:macos`, `kind:polish`, `priority:p0`
@@ -965,7 +965,7 @@
 **Effort:** S
 
 - Already in prototype. Each segment clickable to jump up. Last segment is `ink`/600; rest `ink2`/500.
-- "Jellify › Library › Albums › The Deep End" pattern.
+- "Lyrebird › Library › Albums › The Deep End" pattern.
 - S from chat explicitly liked this — keep it.
 
 ### Issue 118: Sidebar playlist drag-reorder + collapse
@@ -1045,7 +1045,7 @@
 **Labels:** `area:macos`, `kind:feat`, `priority:p1`
 **Effort:** M
 
-- `MPNowPlayingInfoCenter` wiring so the macOS media keys, control center, and lockscreen all reflect Jellify state + artwork.
+- `MPNowPlayingInfoCenter` wiring so the macOS media keys, control center, and lockscreen all reflect Lyrebird state + artwork.
 
 ### Issue 130: Crossfade preview in Preferences
 **Labels:** `area:macos`, `kind:polish`, `priority:p2`
@@ -1062,6 +1062,6 @@
 - All type: Figtree, no semicolons in the code, tabs for indentation in Swift.
 - All accents that need "click-me" energy: `accent #CC2F71` for play pills + primary; `primary #887BFF` for secondary buttons + artist circles.
 - Use `teal #57E9C9` exclusively for status (connected, downloaded, synced).
-- Equalizer animation stays for the currently-playing row — it's part of Jellify's personality.
-- Italic 900 h1 is the Jellify voice — use it on Home, Album, Artist, Playlist, Full Player, Onboarding. Never on Library (keep that archivist).
+- Equalizer animation stays for the currently-playing row — it's part of Lyrebird's personality.
+- Italic 900 h1 is the Lyrebird voice — use it on Home, Album, Artist, Playlist, Full Player, Onboarding. Never on Library (keep that archivist).
 - The "fact-line" tagline in Now Playing ("you've played this 142 times. maybe try something new?") is character the brand should retain.

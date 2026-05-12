@@ -1,7 +1,7 @@
-# Jellify Desktop — Linux Port Issue List
+# Lyrebird Desktop — Linux Port Issue List
 
 Scope: take `linux/` (currently empty) to a Flathub-published GTK4 + libadwaita Rust
-binary that wraps the shared `core/` crate in-process (no FFI; direct `use jellify_core::*`).
+binary that wraps the shared `core/` crate in-process (no FFI; direct `use lyrebird_core::*`).
 Audio via GStreamer `playbin3`. Integration via MPRIS2, `Gio::Notification`, `gio::Settings`.
 
 Reference open-source GTK music players studied for patterns:
@@ -24,7 +24,7 @@ Milestones:
 **Labels:** `area:linux`, `kind:chore`, `priority:p0`
 **Effort:** S
 
-Create `linux/Cargo.toml` as a workspace member producing a binary named `jellify-desktop`.
+Create `linux/Cargo.toml` as a workspace member producing a binary named `lyrebird-desktop`.
 Add to workspace `members` in root `Cargo.toml`.
 
 Dependencies (pinned to a GNOME-46-era stack so we match the Flatpak runtime we'll target):
@@ -33,12 +33,12 @@ Dependencies (pinned to a GNOME-46-era stack so we match the Flatpak runtime we'
 - `glib = "0.20"`, `gio = "0.20"`
 - `gstreamer = "0.23"`, `gstreamer-play = "0.23"` (for `playbin3` wrapper) — or `gstreamer-player`
 - `gdk-pixbuf = "0.20"`, `gdk4 = "0.9"`
-- `jellify_core = { path = "../core" }`
+- `lyrebird_core = { path = "../core" }`
 - `tokio = { workspace = true }` (for async shared with core)
 - `async-channel = "2"` for async→GTK main-loop bridging
 - `tracing`, `tracing-subscriber`, `anyhow` from workspace
 
-Acceptance: `cargo build -p jellify-desktop` compiles a binary on a Linux host with
+Acceptance: `cargo build -p lyrebird-desktop` compiles a binary on a Linux host with
 GTK4 + libadwaita + GStreamer dev packages installed. Document apt/dnf package lists
 in `linux/README.md`.
 
@@ -61,21 +61,21 @@ Acceptance: `cargo build` produces a `resources.gresource` artifact consumed at 
 **Labels:** `area:linux`, `kind:feat`, `priority:p0`
 **Effort:** S
 
-`src/main.rs` boots an `adw::Application` with app-id `org.jellify.Desktop`, flags
-`ApplicationFlags::HANDLES_OPEN` (reserved for future `jellify://` deep links).
+`src/main.rs` boots an `adw::Application` with app-id `org.lyrebird.Desktop`, flags
+`ApplicationFlags::HANDLES_OPEN` (reserved for future `lyrebird://` deep links).
 Register primary-instance handling so a second launch raises the existing window via
 `activate` rather than opening a new one.
 
 On `startup`: load the gresource, register fonts (Issue 14), install the global CSS
 provider (Issue 13), wire global GActions (`app.quit`, `app.preferences`, `app.about`).
 
-On `activate`: instantiate `JellifyWindow` (custom `adw::ApplicationWindow` subclass),
+On `activate`: instantiate `LyrebirdWindow` (custom `adw::ApplicationWindow` subclass),
 present it.
 
-Acceptance: launching `jellify-desktop` twice raises one window. `Ctrl+Q` quits via
+Acceptance: launching `lyrebird-desktop` twice raises one window. `Ctrl+Q` quits via
 action accelerator.
 
-### Issue 4: Custom `JellifyWindow` GObject subclass via `glib::subclass`
+### Issue 4: Custom `LyrebirdWindow` GObject subclass via `glib::subclass`
 **Labels:** `area:linux`, `kind:feat`, `priority:p0`
 **Effort:** M
 
@@ -90,14 +90,14 @@ Using `gobject_derive`-style imp modules, create `src/window.rs` with:
 Acceptance: launching presents a styled `AdwApplicationWindow` with header bar and
 empty navigation view. Geometry persists across restarts.
 
-### Issue 5: Embed `JellifyCore` as a shared `Rc`-wrapped model on the main loop
+### Issue 5: Embed `LyrebirdCore` as a shared `Rc`-wrapped model on the main loop
 **Labels:** `area:linux`, `kind:feat`, `priority:p0`
 **Effort:** M
 
 Create `src/model.rs` containing an `AppModel` struct that owns
-`Arc<JellifyCore>` plus GTK-facing state (`gio::ListStore` backings for albums,
+`Arc<LyrebirdCore>` plus GTK-facing state (`gio::ListStore` backings for albums,
 artists, queue; `glib::Property`-derived custom GObject wrappers around
-`jellify_core::{Album, Artist, Track}`).
+`lyrebird_core::{Album, Artist, Track}`).
 
 Pattern: core calls (which are synchronous and internally `tokio::block_on`) run on a
 worker thread via `gio::spawn_blocking` or an `async-channel` bridge. Results posted
@@ -129,7 +129,7 @@ bind-closure that populates a child template.
 **Labels:** `area:linux`, `kind:feat`, `priority:p0`
 **Effort:** S
 
-Author `data/org.jellify.Desktop.gschema.xml` with keys:
+Author `data/org.lyrebird.Desktop.gschema.xml` with keys:
 - `window-width`, `window-height`, `window-maximized`
 - `last-server-url`, `last-username` (mirroring what core persists to SQLite, for
   quick-launch UX)
@@ -162,7 +162,7 @@ Write a `linux/tests/credential_smoke.rs` integration test guarded behind a feat
 flag `linux-smoke` that round-trips a token. Document in `linux/README.md` that the
 target user session needs a running `gnome-keyring-daemon` or KDE wallet.
 
-Acceptance: `cargo test -p jellify-desktop --features linux-smoke` passes under a
+Acceptance: `cargo test -p lyrebird-desktop --features linux-smoke` passes under a
 Linux session with a running secret service.
 
 ### Issue 9: Storage paths match XDG spec via `glib::user_data_dir()`
@@ -170,18 +170,18 @@ Linux session with a running secret service.
 **Effort:** S
 
 When constructing `CoreConfig` on Linux, set `data_dir =
-glib::user_data_dir().join("jellify-desktop")` — this is already where the fallback
+glib::user_data_dir().join("lyrebird-desktop")` — this is already where the fallback
 in `core/src/storage.rs::default_data_dir` lands under Flatpak
-(`$XDG_DATA_HOME/jellify-desktop/`), but the app should pass the canonical glib path
+(`$XDG_DATA_HOME/lyrebird-desktop/`), but the app should pass the canonical glib path
 explicitly so it works correctly inside Flatpak sandboxing (where `HOME` is remapped).
 
 Artwork cache: introduce `ArtworkCache` module in `linux/src/artwork.rs` writing to
-`glib::user_cache_dir().join("jellify-desktop/artwork/")` keyed by
+`glib::user_cache_dir().join("lyrebird-desktop/artwork/")` keyed by
 `item_id + tag + size`. Use `reqwest` from core via `stream_url`-style helpers, or
 `gdk-pixbuf` async loaders backed by `gio::File`.
 
 Acceptance: running under Flatpak stores DB and artwork under
-`~/.var/app/org.jellify.Desktop/data/` and `~/.var/app/org.jellify.Desktop/cache/`.
+`~/.var/app/org.lyrebird.Desktop/data/` and `~/.var/app/org.lyrebird.Desktop/cache/`.
 
 ### Issue 10: GitHub Actions CI — Linux build + lint
 **Labels:** `area:linux`, `kind:chore`, `priority:p1`
@@ -193,9 +193,9 @@ Add `.github/workflows/linux.yml`:
   libgstreamer-plugins-base1.0-dev libgstreamer-plugins-bad1.0-dev
   gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
   gstreamer1.0-libav libsoup-3.0-dev libsecret-1-dev`
-- `cargo fmt --check`, `cargo clippy -p jellify-desktop -- -D warnings`
-- `cargo build -p jellify-desktop --release`
-- `cargo test -p jellify_core`
+- `cargo fmt --check`, `cargo clippy -p lyrebird-desktop -- -D warnings`
+- `cargo build -p lyrebird-desktop --release`
+- `cargo test -p lyrebird_core`
 
 Acceptance: workflow runs green on PRs modifying `linux/` or `core/`.
 
@@ -273,13 +273,13 @@ Acceptance: 1000-album library scrolls smoothly at 60fps on a 2020-era laptop
 **Effort:** S
 
 Bundle `Figtree-{Regular,Italic,Medium,SemiBold,Bold,ExtraBold,Black,Light}.otf`
-(copied from `macos/Sources/Jellify/Resources/` — same source as macOS) into the
-gresource under `/org/jellify/Desktop/fonts/`.
+(copied from `macos/Sources/Lyrebird/Resources/` — same source as macOS) into the
+gresource under `/org/lyrebird/Desktop/fonts/`.
 
-At app `startup`, extract them to a temp dir (or `$XDG_RUNTIME_DIR/jellify/fonts/`)
+At app `startup`, extract them to a temp dir (or `$XDG_RUNTIME_DIR/lyrebird/fonts/`)
 and call `pango::FontMap::add_font_file` (via fontconfig `FcConfigAppFontAddFile` if
 the Pango API is not yet wrapped in gtk4-rs). Inside Flatpak, simpler: drop the .otf
-files into `/app/share/fonts/jellify/` in the manifest and fontconfig picks them up
+files into `/app/share/fonts/lyrebird/` in the manifest and fontconfig picks them up
 at runtime automatically.
 
 Acceptance: `Pango::Context` resolves "Figtree" without falling back. Dark-mode login
@@ -292,7 +292,7 @@ screen matches the macOS version.
 Author `linux/resources/css/`:
 - `_base.css` — font stack, spacing scale, common widget classes
 - `purple.css`, `dark.css`, `oled.css`, `light.css`, `teal.css` — preset overrides
-  mirroring Jellify's Tamagui config + macOS `Theme.swift`
+  mirroring Lyrebird's Tamagui config + macOS `Theme.swift`
 
 Approach: use libadwaita's accent-color API (`AdwStyleManager::set_accent_color`)
 for hue-matched accents, supplemented with `gtk::CssProvider::load_from_resource` for
@@ -427,7 +427,7 @@ regardless of which screen has focus.
 
 Add `mpris-server = "0.8"` (thin `zbus` wrapper exposing `Player` + `RootInterface`
 trait objects). On app startup, spawn a `zbus` task registering
-`org.mpris.MediaPlayer2.jellify`.
+`org.mpris.MediaPlayer2.lyrebird`.
 
 Trait impls:
 - `PlaybackStatus` → maps `PlaybackState::Playing → "Playing"` etc.
@@ -443,9 +443,9 @@ Emit `PropertiesChanged` when `PlayerController` signals a change.
 On Flathub/Flatpak: the `--socket=session-bus` finish-arg covers the D-Bus access —
 already standard.
 
-Acceptance: `playerctl -p jellify metadata` returns current track; `playerctl -p
-jellify play-pause` toggles playback. GNOME Shell Quick Settings media widget shows
-Jellify with cover art.
+Acceptance: `playerctl -p lyrebird metadata` returns current track; `playerctl -p
+lyrebird play-pause` toggles playback. GNOME Shell Quick Settings media widget shows
+Lyrebird with cover art.
 
 ### Issue 23: Media key bindings verified on GNOME + KDE
 **Labels:** `area:linux`, `kind:chore`, `priority:p1`
@@ -531,19 +531,19 @@ Acceptance: toggling gapless + theme preset immediately affects playback and UI.
 
 - Symbolic icons (UI glyphs): `linux/resources/icons/scalable/` — `.svg` files with
   `*-symbolic.svg` suffix so libadwaita auto-recolors. Reference via
-  `gtk::Image::from_resource("/org/jellify/Desktop/icons/scalable/<name>.svg")`.
+  `gtk::Image::from_resource("/org/lyrebird/Desktop/icons/scalable/<name>.svg")`.
   Reuse GNOME icon-set for common ones (play, pause, skip) to feel native.
 - App icon: scalable `.svg` + rasterized PNG at 16/24/32/48/64/128/256 sizes. Install
-  to `share/icons/hicolor/<size>x<size>/apps/org.jellify.Desktop.png` +
-  `share/icons/hicolor/scalable/apps/org.jellify.Desktop.svg`.
+  to `share/icons/hicolor/<size>x<size>/apps/org.lyrebird.Desktop.png` +
+  `share/icons/hicolor/scalable/apps/org.lyrebird.Desktop.svg`.
 
-Acceptance: GNOME Activities overview shows the Jellify icon at crisp native size.
+Acceptance: GNOME Activities overview shows the Lyrebird icon at crisp native size.
 
 ### Issue 29: Localization scaffolding (gettext + `.po`)
 **Labels:** `area:linux`, `kind:chore`, `priority:p2`
 **Effort:** M
 
-Add `gettext-rs` crate, bind `textdomain("jellify-desktop")` + `bindtextdomain` to
+Add `gettext-rs` crate, bind `textdomain("lyrebird-desktop")` + `bindtextdomain` to
 `$prefix/share/locale`. Wrap user-facing strings via `gettext::gettext!` /
 `gettext!` macro. Add `po/POTFILES.in` + `po/LINGUAS`. Configure `xgettext` extraction
 via a `Makefile.am`-style script at `linux/po/update-pot.sh`.
@@ -557,11 +557,11 @@ translated string shows the translated text.
 
 ## L-M4 — Flatpak distribution + Flathub submission
 
-### Issue 30: Flatpak manifest (`org.jellify.Desktop.yaml`)
+### Issue 30: Flatpak manifest (`org.lyrebird.Desktop.yaml`)
 **Labels:** `area:linux`, `kind:chore`, `priority:p0`
 **Effort:** M
 
-Author `linux/flatpak/org.jellify.Desktop.yaml`:
+Author `linux/flatpak/org.lyrebird.Desktop.yaml`:
 - `runtime: org.gnome.Platform` version `46`
 - `sdk: org.gnome.Sdk` version `46`
 - `sdk-extensions: [org.freedesktop.Sdk.Extension.rust-stable]`
@@ -576,14 +576,14 @@ Author `linux/flatpak/org.jellify.Desktop.yaml`:
   - `--talk-name=org.freedesktop.secrets` (libsecret)
 - `modules`:
   - `figtree-fonts` — builds from upstream .zip, drops .otf into `/app/share/fonts/`
-  - `jellify-desktop` — `buildsystem: simple`; `build-commands` invoke
-    `cargo --offline build --release -p jellify-desktop` (requires a
+  - `lyrebird-desktop` — `buildsystem: simple`; `build-commands` invoke
+    `cargo --offline build --release -p lyrebird-desktop` (requires a
     `cargo-sources.json` generated by `flatpak-cargo-generator.py`)
   - Install binary to `/app/bin/`, desktop file, appdata, icons
 
 Acceptance: `flatpak-builder --user --install --force-clean build-dir
-linux/flatpak/org.jellify.Desktop.yaml` builds locally; `flatpak run
-org.jellify.Desktop` launches the app.
+linux/flatpak/org.lyrebird.Desktop.yaml` builds locally; `flatpak run
+org.lyrebird.Desktop` launches the app.
 
 ### Issue 31: Cargo-sources generator for Flatpak offline build
 **Labels:** `area:linux`, `kind:chore`, `priority:p0`
@@ -591,7 +591,7 @@ org.jellify.Desktop` launches the app.
 
 Integrate `flatpak-cargo-generator.py` (from `flatpak-builder-tools`) into a
 repo script at `linux/flatpak/gen-sources.sh`. Invoked with `Cargo.lock` path,
-produces `cargo-sources.json` referenced from the manifest's `jellify-desktop`
+produces `cargo-sources.json` referenced from the manifest's `lyrebird-desktop`
 module as `- cargo-sources.json`.
 
 Document regeneration cadence in `CONTRIBUTING.md` ("run after every dependency
@@ -604,18 +604,18 @@ running the generator.
 **Labels:** `area:linux`, `kind:chore`, `priority:p0`
 **Effort:** S
 
-`linux/data/org.jellify.Desktop.desktop`:
+`linux/data/org.lyrebird.Desktop.desktop`:
 ```
 [Desktop Entry]
-Name=Jellify
+Name=Lyrebird
 Comment=Music player for Jellyfin
-Exec=jellify-desktop %U
-Icon=org.jellify.Desktop
+Exec=lyrebird-desktop %U
+Icon=org.lyrebird.Desktop
 Type=Application
 Categories=AudioVideo;Audio;Player;GNOME;GTK;
 StartupNotify=true
 Keywords=music;audio;jellyfin;player;
-MimeType=x-scheme-handler/jellify;
+MimeType=x-scheme-handler/lyrebird;
 X-GNOME-UsesNotifications=true
 ```
 
@@ -628,8 +628,8 @@ GNOME Activities and KRunner.
 **Labels:** `area:linux`, `kind:chore`, `priority:p0`
 **Effort:** M
 
-`linux/data/org.jellify.Desktop.metainfo.xml` — required for Flathub:
-- `<id>org.jellify.Desktop</id>`
+`linux/data/org.lyrebird.Desktop.metainfo.xml` — required for Flathub:
+- `<id>org.lyrebird.Desktop</id>`
 - `<metadata_license>CC0-1.0</metadata_license>`, `<project_license>GPL-3.0-only</project_license>`
 - `<name>`, `<summary>`, long `<description>` with feature bullets
 - `<screenshots>` — at least 3 hosted 1920×1080 PNGs (library, album detail, now
@@ -642,7 +642,7 @@ GNOME Activities and KRunner.
 - `<branding><color type="primary" scheme_preference="dark">#0C0622</color></branding>`
 
 Validated via `appstreamcli validate`. Installed to
-`/app/share/metainfo/org.jellify.Desktop.metainfo.xml`.
+`/app/share/metainfo/org.lyrebird.Desktop.metainfo.xml`.
 
 Acceptance: `appstreamcli validate` passes strictly (required for Flathub);
 screenshots render in GNOME Software preview.
@@ -658,13 +658,13 @@ Follow [Flathub submission process](https://docs.flathub.org/docs/for-app-author
    AppStream summary constraints (≤ 35 chars for summary, ≤ 350 for description
    excerpt shown in software center tiles).
 3. Fork `flathub/flathub`, create a PR on the `new-pr` branch adding
-   `org.jellify.Desktop.yaml` + support files to a new directory.
+   `org.lyrebird.Desktop.yaml` + support files to a new directory.
 4. Respond to reviewer comments (typically: finish-args too permissive, AppStream
    formatting, OARS rating).
 5. Once merged, the app appears on Flathub within ~6 hours and builds appear on
    `flathub-beta` for a soak period.
 
-Acceptance: PR merged, `flatpak install flathub org.jellify.Desktop` works.
+Acceptance: PR merged, `flatpak install flathub org.lyrebird.Desktop` works.
 
 ### Issue 35: Auto-update CI — tag → Flathub PR
 **Labels:** `area:linux`, `kind:chore`, `priority:p2`

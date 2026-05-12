@@ -1,4 +1,4 @@
-// Jellify desktop — shared chrome components (sidebar, topbar, player bar, right panel)
+// Lyrebird desktop — shared chrome components (sidebar, topbar, player bar, right panel)
 
 // ─── Window chrome: traffic lights + top bar ───────────────────────────
 function TrafficLights() {
@@ -123,7 +123,7 @@ function Sidebar({ t, screen, setScreen, density }) {
           fontSize:16,
         }}>🪼</div>
         <div>
-          <div style={{fontSize:15, fontWeight:800, color:t.ink, letterSpacing:'-0.02em', fontStyle:'italic'}}>Jellify</div>
+          <div style={{fontSize:15, fontWeight:800, color:t.ink, letterSpacing:'-0.02em', fontStyle:'italic'}}>Lyrebird</div>
           <div style={{fontSize:9, fontWeight:600, color:t.ink3, textTransform:'uppercase', letterSpacing:'0.08em', marginTop:-1}}>Desktop</div>
         </div>
       </div>
