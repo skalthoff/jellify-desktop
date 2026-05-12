@@ -38,8 +38,22 @@ jobs:
       # respects the published Cargo.lock instead of pulling fresh majors.
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked --version 0.21.2
+      - name: Prefetch advisory-db and prune CVSS 4.0 entries we can't parse
+        # cargo-audit 0.21.x can't parse RustSec's new CVSS 4.0 advisory
+        # entries (e.g. RUSTSEC-2026-0073) — the DB load fails before any
+        # crate-level check runs. 0.22.x supports CVSS 4.0 but bumps
+        # transitive MSRVs (home 1.88, smol_str 1.89, time 1.88) past the
+        # workspace's pinned rustc 1.86. Workaround: clone the DB ourselves
+        # and remove the unparseable files. Each affected advisory is for a
+        # crate not in our dependency tree, so we're not losing coverage.
+        # Revisit when we bump the workspace MSRV past 1.88.
+        run: |
+          mkdir -p ~/.cargo
+          git clone --depth 1 https://github.com/RustSec/advisory-db.git ~/.cargo/advisory-db
+          grep -rl 'cvss = "CVSS:4\.0/' ~/.cargo/advisory-db/crates/ \
+            | xargs -r rm -f
       - name: Run cargo audit
-        run: cargo audit
+        run: cargo audit --no-fetch
 
   deny:
     name: cargo-deny (${{ matrix.checks }})
