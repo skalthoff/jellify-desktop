@@ -1440,6 +1440,50 @@ impl JellyfinClient {
             .await
     }
 
+    /// Every audio track tagged with the given genre, paginated. Mirrors
+    /// [`JellyfinClient::items_by_genre`] but returns tracks instead of
+    /// albums — feeds the macOS genre detail "Shuffle Genre" action and
+    /// the planned full-tracks tab on genre pages (#823).
+    ///
+    /// Sorts catalog-style — `SortName,Album,SortName` keeps tracks
+    /// grouped by album name while still giving a stable name-first
+    /// fallback for items that share an album title. Includes the same
+    /// projection as [`JellyfinClient::tracks_by_artist`] so callers get
+    /// the full set of `Track` fields (media sources, user data, album +
+    /// artist credits, runtime) needed to enqueue and render rows.
+    pub async fn tracks_by_genre(&self, genre_id: &str, paging: Paging) -> Result<PaginatedTracks> {
+        ItemsQuery::new()
+            .genre(genre_id)
+            .recursive()
+            .item_types(vec![ItemKind::Audio])
+            .limit(paging.limit)
+            .offset(paging.offset)
+            .sort_by(vec![
+                ItemSortBy::SortName,
+                ItemSortBy::Album,
+                ItemSortBy::SortName,
+            ])
+            .sort_order(vec![
+                SortOrder::Ascending,
+                SortOrder::Ascending,
+                SortOrder::Ascending,
+            ])
+            .fields(vec![
+                ItemField::MediaSources,
+                ItemField::UserData,
+                ItemField::ParentId,
+                ItemField::AlbumId,
+                ItemField::AlbumArtist,
+                ItemField::Artists,
+                ItemField::ProductionYear,
+                ItemField::PrimaryImageAspectRatio,
+                ItemField::RunTimeTicks,
+            ])
+            .enable_user_data()
+            .fetch_tracks(self)
+            .await
+    }
+
     /// Full artist record with biography, backdrops, and external links —
     /// extends [`JellyfinClient::fetch_item`] with an artist-focused field
     /// projection. Powers the artist detail header (bio + MusicBrainz /

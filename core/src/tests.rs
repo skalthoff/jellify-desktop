@@ -1244,6 +1244,103 @@ async fn items_by_genre_builds_query_and_parses() {
     assert!(q.contains("Limit=30"), "query: {q}");
 }
 
+#[tokio::test]
+async fn tracks_by_genre_builds_query() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Smooth Solo", "Type": "Audio",
+                    "AlbumId": "a1", "AlbumArtist": "Sax Man"
+                }
+            ],
+            "TotalRecordCount": 1
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .tracks_by_genre("g-1", Paging::new(20, 40))
+        .await
+        .unwrap();
+    assert_eq!(page.total_count, 1);
+    assert_eq!(page.items.len(), 1);
+    assert_eq!(page.items[0].id, "t1");
+
+    let requests = server.received_requests().await.unwrap();
+    let get = requests
+        .iter()
+        .find(|r| r.method.as_str() == "GET")
+        .expect("expected a GET request");
+    let q = get.url.query().expect("expected a query string");
+    assert!(q.contains("GenreIds=g-1"), "query: {q}");
+    assert!(q.contains("IncludeItemTypes=Audio"), "query: {q}");
+    assert!(q.contains("Recursive=true"), "query: {q}");
+    assert!(q.contains("Limit=40"), "query: {q}");
+    assert!(q.contains("StartIndex=20"), "query: {q}");
+}
+
+#[tokio::test]
+async fn tracks_by_genre_parses_pagination() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Users/u1/Items"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "Items": [
+                {
+                    "Id": "t1", "Name": "Track One", "Type": "Audio",
+                    "AlbumId": "a1", "AlbumArtist": "Artist X"
+                },
+                {
+                    "Id": "t2", "Name": "Track Two", "Type": "Audio",
+                    "AlbumId": "a2", "AlbumArtist": "Artist Y"
+                },
+                {
+                    "Id": "t3", "Name": "Track Three", "Type": "Audio",
+                    "AlbumId": "a3", "AlbumArtist": "Artist Z"
+                }
+            ],
+            "TotalRecordCount": 42
+        })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .tracks_by_genre("g-1", Paging::new(0, 100))
+        .await
+        .unwrap();
+    assert_eq!(
+        page.total_count, 42,
+        "server-reported total wins over page len"
+    );
+    assert_eq!(page.items.len(), 3);
+    assert_eq!(page.items[0].id, "t1");
+    assert_eq!(page.items[1].id, "t2");
+    assert_eq!(page.items[2].id, "t3");
+}
+
 // ---------------------------------------------------------------------------
 // Artist detail
 // ---------------------------------------------------------------------------
