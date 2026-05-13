@@ -3429,13 +3429,6 @@ final class AppModel {
         Task { await setPlayed(itemId: album.id, played: target) }
     }
 
-    /// Present the album metadata editor. Admin-only once the sheet lands.
-    /// TODO: #96 / #222 — metadata editor sheet not yet implemented.
-    func requestEditAlbum(album: Album) {
-        // TODO(#96): metadata editor sheet not yet implemented.
-        Log.app.notice("requestEditAlbum(album:) not yet wired — see #96 / #222")
-    }
-
     /// Append every track on the album to a user-picked playlist. Loads
     /// the tracklist (cached) then routes through the async
     /// `addToPlaylist(trackIds:playlistId:)` path.
