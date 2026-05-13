@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 @preconcurrency import LyrebirdCore
@@ -41,6 +42,15 @@ struct QueueInspector: View {
     /// index.
     @State private var draggingId: UUID?
     @State private var dropTargetIndex: Int?
+
+    /// Local `NSEvent` monitor token that watches for `.leftMouseUp` while a
+    /// drag is in flight (#814). SwiftUI's `onDrag` modifier has no cancel
+    /// callback, so a drag aborted by Escape or released outside any drop
+    /// target never reaches `QueueRowDropDelegate.performDrop` and the row
+    /// stays dimmed with the drop indicator stuck on screen. Installed in
+    /// `.onChange(of: draggingId)` when a drag starts and removed when the
+    /// drag ends (success or cancel), and on `.onDisappear` for safety.
+    @State private var dragCancelMonitor: Any?
 
     /// Transient toast shown when the user double-clicks an auto-queue row.
     /// The underlying `seek_to_queue_index` primitive (#282) does not exist
@@ -106,6 +116,52 @@ struct QueueInspector: View {
                 }
             )
             .environment(model)
+        }
+        // Drag-cancel safety net (#814). `onDrag` has no completion callback,
+        // so a drag aborted via Escape or released outside any drop target
+        // would otherwise leave `draggingId` and `dropTargetIndex` set
+        // indefinitely. While a drag is in flight we install a `.leftMouseUp`
+        // local monitor; on the next mouse release the monitor fires, clears
+        // the drag state, and uninstalls itself. The successful-drop path in
+        // `QueueRowDropDelegate.performDrop` clears `draggingId` first, which
+        // re-enters this closure with `newValue == nil` and tears the monitor
+        // down without firing.
+        .onChange(of: draggingId) { _, newValue in
+            if newValue != nil {
+                installDragCancelMonitor()
+            } else {
+                removeDragCancelMonitor()
+            }
+        }
+        .onDisappear {
+            removeDragCancelMonitor()
+        }
+    }
+
+    /// Install the `.leftMouseUp` monitor that clears stuck drag state on
+    /// cancel (#814). Idempotent: a second call while a monitor is already
+    /// active is a no-op so re-entrant SwiftUI updates can't leak tokens.
+    private func installDragCancelMonitor() {
+        guard dragCancelMonitor == nil else { return }
+        dragCancelMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+            // Reset drag state on any left-mouse-up that reaches us while a
+            // drag was in flight — successful drops are handled in
+            // `performDrop` before this monitor sees the event. Returning the
+            // event passes it through to the normal responder chain so we
+            // don't swallow clicks meant for other controls.
+            draggingId = nil
+            dropTargetIndex = nil
+            return event
+        }
+    }
+
+    /// Tear down the drag-cancel monitor if installed. Called when the drag
+    /// ends (success or cancel) and on `.onDisappear` so the monitor never
+    /// outlives the view.
+    private func removeDragCancelMonitor() {
+        if let token = dragCancelMonitor {
+            NSEvent.removeMonitor(token)
+            dragCancelMonitor = nil
         }
     }
 
