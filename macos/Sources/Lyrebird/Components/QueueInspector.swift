@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 @preconcurrency import LyrebirdCore
@@ -41,6 +42,17 @@ struct QueueInspector: View {
     /// index.
     @State private var draggingId: UUID?
     @State private var dropTargetIndex: Int?
+
+    /// Local `NSEvent` monitor tokens that watch for `.leftMouseUp` and
+    /// `.keyDown` (Escape) while a drag is in flight. SwiftUI's `onDrag`
+    /// modifier has no cancel callback, so a drag aborted by Escape or
+    /// released outside any drop target never reaches
+    /// `QueueRowDropDelegate.performDrop` and the row stays dimmed with the
+    /// drop indicator stuck on screen. Installed in
+    /// `.onChange(of: draggingId)` when a drag starts and removed when the
+    /// drag ends (success or cancel), and on `.onDisappear` for safety.
+    @State private var dragCancelMonitor: Any?
+    @State private var dragEscapeMonitor: Any?
 
     /// Transient toast shown when the user double-clicks an auto-queue row.
     /// The underlying `seek_to_queue_index` primitive (#282) does not exist
@@ -106,6 +118,72 @@ struct QueueInspector: View {
                 }
             )
             .environment(model)
+        }
+        // Drag-cancel safety net. `onDrag` has no completion callback, so a
+        // drag aborted via Escape or released outside any drop target would
+        // otherwise leave `draggingId` and `dropTargetIndex` set indefinitely.
+        // While a drag is in flight we install two local monitors:
+        //   * `.leftMouseUp` — fires on release whether or not the cursor
+        //     was over a valid drop target. Local monitors run before the
+        //     responder chain dispatches to `performDrop`, so the cleanup
+        //     is deferred onto the next main-queue tick so a successful
+        //     drop's commit observes the still-set `draggingId` /
+        //     `dropTargetIndex` before they're cleared.
+        //   * `.keyDown` filtered on keyCode 53 (Escape) — the NSDragging
+        //     session's escape sequence does not surface as a `mouseUp`,
+        //     so the leftMouseUp monitor alone misses it.
+        // The successful-drop path in `QueueRowDropDelegate.performDrop`
+        // clears `draggingId` itself, which re-enters this closure with
+        // `newValue == nil` and tears both monitors down.
+        .onChange(of: draggingId) { _, newValue in
+            if newValue != nil {
+                installDragCancelMonitors()
+            } else {
+                removeDragCancelMonitors()
+            }
+        }
+        .onDisappear {
+            removeDragCancelMonitors()
+        }
+    }
+
+    /// Install the local `NSEvent` monitors that clear stuck drag state on
+    /// cancel. Idempotent: a second call while monitors are already active
+    /// is a no-op so re-entrant SwiftUI updates can't leak tokens.
+    private func installDragCancelMonitors() {
+        if dragCancelMonitor == nil {
+            dragCancelMonitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseUp) { event in
+                DispatchQueue.main.async {
+                    draggingId = nil
+                    dropTargetIndex = nil
+                }
+                return event
+            }
+        }
+        if dragEscapeMonitor == nil {
+            dragEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                if event.keyCode == 53 {
+                    DispatchQueue.main.async {
+                        draggingId = nil
+                        dropTargetIndex = nil
+                    }
+                }
+                return event
+            }
+        }
+    }
+
+    /// Tear down the drag-cancel monitors if installed. Called when the drag
+    /// ends (success or cancel) and on `.onDisappear` so the monitors never
+    /// outlive the view.
+    private func removeDragCancelMonitors() {
+        if let token = dragCancelMonitor {
+            NSEvent.removeMonitor(token)
+            dragCancelMonitor = nil
+        }
+        if let token = dragEscapeMonitor {
+            NSEvent.removeMonitor(token)
+            dragEscapeMonitor = nil
         }
     }
 
