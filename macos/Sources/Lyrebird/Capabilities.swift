@@ -1,8 +1,11 @@
 import Foundation
 
-/// Capability flags that gate UI affordances whose backing FFI hasn't
-/// landed yet. Each flag is `false` for the 0.2 release; flip to `true`
-/// per-feature once the named issue closes.
+/// Capability flags that gate UI affordances whose backing FFI may not
+/// have landed yet. A flag returns `false` when the surface is wired in
+/// the UI but the backing FFI is still a stub; it flips to `true` once
+/// the named issue closes and the action is real. Flags that already
+/// ship enabled keep the flag around as a kill-switch / regression
+/// fallback rather than removing the gate outright.
 ///
 /// Why a flag instead of just deleting the call site: keeping the menu
 /// entry, button, and `AppModel` method around — but hidden — means the
