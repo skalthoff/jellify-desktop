@@ -160,7 +160,8 @@ impl Player {
     /// Behaviour at end-of-queue depends on [`RepeatMode`]:
     /// * [`RepeatMode::Off`] — returns `None`, current unchanged.
     /// * [`RepeatMode::All`] — wraps to index 0 and returns the first track.
-    /// * [`RepeatMode::One`] — returns the current track unchanged (replay).
+    /// * [`RepeatMode::One`] — returns the current track without advancing
+    ///   the queue index; `current` and `queue_position` are unchanged.
     ///
     /// `RepeatMode::One` short-circuits regardless of queue position, so a
     /// "track ended" callback that invokes `skip_next` keeps replaying the
@@ -192,7 +193,8 @@ impl Player {
     /// Behaviour at start-of-queue depends on [`RepeatMode`]:
     /// * [`RepeatMode::Off`] — returns `None`, current unchanged.
     /// * [`RepeatMode::All`] — wraps to the last track in the queue.
-    /// * [`RepeatMode::One`] — returns the current track unchanged (replay).
+    /// * [`RepeatMode::One`] — returns the current track without advancing
+    ///   the queue index; `current` and `queue_position` are unchanged.
     pub fn skip_previous(&self) -> Option<Track> {
         let mut s = self.shared.lock();
         if matches!(s.repeat_mode, RepeatMode::One) {
@@ -599,16 +601,12 @@ mod tests {
         assert!(player.status().current_track.is_none());
     }
 
-    // ---- #811: skip_next / skip_previous honour RepeatMode ----
-
     #[test]
     fn skip_next_wraps_when_repeat_all() {
         let player = Player::new();
         player.set_queue(vec![track("a"), track("b")], 0).unwrap();
         player.set_repeat_mode(RepeatMode::All);
-        // Move to the last track.
         assert_eq!(player.skip_next().unwrap().id, "b");
-        // Past the end with RepeatMode::All must wrap to index 0.
         let wrapped = player.skip_next();
         assert!(
             wrapped.is_some(),
@@ -621,11 +619,26 @@ mod tests {
     }
 
     #[test]
+    fn skip_next_wraps_to_self_on_single_track_queue_with_repeat_all() {
+        let player = Player::new();
+        player.set_queue(vec![track("a")], 0).unwrap();
+        player.set_repeat_mode(RepeatMode::All);
+        let wrapped = player.skip_next();
+        assert!(
+            wrapped.is_some(),
+            "RepeatMode::All on a single-track queue must wrap to itself"
+        );
+        assert_eq!(wrapped.unwrap().id, "a");
+        let status = player.status();
+        assert_eq!(status.queue_position, 0);
+        assert_eq!(status.current_track.unwrap().id, "a");
+    }
+
+    #[test]
     fn skip_next_replays_when_repeat_one() {
         let player = Player::new();
         player.set_queue(vec![track("a"), track("b")], 0).unwrap();
         player.set_repeat_mode(RepeatMode::One);
-        // "track ended" scenario: skipNext should return "a" again, not "b".
         let result = player.skip_next();
         assert!(
             result.is_some(),
@@ -658,7 +671,6 @@ mod tests {
             .set_queue(vec![track("a"), track("b"), track("c")], 0)
             .unwrap();
         player.set_repeat_mode(RepeatMode::All);
-        // From index 0 with RepeatMode::All must wrap to the last track.
         let wrapped = player.skip_previous();
         assert!(
             wrapped.is_some(),
