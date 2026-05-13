@@ -14,7 +14,7 @@ import SwiftUI
 ///     ─
 ///     Favorite Album, Mark All as Played
 ///     ─
-///     Download, Edit Album…, Copy Link
+///     Download, Copy Link
 ///
 /// `showGoToAlbum` is omitted when the menu is invoked from the album's own
 /// detail screen — mirrors the spec's "if invoked from a context outside the
@@ -73,11 +73,6 @@ struct AlbumContextMenu: View {
         if model.supportsDownloads {
             Button("Download", systemImage: "arrow.down.circle") {
                 model.enqueueDownload(album: album)
-            }
-        }
-        if model.supportsEditAlbum {
-            Button("Edit Album…", systemImage: "pencil") {
-                model.requestEditAlbum(album: album)
             }
         }
         Button("Copy Link", systemImage: "link") { model.copyShareLink(album: album) }
