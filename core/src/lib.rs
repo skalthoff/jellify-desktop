@@ -496,6 +496,22 @@ impl LyrebirdCore {
         })
     }
 
+    /// Audio tracks belonging to a genre, paginated. Mirrors
+    /// [`Self::items_by_genre`] but returns tracks instead of albums —
+    /// feeds the genre detail "Shuffle Genre" action and the planned
+    /// all-tracks tab on genre pages (#823).
+    pub fn tracks_by_genre(
+        &self,
+        genre_id: String,
+        offset: u32,
+        limit: u32,
+    ) -> std::result::Result<PaginatedTracks, LyrebirdError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.tracks_by_genre(&genre_id, Paging::new(offset, limit)))
+        })
+    }
+
     /// Full artist record with biography, backdrop image tags, and
     /// external links (MusicBrainz / Last.fm / Discogs). Feeds the artist
     /// detail header.
