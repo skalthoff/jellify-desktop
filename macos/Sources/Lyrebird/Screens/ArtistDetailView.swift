@@ -8,8 +8,11 @@ import SwiftUI
 /// Layout (top-to-bottom):
 /// 1. **Hero band** (360pt) — blurred backdrop art, 200pt circular portrait,
 ///    eyebrow "ARTIST", 72pt italic-black title, genre line, stats strip.
-/// 2. **Transport row** — 54pt Play All, Shuffle, Follow (heart), Artist
-///    Radio, Instant Mix. Mirrors the album detail transport for consistency.
+/// 2. **Transport row** — 54pt Play All, Shuffle, Follow / Following pill,
+///    Artist Radio, Instant Mix. Mirrors the album detail transport for
+///    consistency. Following an artist favorites the artist entity on the
+///    server (Jellyfin has no separate follow primitive) so it can seed a
+///    future "New from artists you follow" home section (#64).
 /// 3. **Top Songs** — built on `TopTrackRow` from PR #512 (#229). The rank /
 ///    artwork / play-count UI is already tuned there; we just render the
 ///    section around it.
@@ -324,12 +327,12 @@ struct ArtistDetailView: View {
                     ) { model.shuffle(artist: artist) }
                 }
 
-                // Favorite — heart flips to filled/outlined based on server state.
-                let isFav = model.isFavorite(artist: artist)
-                transportSecondary(
-                    icon: isFav ? "heart.fill" : "heart",
-                    help: isFav ? "Unfavorite" : "Favorite"
-                ) { model.toggleFavorite(artist: artist) }
+                // Follow / Following — favoriting the artist entity is the
+                // "follow" signal (#64). Reflects server state on load via
+                // `isFollowing` (snapshot-aware) and updates optimistically
+                // through `toggleFollow` → `setFavorite`, which mirrors the
+                // server's authoritative answer back and rolls back on error.
+                followButton(for: artist)
 
                 transportSecondary(
                     icon: "dot.radiowaves.left.and.right",
@@ -364,6 +367,39 @@ struct ArtistDetailView: View {
         .buttonStyle(.plain)
         .help(help)
         .accessibilityLabel(help)
+    }
+
+    /// Labeled Follow / Following pill (#64). The filled accent state reads
+    /// "Following" so it's legible at a glance the way Apple Music / Spotify
+    /// follow buttons are; the resting state is an outlined "Follow". Both
+    /// state and action route through the `isFollowing` / `toggleFollow`
+    /// AppModel helpers, which favorite the artist entity on the server.
+    @ViewBuilder
+    private func followButton(for artist: Artist) -> some View {
+        let following = model.isFollowing(artist: artist)
+        Button {
+            model.toggleFollow(artist: artist)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: following ? "person.fill.checkmark" : "person.badge.plus")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(following ? "Following" : "Follow")
+                    .font(Theme.font(13, weight: .semibold))
+            }
+            .foregroundStyle(following ? .white : Theme.ink2)
+            .padding(.horizontal, 16)
+            .frame(height: 36)
+            .background(
+                Capsule().fill(following ? Theme.accent : Theme.surface)
+            )
+            .overlay(
+                Capsule().stroke(following ? Color.clear : Theme.border, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .help(following ? "Unfollow \(artist.name)" : "Follow \(artist.name)")
+        .accessibilityLabel(following ? "Following \(artist.name)" : "Follow \(artist.name)")
+        .accessibilityAddTraits(following ? [.isButton, .isSelected] : .isButton)
     }
 
     // MARK: - Top Songs (#229; PR #512)
