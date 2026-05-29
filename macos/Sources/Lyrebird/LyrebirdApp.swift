@@ -241,14 +241,18 @@ struct LyrebirdCommands: Commands {
             Divider()
 
             // Mini Player (#108). ⌘⌥P toggles the detached, borderless
-            // transport window. Flipping the flag is enough — `RootView`
-            // observes `isMiniPlayerVisible` and drives the matching
-            // `openWindow` / `dismissWindow("mini-player")` call. The
-            // checkmark mirrors the flag so the menu reflects the window's
-            // presence.
-            Button("menu.view.mini_player") {
-                model.toggleMiniPlayer()
-            }
+            // transport window. A `Toggle` (not a `Button`) bound to
+            // `isMiniPlayerVisible` so AppKit draws a checkmark next to the
+            // item whenever the window is open — a `CommandMenu` `Button`
+            // can't render that state. Flipping the bound flag is enough:
+            // `RootView` observes `isMiniPlayerVisible` and drives the
+            // matching `openWindow` / `dismissWindow("mini-player")` call,
+            // and the ⌘W / Window > Close path syncs the flag back via the
+            // window's `willCloseNotification` observer (see `RootView`).
+            Toggle("menu.view.mini_player", isOn: Binding(
+                get: { model.isMiniPlayerVisible },
+                set: { _ in model.toggleMiniPlayer() }
+            ))
             .keyboardShortcut("p", modifiers: [.command, .option])
             .disabled(model.session == nil)
         }
@@ -488,6 +492,25 @@ struct RootView: View {
             if signedOut, model.isMiniPlayerVisible {
                 model.isMiniPlayerVisible = false
             }
+        }
+        // Keep the flag honest when the window closes on its own (#108). The
+        // mini player is a chromeless `Window`, but AppKit still routes ⌘W /
+        // Window > Close through its automatic Close-Window responder, which
+        // orders the window out *without* touching `isMiniPlayerVisible`. Left
+        // unsynced the menu Toggle would stay checked and the next ⌘⌥P would
+        // try to `dismissWindow` an already-closed scene (a no-op), so the
+        // user has to press it twice to reopen. Observe `willCloseNotification`,
+        // match the mini-player window by the scene id SwiftUI stamps onto
+        // `NSWindow.identifier`, and clear the flag — but only when the model
+        // still thinks it's visible, so a model-initiated `dismissWindow`
+        // (which already cleared the flag) doesn't recurse.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
+            guard
+                model.isMiniPlayerVisible,
+                let window = note.object as? NSWindow,
+                window.identifier?.rawValue == MiniPlayerScene.id
+            else { return }
+            model.isMiniPlayerVisible = false
         }
     }
 }

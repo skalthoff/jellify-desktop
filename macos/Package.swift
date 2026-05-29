@@ -84,6 +84,15 @@ let package = Package(
                 .linkedFramework("SystemConfiguration"),
             ]
         ),
+        // Unit tests for the `Lyrebird` app module. `@testable import Lyrebird`
+        // reaches the executable target's internal symbols (e.g. `AppModel`),
+        // so view-model logic can be exercised headlessly without booting the
+        // SwiftUI scene graph. See `Tests/LyrebirdTests`.
+        .testTarget(
+            name: "LyrebirdTests",
+            dependencies: ["Lyrebird"],
+            path: "Tests/LyrebirdTests"
+        ),
     ],
     // Pin Swift 5 language mode at the package level rather than via per-
     // target `.swiftLanguageMode(.v5)`. The per-target API serialises to

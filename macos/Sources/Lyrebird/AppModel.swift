@@ -487,11 +487,13 @@ final class AppModel {
 
     /// Whether the detached Mini Player window (#108) is currently open.
     /// `LyrebirdApp` observes this and drives `openWindow` / `dismissWindow`
-    /// for the `mini-player` scene; `toggleMiniPlayer()` flips it from the
-    /// ⌘⌥P command and the window's own close path resets it so the menu
-    /// state stays in sync. The window is borderless chrome owned by
-    /// `MiniPlayerView`; this flag is the single source of truth for its
-    /// presence so the command's checkmark and the open window never diverge.
+    /// for the `mini-player` scene. The ⌘⌥P menu `Toggle` writes this flag
+    /// directly (and AppKit draws its checkmark from it), and `RootView`'s
+    /// `willCloseNotification` observer clears it when the window is closed by
+    /// ⌘W / Window > Close so the menu state can't drift out of sync. The
+    /// window is borderless chrome owned by `MiniPlayerView`; this flag is the
+    /// single source of truth for its presence so the command's checkmark and
+    /// the open window never diverge.
     var isMiniPlayerVisible: Bool = false
 
     /// Whether the Mini Player floats above other windows. Persisted across

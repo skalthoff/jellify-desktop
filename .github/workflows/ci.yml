@@ -178,6 +178,12 @@ jobs:
             rm -rf .build
           fi
           swift build
+      - name: swift test
+        working-directory: macos
+        # Headless unit tests for the app module (e.g. AppModel mini-player
+        # state, #108). The suite redirects XDG_DATA_HOME to a temp dir so the
+        # live core it boots never touches a real data directory.
+        run: swift test
       - name: Bundle .app
         working-directory: macos
         run: ./Scripts/make-bundle.sh
