@@ -69,7 +69,31 @@ struct LyrebirdApp: App {
                 .preferredColorScheme(preferredColorScheme)
         }
         .windowResizability(.contentSize)
+
+        // Detached Mini Player (#108). A dedicated single-instance `Window`
+        // (not a `WindowGroup`) so ⌘⌥P toggles exactly one mini player rather
+        // than spawning duplicates. The window's borderless / vibrancy /
+        // rounded / always-on-top chrome is applied by `MiniPlayerView`'s
+        // embedded `MiniPlayerWindowConfigurator` since `Scene` modifiers
+        // can't reach those `NSWindow` knobs. `.contentSize` resizability
+        // honours the view's 280–480pt width band.
+        Window("mini_player.window.title", id: MiniPlayerScene.id) {
+            MiniPlayerView()
+                .environment(model)
+                .preferredColorScheme(preferredColorScheme)
+        }
+        .windowResizability(.contentSize)
+        .defaultSize(width: 320, height: 120)
+        .windowStyle(.hiddenTitleBar)
+        .defaultPosition(.topTrailing)
     }
+}
+
+/// Scene identity for the detached Mini Player window (#108). Centralised so
+/// the scene declaration and the `openWindow` / `dismissWindow` call sites in
+/// `RootView` agree on the id.
+enum MiniPlayerScene {
+    static let id = "mini-player"
 }
 
 // MARK: - FocusedValue plumbing
@@ -212,6 +236,20 @@ struct LyrebirdCommands: Commands {
                 model.isCommandPaletteOpen.toggle()
             }
             .keyboardShortcut("k", modifiers: .command)
+            .disabled(model.session == nil)
+
+            Divider()
+
+            // Mini Player (#108). ⌘⌥P toggles the detached, borderless
+            // transport window. Flipping the flag is enough — `RootView`
+            // observes `isMiniPlayerVisible` and drives the matching
+            // `openWindow` / `dismissWindow("mini-player")` call. The
+            // checkmark mirrors the flag so the menu reflects the window's
+            // presence.
+            Button("menu.view.mini_player") {
+                model.toggleMiniPlayer()
+            }
+            .keyboardShortcut("p", modifiers: [.command, .option])
             .disabled(model.session == nil)
         }
 
@@ -371,6 +409,15 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // Open / dismiss the detached Mini Player scene (#108). These environment
+    // actions are only resolvable inside a `View` body, so `RootView` (which
+    // is always mounted) owns the bridge from `model.isMiniPlayerVisible` to
+    // the actual window. The ⌘⌥P command and the mini player's own "return"
+    // affordances only flip the flag; the `.onChange` below performs the
+    // window operation.
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.dismissWindow) private var dismissWindow
+
     /// Sticky "first-launch is done" flag. On a fresh install this is
     /// `false` and the app lands on `OnboardingView`. After the user either
     /// completes the flow or taps "Skip, explore offline" it becomes
@@ -424,6 +471,23 @@ struct RootView: View {
             // of the root view. `attemptRestoreSession` guards against
             // re-entry, so a `.task` firing on every scene rebuild is safe.
             await model.attemptRestoreSession()
+        }
+        // Bridge the Mini Player flag to the actual scene (#108). Driving the
+        // window from a single `@Observable` flag keeps the ⌘⌥P checkmark,
+        // the settings-menu "return", and the open window from ever drifting
+        // apart.
+        .onChange(of: model.isMiniPlayerVisible) { _, visible in
+            if visible {
+                openWindow(id: MiniPlayerScene.id)
+            } else {
+                dismissWindow(id: MiniPlayerScene.id)
+            }
+        }
+        // Sign-out should never leave a mini player floating over LoginView.
+        .onChange(of: model.session == nil) { _, signedOut in
+            if signedOut, model.isMiniPlayerVisible {
+                model.isMiniPlayerVisible = false
+            }
         }
     }
 }
