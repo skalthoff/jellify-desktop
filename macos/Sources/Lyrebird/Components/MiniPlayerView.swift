@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Detached, borderless **Mini Player** — a compact always-available transport
 /// surface modeled on Apple Music's `MiniPlayer` and Spotify's now-playing
-/// widget.
+/// widget (#108).
 ///
 /// The view ships its own chrome rather than relying on a system title bar:
 /// the host `NSWindow` is reconfigured (borderless, vibrancy, rounded corners,
@@ -185,6 +185,7 @@ struct MiniPlayerView: View {
                 model.skipNext()
             }
             Spacer(minLength: 0)
+            volumePopover
             // The return-to-full-window button appears inline on hover (the
             // issue's "return to full window" affordance), complementing the
             // always-reachable menu item.
@@ -203,8 +204,8 @@ struct MiniPlayerView: View {
     @ViewBuilder
     private var volumePopover: some View {
         MiniVolumePopover(
-            volume: 0.0,  // PROBE
-            onChange: { _ in }  // PROBE
+            volume: model.status.volume,
+            onChange: { model.setVolume($0) }
         )
     }
 
@@ -281,6 +282,68 @@ struct MiniPlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(label))
+    }
+}
+
+// MARK: - Volume popover
+
+/// A speaker button that reveals a vertical volume slider in a popover. Kept a
+/// separate `View` (rather than inline state in `MiniPlayerView`) so the
+/// `isPresented` state doesn't trigger a rebuild of the whole mini player on
+/// every open/close.
+private struct MiniVolumePopover: View {
+    let volume: Float
+    let onChange: (Float) -> Void
+
+    @State private var isPresented = false
+
+    var body: some View {
+        Button {
+            isPresented.toggle()
+        } label: {
+            Image(systemName: speakerSymbol)
+                .font(.system(size: 13))
+                .foregroundStyle(Theme.ink2)
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("mini_player.volume"))
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
+            VStack(spacing: 8) {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.ink3)
+                Slider(
+                    value: Binding(
+                        get: { Double(volume) },
+                        set: { onChange(Float($0)) }
+                    ),
+                    in: 0...1
+                )
+                // A vertical slider reads as a volume fader; rotating a
+                // horizontal `Slider` is the standard SwiftUI idiom on macOS.
+                .frame(width: 120)
+                .rotationEffect(.degrees(-90))
+                .frame(width: 28, height: 120)
+                .tint(Theme.ink2)
+                .accessibilityLabel(Text("mini_player.volume"))
+                .accessibilityValue("\(Int((Double(volume) * 100).rounded())) percent")
+                Image(systemName: "speaker.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.ink3)
+            }
+            .padding(12)
+            .frame(width: 56)
+        }
+    }
+
+    private var speakerSymbol: String {
+        switch volume {
+        case ..<0.001: return "speaker.slash.fill"
+        case ..<0.34: return "speaker.fill"
+        case ..<0.67: return "speaker.wave.1.fill"
+        default: return "speaker.wave.2.fill"
+        }
     }
 }
 
