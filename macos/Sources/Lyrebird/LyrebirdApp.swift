@@ -70,7 +70,7 @@ struct LyrebirdApp: App {
         }
         .windowResizability(.contentSize)
 
-        // Detached Mini Player (#108). A dedicated single-instance `Window`
+        // Detached Mini Player. A dedicated single-instance `Window`
         // (not a `WindowGroup`) so ⌘⌥P toggles exactly one mini player rather
         // than spawning duplicates. The window's borderless / vibrancy /
         // rounded / always-on-top chrome is applied by `MiniPlayerView`'s
@@ -89,7 +89,7 @@ struct LyrebirdApp: App {
     }
 }
 
-/// Scene identity for the detached Mini Player window (#108). Centralised so
+/// Scene identity for the detached Mini Player window. Centralised so
 /// the scene declaration and the `openWindow` / `dismissWindow` call sites in
 /// `RootView` agree on the id.
 enum MiniPlayerScene {
@@ -240,7 +240,7 @@ struct LyrebirdCommands: Commands {
 
             Divider()
 
-            // Mini Player (#108). ⌘⌥P toggles the detached, borderless
+            // Mini Player. ⌘⌥P toggles the detached, borderless
             // transport window. A `Toggle` (not a `Button`) bound to
             // `isMiniPlayerVisible` so AppKit draws a checkmark next to the
             // item whenever the window is open — a `CommandMenu` `Button`
@@ -413,7 +413,7 @@ struct RootView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    // Open / dismiss the detached Mini Player scene (#108). These environment
+    // Open / dismiss the detached Mini Player scene. These environment
     // actions are only resolvable inside a `View` body, so `RootView` (which
     // is always mounted) owns the bridge from `model.isMiniPlayerVisible` to
     // the actual window. The ⌘⌥P command and the mini player's own "return"
@@ -476,7 +476,7 @@ struct RootView: View {
             // re-entry, so a `.task` firing on every scene rebuild is safe.
             await model.attemptRestoreSession()
         }
-        // Bridge the Mini Player flag to the actual scene (#108). Driving the
+        // Bridge the Mini Player flag to the actual scene. Driving the
         // window from a single `@Observable` flag keeps the ⌘⌥P checkmark,
         // the settings-menu "return", and the open window from ever drifting
         // apart.
@@ -493,7 +493,7 @@ struct RootView: View {
                 model.isMiniPlayerVisible = false
             }
         }
-        // Keep the flag honest when the window closes on its own (#108). The
+        // Keep the flag honest when the window closes on its own. The
         // mini player is a chromeless `Window`, but AppKit still routes ⌘W /
         // Window > Close through its automatic Close-Window responder, which
         // orders the window out *without* touching `isMiniPlayerVisible`. Left

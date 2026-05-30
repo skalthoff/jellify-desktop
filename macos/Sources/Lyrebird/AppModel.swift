@@ -485,7 +485,7 @@ final class AppModel {
     /// pinned-stations store uses.
     private static let miniPlayerAlwaysOnTopKey = "miniPlayer.alwaysOnTop"
 
-    /// Whether the detached Mini Player window (#108) is currently open.
+    /// Whether the detached Mini Player window is currently open.
     /// `LyrebirdApp` observes this and drives `openWindow` / `dismissWindow`
     /// for the `mini-player` scene. The ⌘⌥P menu `Toggle` writes this flag
     /// directly (and AppKit draws its checkmark from it), and `RootView`'s
