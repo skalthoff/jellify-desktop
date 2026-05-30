@@ -485,7 +485,7 @@ struct AlbumDetailView: View {
                     .padding(.horizontal, 40)
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(alignment: .top, spacing: 16) {
+                    HStack(alignment: .top, spacing: 16) {
                         ForEach(moreByArtist, id: \.id) { related in
                             HomeAlbumTile(album: related, hint: "Double-click to open album")
                         }
