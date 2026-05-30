@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Detached, borderless **Mini Player** — a compact always-available transport
 /// surface modeled on Apple Music's `MiniPlayer` and Spotify's now-playing
-/// widget (#108).
+/// widget.
 ///
 /// The view ships its own chrome rather than relying on a system title bar:
 /// the host `NSWindow` is reconfigured (borderless, vibrancy, rounded corners,

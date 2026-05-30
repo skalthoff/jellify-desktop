@@ -2,7 +2,7 @@ import XCTest
 
 @testable import Lyrebird
 
-/// Coverage for the Mini Player view-model surface added in #108: the
+/// Coverage for the Mini Player view-model surface: the
 /// visibility toggle, the persisted always-on-top preference, and the
 /// "return to full window" / close-sync contract that keeps the ⌘⌥P menu
 /// `Toggle` checkmark from drifting out of sync with the real window.
