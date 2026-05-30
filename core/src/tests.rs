@@ -5879,6 +5879,103 @@ async fn logout_tolerates_server_post_failure() {
     .expect("join task");
 }
 
+/// Regression for #861: `logout()` must release the `Inner` mutex *before*
+/// `block_on(post_logout_session())`, matching the `with_client` invariant.
+///
+/// The `/Sessions/Logout` handler parks until a watcher thread can acquire
+/// `core.inner` via `try_lock`. With the bug (guard held across the HTTP
+/// round-trip) the watcher can never take the lock, so the handler is never
+/// released and `logout()` deadlocks; the 10s `recv_timeout` watchdog then
+/// trips and the test fails. With the fix, the guard is dropped before
+/// `block_on`, the watcher takes the lock, signals the handler, and
+/// `logout()` returns promptly.
+#[tokio::test]
+async fn logout_releases_inner_before_http_round_trip() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+
+    let tmp = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "tok-861",
+            "ServerId": "srv-861",
+            "ServerName": "S",
+            "User": { "Id": "u-861", "Name": "u-861", "ServerId": "srv-861", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+
+    // The logout POST parks until it observes `release`, which the watcher
+    // thread only sets once it has proven `core.inner` is acquirable.
+    let release = std::sync::Arc::new(AtomicBool::new(false));
+    let release_mock = release.clone();
+    Mock::given(method("POST"))
+        .and(path("/Sessions/Logout"))
+        .respond_with(move |_req: &Request| {
+            while !release_mock.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            ResponseTemplate::new(204)
+        })
+        .mount(&server)
+        .await;
+
+    let server_url = server.uri();
+    let tmp_path = tmp.path().to_string_lossy().into_owned();
+
+    let (tx, rx) = mpsc::channel::<bool>();
+    let release_watch = release.clone();
+
+    tokio::task::spawn_blocking(move || {
+        install_mock_keyring();
+        let core = std::sync::Arc::new(
+            LyrebirdCore::new(CoreConfig {
+                data_dir: tmp_path,
+                device_name: "Test".into(),
+            })
+            .expect("core init"),
+        );
+        core.login(server_url, "u-861".into(), "pw".into())
+            .expect("login");
+
+        // Watcher: while logout's HTTP is in flight, prove `inner` is
+        // acquirable. It only becomes acquirable if logout dropped the guard
+        // before `block_on`.
+        let core_watch = core.clone();
+        let watcher = std::thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while Instant::now() < deadline {
+                if core_watch.inner.try_lock().is_some() {
+                    release_watch.store(true, Ordering::SeqCst);
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            // Watchdog: never acquired the lock — unblock the server so the
+            // logout thread can return and the test reports the real failure.
+            release_watch.store(true, Ordering::SeqCst);
+            false
+        });
+
+        core.logout().expect("logout");
+        let acquired = watcher.join().unwrap_or(false);
+        tx.send(acquired).ok();
+    });
+
+    let acquired = rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("logout deadlocked holding Inner across the HTTP round-trip (#861)");
+    assert!(
+        acquired,
+        "watcher could not acquire Inner while logout's HTTP was in flight \
+         — logout held the mutex across block_on (#861)"
+    );
+}
+
 // ============================================================================
 // Playlist CRUD — rename / delete / reorder (#564)
 // ============================================================================
