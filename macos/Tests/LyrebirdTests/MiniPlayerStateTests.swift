@@ -53,7 +53,7 @@ final class MiniPlayerStateTests: XCTestCase {
         )
     }
 
-    /// Regression for the ⌘W / Window > Close drift bug (PR #855 finding A):
+    /// Regression for the ⌘W / Window > Close drift bug:
     /// AppKit's automatic Close-Window handler orders the chromeless window out
     /// without touching `isMiniPlayerVisible`. `RootView`'s
     /// `willCloseNotification` observer is wired to clear the flag in exactly
