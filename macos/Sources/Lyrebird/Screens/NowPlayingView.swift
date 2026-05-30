@@ -255,10 +255,10 @@ struct NowPlayingView: View {
 
     /// About block. Surfaces the subset of metadata we already have on
     /// the `Track` — album, artist, year, runtime — plus the album's
-    /// track count via a library lookup. The bio / extended overview
-    /// lives on the artist item, which the core doesn't project yet
-    /// (see TODO in `ArtistDetailView.artistOverview`). When that FFI
-    /// lands we can surface the first paragraph here.
+    /// track count via a library lookup. The artist's long-form biography
+    /// lives on the artist item (`ArtistDetail.overview`) and is rendered on
+    /// the Artist detail page's About section; surfacing the first paragraph
+    /// here would need its own artist-detail fetch and is out of scope.
     @ViewBuilder
     private func aboutPanel(for track: Track) -> some View {
         ScrollView {
