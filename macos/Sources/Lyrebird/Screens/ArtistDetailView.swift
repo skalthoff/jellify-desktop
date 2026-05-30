@@ -21,12 +21,11 @@ import SwiftUI
 ///    `AlbumType` yet, we lean on a name/track-count heuristic; sections
 ///    with zero matches collapse silently.
 /// 5. **Similar Artists** — stubbed row (data dependency tracked below).
-/// 6. **About / bio** — expandable overview block (data dependency tracked
-///    below).
+/// 6. **About / bio** — biography from the artist `Overview`, HTML-stripped,
+///    clamped to 4 lines with a keyboard-accessible "Read more" popover.
+///    Hidden entirely when the artist has no overview.
 ///
 /// Data stubs that remain TODO pending core work:
-/// - `artist_overview` / `artist_details` FFI (#231) → the About block falls
-///   back to the artist's genres + a "No bio yet" line.
 /// - `AlbumType` on the `Album` record (#60) → discography grouping uses
 ///   a name/track-count heuristic.
 /// - Listener stats (plays last 30d, followers) (#227) → the hero's stats
@@ -45,6 +44,10 @@ struct ArtistDetailView: View {
     @State private var fetchedArtist: Artist?
     @State private var isBioExpanded = false
     @State private var similarArtistsState: [Artist] = []
+    /// Plain-text biography, HTML-stripped from `ArtistDetail.overview`.
+    /// `nil` until the detail fetch resolves; empty/whitespace-only overviews
+    /// collapse to `nil` so the About section hides entirely.
+    @State private var bioOverview: String?
 
     /// Resolve the artist: cached library page first, then whichever
     /// record the `.task` block fetched on demand. Missing (server
@@ -69,6 +72,10 @@ struct ArtistDetailView: View {
         .background(Theme.bg)
         .task(id: artistID) {
             Log.app.info("ArtistDetailView.task fire artist=\(artistID, privacy: .public)")
+            // Reset per-artist state so a prior artist's bio / expanded popover
+            // never bleeds into this page while the new fetch is in flight.
+            bioOverview = nil
+            isBioExpanded = false
             isLoadingTopTracks = true
             if model.artists.first(where: { $0.id == artistID }) == nil {
                 fetchedArtist = await model.resolveArtist(id: artistID)
@@ -76,12 +83,19 @@ struct ArtistDetailView: View {
             // Server-scoped fetch via `AlbumArtistIds`. The prior
             // `model.albums.filter { ... }` only looked at the cached
             // first page of 100 library-wide albums, so Discography
-            // rendered empty for most artists on a large library (#60).
+            // rendered empty for most artists on a large library.
             artistAlbums = await model.loadArtistAlbums(artistId: artistID)
             topTracks = await model.loadArtistTopTracks(artistId: artistID)
             isLoadingTopTracks = false
             similarArtistsState = await model.loadSimilarArtists(artistId: artistID)
-            Log.app.info("ArtistDetailView.task done artist=\(artistID, privacy: .public) albums=\(artistAlbums.count, privacy: .public) topTracks=\(topTracks.count, privacy: .public) similar=\(similarArtistsState.count, privacy: .public)")
+            // Biography is independent of the lists above so a missing or slow
+            // detail fetch never blocks the rest of the page. The server
+            // overview may carry HTML, so it is stripped to plain text before
+            // storing; whitespace-only collapses to nil so the section hides.
+            if let detail = await model.artistDetail(artistId: artistID) {
+                bioOverview = Self.plainTextOverview(detail.overview)
+            }
+            Log.app.info("ArtistDetailView.task done artist=\(artistID, privacy: .public) albums=\(artistAlbums.count, privacy: .public) topTracks=\(topTracks.count, privacy: .public) similar=\(similarArtistsState.count, privacy: .public) bio=\(bioOverview != nil, privacy: .public)")
         }
     }
 
@@ -614,112 +628,158 @@ struct ArtistDetailView: View {
         similarArtistsState
     }
 
-    // MARK: - About / bio (#231)
+    // MARK: - About / bio
 
-    /// Expandable biography block. Jellyfin exposes an artist `Overview`
-    /// field via `GET /Items/{id}?Fields=Overview`, but the core doesn't
-    /// project it into the `Artist` record today (see TODO below). Until
-    /// that lands we show a graceful fallback that leans on genres, which
-    /// we do have — the section stays useful even in the stub state.
+    /// Biography block. The bio text comes from Jellyfin's artist `Overview`
+    /// field (`GET /Items/{id}?Fields=Overview`, populated by metadata
+    /// plugins), fetched via `model.artistDetail` and HTML-stripped into
+    /// `bioOverview` by the `.task` block.
+    ///
+    /// The section is hidden entirely when the overview is empty — no
+    /// "no bio yet" placeholder — so an artist with no metadata simply
+    /// doesn't grow a dead About region. Genres already surface in the hero
+    /// and catalog depth in the footer, so nothing useful is lost.
     @ViewBuilder
     private var aboutSection: some View {
-        if let artist = artist {
+        if let artist = artist, let overview = bioOverview, !overview.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 sectionHeader(eyebrow: "ABOUT", title: "About \(artist.name)")
-                aboutBody(for: artist)
+                aboutBody(overview: overview, artistName: artist.name)
             }
             .padding(.horizontal, 32)
             .padding(.top, 32)
         }
     }
 
-    /// Three-line clamp with a "Read more" reveal. When there is no bio
-    /// text we render a lightweight placeholder that surfaces the genres
-    /// and the count fields, so the section isn't dead real estate.
+    /// Four-line clamp on the overview with a keyboard-accessible "Read more"
+    /// button that opens the full text in a popover. The popover is driven by
+    /// a plain SwiftUI `Button` → focusable and Return-activatable for free,
+    /// satisfying the "Read more is keyboard accessible" criterion.
     @ViewBuilder
-    private func aboutBody(for artist: Artist) -> some View {
-        let overview = artistOverview(for: artist)
-        if let overview = overview, !overview.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
+    private func aboutBody(overview: String, artistName: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(overview)
+                .font(Theme.font(14, weight: .regular))
+                .foregroundStyle(Theme.ink2)
+                .lineLimit(4)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                isBioExpanded = true
+            } label: {
+                Text("Read more")
+                    .font(Theme.font(12, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Read full biography for \(artistName)")
+            .accessibilityHint("Opens the complete biography in a popover")
+            .popover(isPresented: $isBioExpanded, arrowEdge: .top) {
+                bioPopover(overview: overview, artistName: artistName)
+            }
+        }
+    }
+
+    /// Full-biography popover. Scrolls when the text is long so the popover
+    /// stays a sane size, and is dismissible with Escape (SwiftUI default) or
+    /// the explicit Done button for pointer users.
+    @ViewBuilder
+    private func bioPopover(overview: String, artistName: String) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(artistName)
+                    .font(Theme.font(18, weight: .heavy))
+                    .foregroundStyle(Theme.ink)
+                Spacer(minLength: 24)
+                Button("Done") { isBioExpanded = false }
+                    .buttonStyle(.plain)
+                    .font(Theme.font(13, weight: .semibold))
+                    .foregroundStyle(Theme.accent)
+                    .keyboardShortcut(.cancelAction)
+            }
+            ScrollView {
                 Text(overview)
                     .font(Theme.font(14, weight: .regular))
                     .foregroundStyle(Theme.ink2)
-                    .lineLimit(isBioExpanded ? nil : 3)
                     .fixedSize(horizontal: false, vertical: true)
-                Button {
-                    withAnimation(.easeInOut(duration: 0.15)) { isBioExpanded.toggle() }
-                } label: {
-                    Text(isBioExpanded ? "Show less" : "Read more")
-                        .font(Theme.font(12, weight: .semibold))
-                        .foregroundStyle(Theme.accent)
-                }
-                .buttonStyle(.plain)
-                // Provider credit — only surfaced when we know the source.
-                // Plugged in alongside the real overview feed (see TODO).
-                Text("via Jellyfin")
-                    .font(Theme.font(10, weight: .medium))
-                    .foregroundStyle(Theme.ink3)
-                    .tracking(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-        } else {
-            aboutFallback(for: artist)
         }
+        .padding(20)
+        .frame(width: 420)
+        .frame(maxHeight: 460)
     }
 
-    /// Placeholder rendered when the artist has no overview. Surfaces
-    /// what we DO have (genres, catalog depth) so the section remains useful.
-    @ViewBuilder
-    private func aboutFallback(for artist: Artist) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            if !artist.genres.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(artist.genres, id: \.self) { genre in
-                        Text(genre.uppercased())
-                            .font(Theme.font(10, weight: .bold))
-                            .foregroundStyle(Theme.ink2)
-                            .tracking(1.5)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(
-                                Capsule().fill(Theme.surface)
-                            )
-                            .overlay(
-                                Capsule().stroke(Theme.border, lineWidth: 1)
-                            )
-                    }
-                }
-            }
-            Text(aboutFallbackText(for: artist))
-                .font(Theme.font(13, weight: .medium))
-                .foregroundStyle(Theme.ink3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func aboutFallbackText(for artist: Artist) -> String {
-        var parts: [String] = ["No bio yet for \(artist.name)."]
-        if artistAlbums.count > 0 {
-            let albumWord = artistAlbums.count == 1 ? "album" : "albums"
-            parts.append("\(artistAlbums.count) \(albumWord) in your library.")
-        }
-        if artist.songCount > 0 {
-            let trackWord = artist.songCount == 1 ? "track" : "tracks"
-            parts.append("\(artist.songCount) \(trackWord) catalogued.")
-        }
-        return parts.joined(separator: " ")
-    }
-
-    /// Artist overview / biography. Returns `nil` until the core exposes
-    /// the `Overview` field on the `Artist` record.
+    /// Reduce a Jellyfin `Overview` to plain text for display. Returns `nil`
+    /// for `nil`, empty, or whitespace-only input so the caller can hide the
+    /// section.
     ///
-    /// TODO(core-#231): add `overview` to the `Artist` uniffi record (sourced
-    /// from Jellyfin's `Item.Overview` with `Fields=Overview`), plus the
-    /// related `born` / `origin` / `active_years` fields for the secondary
-    /// line the design calls for. Until then this returns `nil` and the
-    /// fallback block in `aboutBody` renders.
-    private func artistOverview(for _: Artist) -> String? {
-        // TODO(core-#231): return artist.overview once the field lands.
-        nil
+    /// A lightweight strip is used rather than an
+    /// `NSAttributedString(data:options:)` HTML parse: the latter is
+    /// main-thread-only, spins up a WebKit-backed parser per call, and is far
+    /// too heavy for a single bio string. Block-level tags become newlines so
+    /// paragraph breaks survive; all other tags are dropped; named and numeric
+    /// (decimal / hex) character references are decoded.
+    static func plainTextOverview(_ raw: String?) -> String? {
+        guard let raw, !raw.isEmpty else { return nil }
+
+        var text = raw
+        for tag in ["<br>", "<br/>", "<br />", "</p>", "</div>", "</li>"] {
+            text = text.replacingOccurrences(
+                of: tag,
+                with: "\n",
+                options: .caseInsensitive
+            )
+        }
+        text = text.replacingOccurrences(
+            of: "<[^>]+>",
+            with: "",
+            options: .regularExpression
+        )
+        text = Self.decodingHTMLEntities(text)
+        let collapsed = text.replacingOccurrences(
+            of: "\n{3,}",
+            with: "\n\n",
+            options: .regularExpression
+        )
+        let trimmed = collapsed.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// Decode the named and numeric HTML character references that Jellyfin
+    /// metadata plugins emit. Named entities cover the common five plus the
+    /// quote/apostrophe/nbsp variants; numeric references (`&#160;`, `&#x2013;`)
+    /// are decoded generically so en/em dashes and non-breaking spaces from
+    /// TheAudioDB / MusicBrainz bios render as their characters rather than raw.
+    private static func decodingHTMLEntities(_ input: String) -> String {
+        let named: [String: String] = [
+            "&amp;": "&", "&lt;": "<", "&gt;": ">",
+            "&quot;": "\"", "&apos;": "'", "&nbsp;": "\u{00A0}",
+        ]
+        var text = input
+        for (entity, replacement) in named {
+            text = text.replacingOccurrences(of: entity, with: replacement)
+        }
+
+        guard text.contains("&#"),
+              let regex = try? NSRegularExpression(pattern: "&#(x?)([0-9A-Fa-f]+);")
+        else { return text }
+
+        let matches = regex.matches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text)
+        )
+        for match in matches.reversed() {
+            guard let full = Range(match.range, in: text),
+                  let hexFlag = Range(match.range(at: 1), in: text),
+                  let digits = Range(match.range(at: 2), in: text)
+            else { continue }
+            let radix = text[hexFlag].isEmpty ? 10 : 16
+            guard let code = UInt32(text[digits], radix: radix),
+                  let scalar = Unicode.Scalar(code)
+            else { continue }
+            text.replaceSubrange(full, with: String(scalar))
+        }
+        return text
     }
 
     // MARK: - Section shell helpers

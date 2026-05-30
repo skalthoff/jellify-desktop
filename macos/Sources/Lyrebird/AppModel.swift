@@ -828,6 +828,7 @@ final class AppModel {
         artistTopTracks = [:]
         artistSimilarCache = [:]
         artistAlbumsCache = [:]
+        artistDetailCache = [:]
         recentlyPlayed = []
         forYou = []
         jumpBackIn = []
@@ -890,6 +891,7 @@ final class AppModel {
         artistTopTracks = [:]
         artistSimilarCache = [:]
         artistAlbumsCache = [:]
+        artistDetailCache = [:]
         recentlyPlayed = []
         forYou = []
         jumpBackIn = []
@@ -2051,24 +2053,43 @@ final class AppModel {
     /// rather than lying.
     func resolveArtist(id: String) async -> Artist? {
         if let cached = artists.first(where: { $0.id == id }) { return cached }
+        guard let detail = await artistDetail(artistId: id) else { return nil }
+        return Artist(
+            id: detail.id,
+            name: detail.name,
+            albumCount: 0,
+            songCount: 0,
+            genres: detail.genres,
+            imageTag: detail.imageTag,
+            userData: nil
+        )
+    }
+
+    /// Fetch the extended `ArtistDetail` record (biography / external links /
+    /// backdrops) and memoize it per id for the session. Runs the synchronous
+    /// FFI off the MainActor via `Task.detached` so the `Inner` mutex is never
+    /// taken on the main thread (gap pattern #2). Returns `nil` on error so
+    /// callers can render a graceful fallback rather than surfacing an alert.
+    ///
+    /// `resolveArtist(id:)` and the artist About section both go through here,
+    /// so a cache-miss artist page open performs a single `core.artistDetail`
+    /// round-trip rather than one per consumer.
+    func artistDetail(artistId: String) async -> ArtistDetail? {
+        if let cached = artistDetailCache[artistId] { return cached }
         do {
             let detail = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.artistDetail(artistId: id)
+                try core.artistDetail(artistId: artistId)
             }.value
-            return Artist(
-                id: detail.id,
-                name: detail.name,
-                albumCount: 0,
-                songCount: 0,
-                genres: detail.genres,
-                imageTag: detail.imageTag,
-                userData: nil
-            )
+            artistDetailCache[artistId] = detail
+            return detail
         } catch {
             _ = handleAuthError(error)
             return nil
         }
     }
+
+    /// Per-session cache for `artistDetail`. Cleared on `logout()` / `forgetToken()`.
+    private var artistDetailCache: [String: ArtistDetail] = [:]
 
     /// Resolve an `Album` record by id — cache-first, falling back to
     /// `core.fetchItem` for libraries larger than the loaded `albums`
