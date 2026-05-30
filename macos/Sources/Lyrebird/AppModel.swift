@@ -518,7 +518,7 @@ final class AppModel {
         UserDefaults.standard.set(on, forKey: AppModel.miniPlayerAlwaysOnTopKey)
     }
 
-    /// Close the Mini Player and bring the full window forward — the issue's
+    /// Close the Mini Player and bring the full window forward, honouring the
     /// "closing returns to full window" contract. Used by the mini player's
     /// settings-menu and hover "return" affordances. Clearing the flag lets
     /// `LyrebirdApp` dismiss the scene; activating the app raises the main

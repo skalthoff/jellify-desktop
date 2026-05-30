@@ -33,8 +33,7 @@ struct MiniPlayerView: View {
 
     /// Reveals the scrub bar + return-to-full-window control. Driven by
     /// `onHover` so the resting state stays a clean two-line widget and the
-    /// extra controls only appear when the pointer is over the window —
-    /// matching the issue's "on hover: show scrub bar and a return button".
+    /// extra controls only appear when the pointer is over the window.
     @State private var isHovering = false
 
     /// Local scrubber position used only while the user is actively dragging,
@@ -95,11 +94,11 @@ struct MiniPlayerView: View {
 
     // MARK: - Artwork (drag region)
 
-    /// Square album art on the leading edge. The issue calls for "drag by
-    /// album art area", so this region hosts a `MiniPlayerDragHandle` overlay
-    /// that performs `NSWindow.performDrag` — the rest of the window is also
-    /// draggable via the configurator's `isMovableByWindowBackground`, but the
-    /// artwork is the guaranteed-draggable target even where controls sit.
+    /// Square album art on the leading edge. The album-art region doubles as a
+    /// drag target, so it hosts a `MiniPlayerDragHandle` overlay that performs
+    /// `NSWindow.performDrag` — the rest of the window is also draggable via the
+    /// configurator's `isMovableByWindowBackground`, but the artwork is the
+    /// guaranteed-draggable target even where controls sit.
     @ViewBuilder
     private func artwork(for track: Track) -> some View {
         Artwork(
@@ -186,9 +185,8 @@ struct MiniPlayerView: View {
             }
             Spacer(minLength: 0)
             volumePopover
-            // The return-to-full-window button appears inline on hover (the
-            // issue's "return to full window" affordance), complementing the
-            // always-reachable menu item.
+            // The return-to-full-window button appears inline on hover,
+            // complementing the always-reachable menu item.
             if isHovering {
                 iconBtn("arrow.up.left.and.arrow.down.right", label: "mini_player.return", size: 12) {
                     model.returnToFullWindow()
