@@ -1200,6 +1200,174 @@
           }
         }
       }
+    },
+    "menu.view.mini_player" : {
+      "comment" : "View-menu item that toggles the detached Mini Player window (\u2318\u2325P).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mini Player"
+          }
+        }
+      }
+    },
+    "mini_player.window.title" : {
+      "comment" : "Window title for the detached Mini Player (not shown — the window is borderless — but used by the window list / accessibility).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mini Player"
+          }
+        }
+      }
+    },
+    "mini_player.accessibility.label" : {
+      "comment" : "VoiceOver label for the Mini Player window as a whole.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mini Player"
+          }
+        }
+      }
+    },
+    "mini_player.accessibility.drag_artwork" : {
+      "comment" : "VoiceOver label for the album-art region of the Mini Player, which doubles as the window drag handle.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Album art. Drag to move the Mini Player."
+          }
+        }
+      }
+    },
+    "mini_player.menu.label" : {
+      "comment" : "Accessibility label for the Mini Player settings (gear) menu button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mini Player options"
+          }
+        }
+      }
+    },
+    "mini_player.menu.always_on_top" : {
+      "comment" : "Toggle in the Mini Player settings menu that keeps the window floating above other windows.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Always on Top"
+          }
+        }
+      }
+    },
+    "mini_player.menu.return_to_full" : {
+      "comment" : "Menu item that closes the Mini Player and returns to the full app window.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return to Full Window"
+          }
+        }
+      }
+    },
+    "mini_player.previous" : {
+      "comment" : "Accessibility label for the Mini Player previous-track button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous track"
+          }
+        }
+      }
+    },
+    "mini_player.play" : {
+      "comment" : "Accessibility label for the Mini Player play button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play"
+          }
+        }
+      }
+    },
+    "mini_player.pause" : {
+      "comment" : "Accessibility label for the Mini Player pause button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        }
+      }
+    },
+    "mini_player.next" : {
+      "comment" : "Accessibility label for the Mini Player next-track button.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next track"
+          }
+        }
+      }
+    },
+    "mini_player.return" : {
+      "comment" : "Accessibility label for the inline return-to-full-window button revealed on hover in the Mini Player.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Return to full window"
+          }
+        }
+      }
+    },
+    "mini_player.volume" : {
+      "comment" : "Accessibility label for the Mini Player volume control.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volume"
+          }
+        }
+      }
+    },
+    "mini_player.scrubber" : {
+      "comment" : "Accessibility label for the Mini Player playback-position scrubber revealed on hover.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playback position"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

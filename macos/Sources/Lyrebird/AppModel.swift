@@ -483,6 +483,58 @@ final class AppModel {
     /// this set. Cleared on success or error. See `duplicatePlaylist`.
     var sidebarCopyingPlaylistIds: Set<String> = []
 
+    // MARK: - Mini Player (⌘⌥P)
+
+    /// UserDefaults key for the persisted always-on-top preference. AppModel is
+    /// `@Observable` rather than a SwiftUI `View`, so it can't use `@AppStorage`
+    /// directly — we mirror the value into `miniPlayerAlwaysOnTop` and write
+    /// through on each change, the same JSON/UserDefaults bridge idiom the
+    /// pinned-stations store uses.
+    private static let miniPlayerAlwaysOnTopKey = "miniPlayer.alwaysOnTop"
+
+    /// Whether the detached Mini Player window is currently open.
+    /// `LyrebirdApp` observes this and drives `openWindow` / `dismissWindow`
+    /// for the `mini-player` scene. The ⌘⌥P menu `Toggle` writes this flag
+    /// directly (and AppKit draws its checkmark from it), and `RootView`'s
+    /// `willCloseNotification` observer clears it when the window is closed by
+    /// ⌘W / Window > Close so the menu state can't drift out of sync. The
+    /// window is borderless chrome owned by `MiniPlayerView`; this flag is the
+    /// single source of truth for its presence so the command's checkmark and
+    /// the open window never diverge.
+    var isMiniPlayerVisible: Bool = false
+
+    /// Whether the Mini Player floats above other windows. Persisted across
+    /// launches and surfaced as a toggle in the mini player's settings menu,
+    /// matching Apple Music's MiniPlayer "Always on Top". Initialised from
+    /// `UserDefaults`; write through `setMiniPlayerAlwaysOnTop(_:)` so the
+    /// stored value and the live window level stay consistent.
+    var miniPlayerAlwaysOnTop: Bool = UserDefaults.standard.bool(forKey: AppModel.miniPlayerAlwaysOnTopKey)
+
+    /// Toggle the Mini Player window. Wired to the ⌘⌥P menu command; flipping
+    /// the flag is enough — `LyrebirdApp` translates the change into the
+    /// matching `openWindow` / `dismissWindow` call for the `mini-player`
+    /// scene.
+    func toggleMiniPlayer() {
+        isMiniPlayerVisible.toggle()
+    }
+
+    /// Set + persist the always-on-top preference. `MiniPlayerWindowConfigurator`
+    /// reads `miniPlayerAlwaysOnTop` and re-applies the window level on change.
+    func setMiniPlayerAlwaysOnTop(_ on: Bool) {
+        miniPlayerAlwaysOnTop = on
+        UserDefaults.standard.set(on, forKey: AppModel.miniPlayerAlwaysOnTopKey)
+    }
+
+    /// Close the Mini Player and bring the full window forward, honouring the
+    /// "closing returns to full window" contract. Used by the mini player's
+    /// settings-menu and hover "return" affordances. Clearing the flag lets
+    /// `LyrebirdApp` dismiss the scene; activating the app raises the main
+    /// `WindowGroup` window back to the foreground.
+    func returnToFullWindow() {
+        isMiniPlayerVisible = false
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
     // MARK: - Command Palette (⌘K)
 
     /// Whether the command-palette overlay is currently visible. Toggled by
