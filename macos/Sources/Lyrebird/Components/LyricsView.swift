@@ -174,10 +174,6 @@ struct LyricsView: View {
     /// Current active line id. Driven by the ticker; the view re-renders
     /// on each change to move the highlight + trigger the scroll.
     @State private var activeId: Int?
-    /// Cached `Date` used to drive the ticker's Combine timer publisher.
-    /// The actual polling cadence is 200ms per the issue, tight enough
-    /// to feel live but loose enough not to pummel the main thread.
-    @State private var tick: Date = .now
 
     var body: some View {
         Group {
@@ -254,7 +250,6 @@ struct LyricsView: View {
             // compare, and we only mutate `activeId` when it changes, so
             // most ticks are no-ops.
             .onReceive(Timer.publish(every: 0.2, on: .main, in: .common).autoconnect()) { _ in
-                tick = .now
                 updateActiveLine()
             }
             .onChange(of: activeId) { _, newValue in
