@@ -117,8 +117,8 @@ public final class AudioEngine: NSObject {
     /// a newer seek has already been issued.
     private var seekGeneration: Int = 0
 
-    /// Monotonically-increasing counter that serializes concurrent preloads
-    /// (#848). `preloadNextTrack` resolves the stream off the main actor, so a
+    /// Monotonically-increasing counter that serializes concurrent preloads.
+    /// `preloadNextTrack` resolves the stream off the main actor, so a
     /// second call (e.g. a rapid skip-next, or `onTrackEnded` firing again)
     /// can launch a second detached task while the first is still in flight.
     /// Each task captures this value at dispatch time; the marshal-back-to-main
@@ -155,14 +155,14 @@ public final class AudioEngine: NSObject {
     }
 
     #if DEBUG
-    /// Test seam (#848): install a bare `AVQueuePlayer` so `preloadNextTrack`
+    /// Test seam: install a bare `AVQueuePlayer` so `preloadNextTrack`
     /// passes its `player != nil` guard without a logged-in core + live
     /// `play(_:)`. Returns the number of items currently queued.
     func installEmptyPlayerForTesting() {
         player = AVQueuePlayer()
     }
 
-    /// Test seam (#848): number of items currently queued in the player.
+    /// Test seam: number of items currently queued in the player.
     var queuedItemCountForTesting: Int { player?.items().count ?? 0 }
     #endif
 
@@ -452,9 +452,9 @@ public final class AudioEngine: NSObject {
         // `block_on`. This runs from `onTrackEnded` (queue: .main) on every
         // gapless transition, so doing it inline would beach-ball the UI for
         // the duration of the POST. Resolve off the main actor and marshal
-        // only the cheap AVPlayerItem build + queue mutation back to main
-        // (#848). Failure is opportunistic — without a pre-loaded item the
-        // queue just falls back to the normal play(track:) path.
+        // only the cheap AVPlayerItem build + queue mutation back to main.
+        // Failure is opportunistic — without a pre-loaded item the queue
+        // just falls back to the normal play(track:) path.
         let core = self.core
         let opts = PlaybackInfoOpts(
             userId: nil,
@@ -467,44 +467,53 @@ public final class AudioEngine: NSObject {
             autoOpenLiveStream: nil,
             deviceProfile: nil
         )
+        // Capture the generation synchronously on the main actor before
+        // dispatching; the marshal-back step below only commits if no newer
+        // preload has superseded this one.
+        preloadGeneration &+= 1
+        let generation = preloadGeneration
         Task.detached {
-            let info = try? core.playbackInfo(itemId: track.id, opts: opts)
-            let mediaSourceId = info?.mediaSources.first?.id
-            let playSessionId = info?.playSessionId
-            guard
-                let urlString = try? core.streamUrl(
+            do {
+                let info = try? core.playbackInfo(itemId: track.id, opts: opts)
+                let mediaSourceId = info?.mediaSources.first?.id
+                let playSessionId = info?.playSessionId
+                let urlString = try core.streamUrl(
                     trackId: track.id,
                     mediaSourceId: mediaSourceId,
                     playSessionId: playSessionId
-                ),
-                let url = URL(string: urlString),
-                let authHeader = try? core.authHeader()
-            else {
-                return
-            }
-            let asset = AVURLAsset(
-                url: url,
-                options: [
-                    "AVURLAssetHTTPHeaderFieldsKey": [
-                        "Authorization": authHeader
-                    ]
-                ]
-            )
-            let nextItem = AVPlayerItem(asset: asset)
-
-            await MainActor.run {
-                guard let player = self.player else { return }
-                // Remove any previously queued (not-yet-playing) items so we never
-                // accumulate stale entries from rapid queue mutations. `items()` returns
-                // all items including the current one; skip index 0 (currently playing).
-                let queued = player.items()
-                for item in queued.dropFirst() {
-                    player.remove(item)
+                )
+                let authHeader = try core.authHeader()
+                guard let url = URL(string: urlString) else {
+                    engineLog.error("preload skipped: invalid stream URL for track \(track.id, privacy: .public)")
+                    return
                 }
+                let asset = AVURLAsset(
+                    url: url,
+                    options: [
+                        "AVURLAssetHTTPHeaderFieldsKey": [
+                            "Authorization": authHeader
+                        ]
+                    ]
+                )
+                let nextItem = AVPlayerItem(asset: asset)
 
-                // Append the new item after the current one (or as the only item if
-                // the player was empty — shouldn't happen in normal flow but safe).
-                player.insert(nextItem, after: player.currentItem)
+                await MainActor.run {
+                    guard generation == self.preloadGeneration else { return }
+                    guard let player = self.player else { return }
+                    // Remove any previously queued (not-yet-playing) items so we never
+                    // accumulate stale entries from rapid queue mutations. `items()` returns
+                    // all items including the current one; skip index 0 (currently playing).
+                    let queued = player.items()
+                    for item in queued.dropFirst() {
+                        player.remove(item)
+                    }
+
+                    // Append the new item after the current one (or as the only item if
+                    // the player was empty — shouldn't happen in normal flow but safe).
+                    player.insert(nextItem, after: player.currentItem)
+                }
+            } catch {
+                engineLog.error("preload skipped: failed to resolve track \(track.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
     }
