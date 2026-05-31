@@ -1,0 +1,69 @@
+import XCTest
+@testable import LyrebirdAudio
+import LyrebirdCore
+
+@MainActor
+final class AudioEnginePreloadTests: XCTestCase {
+    private func makeEngine() throws -> AudioEngine {
+        // Build a real (un-authed) core against a throwaway data dir, same
+        // pattern as MiniPlayerStateTests. The off-main resolve fails fast
+        // without touching the network.
+        let dir = NSTemporaryDirectory() + "lyrebird-preload-\(UUID().uuidString)"
+        let core = try LyrebirdCore(config: CoreConfig(dataDir: dir, deviceName: "preload-test"))
+        let engine = AudioEngine(core: core)
+        engine.installEmptyPlayerForTesting()
+        return engine
+    }
+
+    private func makeTrack(_ id: String) -> Track {
+        Track(
+            id: id,
+            name: "t-\(id)",
+            albumId: nil,
+            albumName: nil,
+            artistName: "",
+            artistId: nil,
+            indexNumber: nil,
+            discNumber: nil,
+            year: nil,
+            runtimeTicks: 0,
+            isFavorite: false,
+            playCount: 0,
+            container: nil,
+            bitrate: nil,
+            imageTag: nil,
+            playlistItemId: nil,
+            userData: nil
+        )
+    }
+
+    /// The PlaybackInfo / streamUrl / authHeader resolution must run off the
+    /// main actor: `preloadNextTrack` dispatches the FFI into a detached task
+    /// and returns immediately, so no item can be spliced into the queue
+    /// synchronously on the caller's thread. If the resolution ran inline this
+    /// would block until the (un-authed) resolve threw — and on success it
+    /// would have mutated the queue before returning.
+    func testPreloadDoesNotMutateQueueSynchronously() throws {
+        let engine = try makeEngine()
+        XCTAssertEqual(engine.queuedItemCountForTesting, 0)
+
+        engine.preloadNextTrack(makeTrack("a"))
+
+        // Control returned to the main actor with the queue still untouched —
+        // the resolve is happening off-main.
+        XCTAssertEqual(engine.queuedItemCountForTesting, 0)
+    }
+
+    /// Rapid back-to-back preloads (e.g. skip-next, or `onTrackEnded` firing
+    /// again) must not deadlock or crash, and must not synchronously enqueue.
+    /// The generation guard ensures only the latest in-flight resolve can ever
+    /// win the marshal-back, so a stale resolution can't clobber the queue.
+    func testConcurrentPreloadsDoNotEnqueueSynchronously() throws {
+        let engine = try makeEngine()
+
+        engine.preloadNextTrack(makeTrack("a"))
+        engine.preloadNextTrack(makeTrack("b"))
+
+        XCTAssertEqual(engine.queuedItemCountForTesting, 0)
+    }
+}

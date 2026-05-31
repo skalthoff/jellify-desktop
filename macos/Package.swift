@@ -90,7 +90,7 @@ let package = Package(
         // SwiftUI scene graph. See `Tests/LyrebirdTests`.
         .testTarget(
             name: "LyrebirdTests",
-            dependencies: ["Lyrebird"],
+            dependencies: ["Lyrebird", "LyrebirdAudio"],
             path: "Tests/LyrebirdTests"
         ),
     ],
