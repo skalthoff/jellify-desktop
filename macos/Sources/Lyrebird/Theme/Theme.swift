@@ -37,6 +37,36 @@ enum Theme {
     static let focusRing: Color = primary.opacity(0.75)
     static let focusRingHighContrast: Color = accentHot
 
+    // MARK: - High-contrast variants (#340)
+    //
+    // Resolved when System Settings ▸ Accessibility ▸ Display ▸ Increase
+    // Contrast is on (SwiftUI surfaces this as
+    // `@Environment(\.colorSchemeContrast) == .increased`). Use the
+    // `AccessibleTheme` wrapper below rather than reading these directly so
+    // call sites stay terse. Contrast ratios are measured against `bg`
+    // (#0C0622) / `bgAlt` (#140B30) and target WCAG 2.2 AA (4.5:1 body,
+    // 3:1 large/UI).
+
+    /// High-contrast secondary text. Opaque lift of `ink2` to ≈7:1 on `bg`,
+    /// replacing the marginal 4.6–4.9:1 of the standard token.
+    static let ink2HighContrast = Color(rgba: (198, 190, 220, 1.0))
+
+    /// High-contrast tertiary text. The standard `ink3` is alpha .65 and
+    /// fails (~3:1) at small sizes; this opaque value reaches ≈7:1 on `bg`.
+    static let ink3HighContrast = Color(rgba: (198, 190, 220, 1.0))
+
+    /// High-contrast body accent. The standard `accent` (#CC2F71, ~3.4:1)
+    /// fails for body copy; `accentHot` (#FF066F) reaches ≈6.7:1 on `bg`.
+    static let accentHighContrast: Color = accentHot
+
+    /// High-contrast border. The standard `border` is alpha .18 (~1.4:1,
+    /// effectively invisible with Increase Contrast on); this opaque value
+    /// renders as a solid, visible hairline.
+    static let borderHighContrast = Color(rgba: (170, 162, 196, 1.0))
+
+    /// High-contrast strong border / divider — solid, no alpha blend.
+    static let borderStrongHighContrast = Color(rgba: (198, 190, 220, 1.0))
+
     // Type
     /// Design-provided font helper. Wraps `Font.custom(_:size:relativeTo:)`
     /// so every Figtree call site automatically scales with the user's
