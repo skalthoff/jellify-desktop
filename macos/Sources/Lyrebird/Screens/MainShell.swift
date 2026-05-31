@@ -1,5 +1,15 @@
 import SwiftUI
 
+/// The three top-level regions Switch Control's "Group items" scan steps
+/// through, in scan order. `MainShell`'s `.accessibilityLabel` modifiers and
+/// the grouping tests both read these raw values, so the acceptance criteria
+/// stay a single source of truth instead of duplicated string literals.
+enum SwitchControlGroup: String, CaseIterable {
+    case sidebar = "Sidebar"
+    case content = "Content"
+    case playerBar = "Player Bar"
+}
+
 struct MainShell: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -25,6 +35,13 @@ struct MainShell: View {
                 // detail column, then the queue inspector / player bar.
                 Sidebar()
                     .accessibilitySortPriority(100)
+                    // Switch Control "Group items" grouping. Wrapping the
+                    // whole rail in a single labelled container lets Switch
+                    // Control scan "Sidebar" as one top-level group and
+                    // descend on demand, instead of stepping through every
+                    // nav row, stat row, and playlist one at a time.
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(SwitchControlGroup.sidebar.rawValue)
                     // Pin the sidebar to the existing 252pt design width so
                     // NavigationSplitView's auto-sizing doesn't expand the
                     // column past what the brand mark + nav rows assume.
@@ -92,6 +109,13 @@ struct MainShell: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilitySortPriority(90)
+                    // Switch Control "Group items" grouping. The active page
+                    // + its toolbar scan as one "Content" group so Switch
+                    // Control offers Sidebar / Content / Player Bar as the
+                    // three top-level groups, then descends into the page
+                    // body (track list / grid) on demand.
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel(SwitchControlGroup.content.rawValue)
 
                     // Right-side Queue Inspector (#79). Hidden by default;
                     // toggled by Cmd+Opt+Q or a future PlayerBar button
@@ -119,6 +143,13 @@ struct MainShell: View {
             // shell did.
             PlayerBar()
                 .accessibilitySortPriority(50)
+                // Switch Control "Group items" grouping. PlayerBar already
+                // contains its own children; the explicit "Player Bar" label
+                // here names the third top-level group so Switch Control's
+                // group scan reads Sidebar / Content / Player Bar rather than
+                // an unnamed transport region.
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(SwitchControlGroup.playerBar.rawValue)
         }
         .background(Theme.bg)
         // Announce track changes to VoiceOver (#342). Keyed on the track id
