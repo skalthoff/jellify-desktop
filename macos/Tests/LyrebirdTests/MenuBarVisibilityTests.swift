@@ -37,7 +37,7 @@ final class MenuBarVisibilityTests: XCTestCase {
 
     func testPersistentWinsWhenPlaybackStops() {
         // Simulate a playing→stopped transition while the persistent toggle is
-        // on: the icon must NOT be hidden — that was the precedence bug.
+        // on: the icon must NOT be hidden.
         XCTAssertTrue(
             MenuBarController.resolveVisibility(playing: false, persistent: true),
             "stopping playback must never hide an icon the user pinned persistently"

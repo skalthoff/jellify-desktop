@@ -49,18 +49,14 @@ final class NotificationManager {
     /// toggle is off. Safe to call on the MainActor — the actual delivery is
     /// handed to `UNUserNotificationCenter` asynchronously.
     func notifyTrackChange(title: String, artist: String?, album: String?) {
-        guard NotificationPreference.trackChangeEnabled else { return }
+        guard NotificationManager.shouldNotify(enabled: NotificationPreference.trackChangeEnabled) else {
+            return
+        }
 
         let content = UNMutableNotificationContent()
         content.title = title
-        // Prefer "Artist — Album"; fall back to whichever is present so the
-        // subtitle is never an awkward bare dash.
-        let subtitleParts = [artist, album].compactMap { part -> String? in
-            guard let part, !part.isEmpty else { return nil }
-            return part
-        }
-        if !subtitleParts.isEmpty {
-            content.body = subtitleParts.joined(separator: " — ")
+        if let body = NotificationManager.subtitle(artist: artist, album: album) {
+            content.body = body
         }
         content.sound = NotificationPreference.soundEnabled ? .default : nil
 
@@ -77,6 +73,27 @@ final class NotificationManager {
                 Log.app.error("Failed to post track-change notification: \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    // MARK: - Pure helpers (unit-testable)
+
+    /// Whether a track-change notification should be posted at all. Factored
+    /// out of `notifyTrackChange` so the gate is verifiable without realizing a
+    /// `UNUserNotificationCenter` (which a headless test run can't do).
+    static func shouldNotify(enabled: Bool) -> Bool {
+        enabled
+    }
+
+    /// Compose the notification subtitle from the optional artist / album.
+    /// Prefers "Artist — Album", falls back to whichever is present, and
+    /// returns `nil` when neither is usable so the body is never a bare dash.
+    /// Pure so the composition rule can be unit-tested directly.
+    static func subtitle(artist: String?, album: String?) -> String? {
+        let parts = [artist, album].compactMap { part -> String? in
+            guard let part, !part.isEmpty else { return nil }
+            return part
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " — ")
     }
 }
 

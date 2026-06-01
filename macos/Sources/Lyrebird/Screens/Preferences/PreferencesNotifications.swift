@@ -18,6 +18,8 @@ import SwiftUI
 ///
 /// Spec: `research/06-screen-specs.md` — Settings ▸ Notifications.
 struct PreferencesNotifications: View {
+    @Environment(AppModel.self) private var model
+
     @AppStorage(NotificationPreference.trackChangeKey)
     private var trackChange: Bool = false
     @AppStorage(NotificationPreference.soundKey)
@@ -36,6 +38,29 @@ struct PreferencesNotifications: View {
                 if newValue {
                     NotificationManager.shared.requestAuthorizationIfNeeded()
                 }
+            }
+        )
+    }
+
+    /// Binding that applies the "Show in menu bar while playing" preference
+    /// immediately, rather than waiting for the next playback state transition.
+    ///
+    /// Without this, flipping the toggle on while a track is already playing
+    /// did nothing until the user paused/resumed — the AppModel poll loop only
+    /// drives `setVisibleWhilePlaying(_:)` on a `state` change. Resolving the
+    /// current playback state here makes the toggle take effect on the spot:
+    /// enabling it while playing shows the icon now; disabling it removes the
+    /// transient icon now (unless the persistent General toggle is keeping it).
+    private var showInMenuBarWhilePlayingBinding: Binding<Bool> {
+        Binding(
+            get: { showInMenuBarWhilePlaying },
+            set: { newValue in
+                showInMenuBarWhilePlaying = newValue
+                // When turned on, reflect the live playback state immediately;
+                // when turned off, drop the transient icon (passing `false`
+                // so it only stays if the persistent toggle pins it).
+                let playing = newValue && model.status.state == .playing
+                MenuBarController.shared.setVisibleWhilePlaying(playing)
             }
         )
     }
@@ -88,7 +113,7 @@ struct PreferencesNotifications: View {
                         ? "On — the menu-bar icon appears while a track is playing."
                         : "Off — the menu-bar icon follows the General setting only."
                 ) {
-                    Toggle("", isOn: $showInMenuBarWhilePlaying)
+                    Toggle("", isOn: showInMenuBarWhilePlayingBinding)
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .accessibilityLabel("Show in menu bar while playing")
@@ -112,6 +137,10 @@ struct PreferencesNotifications: View {
 }
 
 #Preview {
+    // Real rendering requires an `AppModel` in the environment; the Settings
+    // scene in `LyrebirdApp` injects one. Previews without a model will crash
+    // on `@Environment(AppModel.self)` — this preview is kept as documentation
+    // for where the view lives.
     PreferencesNotifications()
         .frame(width: 560, height: 520)
         .padding(32)
