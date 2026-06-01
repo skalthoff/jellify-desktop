@@ -21,14 +21,17 @@ enum AppearanceTheme: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Representative swatch color used in the theme picker. Sampled from the
-    /// design's `primary` token for each preset in
-    /// `design/project/src/tokens.jsx`.
+    /// Representative swatch color used in the theme picker. For presets that
+    /// ship a colour-blind-verified pair (Ocean / Forest), the swatch is
+    /// derived from `ThemePreset.primaryHex` so the picker preview always
+    /// matches the WCAG-verified accent the preset applies — the two can never
+    /// drift apart. Other presets are sampled from the design's `primary`
+    /// token in `design/project/src/tokens.jsx`.
     var swatch: Color {
         switch self {
         case .purple: return Color(hex: 0x887BFF)
-        case .ocean: return Color(hex: 0x4B7DD7)
-        case .forest: return Color(hex: 0x10AF8D)
+        case .ocean: return Color(hex: ThemePreset.ocean.primaryHex)
+        case .forest: return Color(hex: ThemePreset.forest.primaryHex)
         case .sunset: return Color(hex: 0xFF6625)
         case .peanut: return Color(hex: 0xD4A360)
         }
@@ -186,13 +189,26 @@ struct AppearancePane: View {
         )
     }
 
+    /// Theme-section helper text. When the system asks apps to convey meaning
+    /// without relying on colour alone (System Settings → Accessibility →
+    /// Display → "Differentiate without color"), steer toward the Ocean preset
+    /// whose primary/accent pair stays distinguishable for every colour-blind
+    /// type. Otherwise show the default copy.
+    private var themeHint: String {
+        if ThemePreset.suggestedForAccessibility() == .ocean,
+           (AppearanceTheme(rawValue: themeRaw) ?? .purple) != .ocean {
+            return "Your system prefers colour-independent contrast — the Ocean theme keeps the accent distinguishable for every colour-blind type."
+        }
+        return "Purple is the shipping default. Other presets persist today and render once the theme engine lands."
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 28) {
             header
 
             AppearanceSection(
                 title: "Theme",
-                hint: "Purple is the shipping default. Other presets persist today and render once the theme engine lands."
+                hint: themeHint
             ) {
                 ThemePicker(selection: theme)
             }
