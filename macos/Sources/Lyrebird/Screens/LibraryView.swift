@@ -163,6 +163,12 @@ struct LibraryView: View {
             // it referenced are no longer on screen. See #217.
             clearSelection()
         }
+        // `anchorIndex` is a positional cursor into the displayed list; a sort
+        // or filter change reorders that list, so a stale anchor would extend a
+        // Shift+Click range from the wrong row. The ID-based `selectedTrackIds`
+        // survives the reorder, so only the anchor needs clearing. See #217.
+        .onChange(of: sortOrder) { _, _ in anchorIndex = nil }
+        .onChange(of: filter) { _, _ in anchorIndex = nil }
     }
 
     /// The selected tracks resolved against the currently-sorted list, in
