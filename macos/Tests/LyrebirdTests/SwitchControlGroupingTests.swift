@@ -10,8 +10,8 @@ import XCTest
 ///   2. the structural invariants of how `MainShell.swift` applies the
 ///      grouping modifiers — read directly from source.
 /// They are falsifiable: each one fails if the corresponding modifier is
-/// removed, relabelled, or reordered — exactly the class of regression the
-/// adversarial review on PR #877 caught.
+/// removed, relabelled, or reordered — exactly the class of regression that
+/// silently breaks the Switch Control group scan.
 final class SwitchControlGroupingTests: XCTestCase {
 
     // MARK: - Enum constants
