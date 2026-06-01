@@ -1447,7 +1447,11 @@ final class AppModel {
     /// rather than blanking the section mid-session.
     func refreshGenresToExplore() async {
         let page = await Task.detached(priority: .userInitiated) { [core] in
-            try? core.genres(offset: 0, limit: 200)
+            // limit: 500 matches `resolvedGenreId`'s fetch — /MusicGenres sorts
+            // SortName ascending, so a smaller cap would silently drop
+            // alphabetically-late genres from the ranking pool (the test
+            // library has 254 genres).
+            try? core.genres(offset: 0, limit: 500)
         }.value
         guard let items = page?.items else { return }
         // Project the FFI genres to plain tuples before ranking. Passing the
