@@ -264,6 +264,8 @@ struct MainShell: View {
             GenreDetailView(genre: g)
         case .nowPlaying:
             NowPlayingView()
+        case .fullQueue:
+            FullQueueView()
         }
     }
 
@@ -393,6 +395,8 @@ struct MainShell: View {
             segments.append(g.name)
         case .nowPlaying?:
             segments.append("Now Playing")
+        case .fullQueue?:
+            segments.append("Play Queue")
         case .home?, .discover?, .library?, .favorites?, .search?, .settings?, nil:
             break
         }
