@@ -151,6 +151,16 @@ public final class AudioEngine: NSObject {
     /// Held weakly — the owner (`AppModel`) has the strong reference.
     public weak var delegate: AudioEngineDelegate?
 
+    /// UID of the Core Audio output device playback is pinned to.
+    /// `nil` / empty means "follow the system default output". Persisted by
+    /// the owner via `@AppStorage(AudioOutputDevices.preferenceKey)`; set it
+    /// once at startup and again whenever the Preferences picker changes — the
+    /// engine re-applies it to the live player immediately and to every player
+    /// it builds afterwards (`play`, gapless preload, stall recovery).
+    public var outputDeviceUID: String? {
+        didSet { applyOutputDevice(to: player) }
+    }
+
     public init(core: LyrebirdCore) {
         self.core = core
         super.init()
@@ -298,6 +308,21 @@ public final class AudioEngine: NSObject {
         try? core.reportPlaybackProgress(info: info)
     }
 
+    /// Pin (or unpin) the given player to the selected Core Audio output
+    /// device. An empty / unknown UID clears the override so playback
+    /// follows the system default — the graceful fallback for an unplugged
+    /// device. `AVPlayer.audioOutputDeviceUniqueID` is macOS-only and the
+    /// correct knob here (`AVAudioSession` is iOS-only; see the file-level
+    /// note above).
+    private func applyOutputDevice(to player: AVQueuePlayer?) {
+        guard let player else { return }
+        if let uid = outputDeviceUID, !uid.isEmpty {
+            player.audioOutputDeviceUniqueID = uid
+        } else {
+            player.audioOutputDeviceUniqueID = nil
+        }
+    }
+
     // MARK: - Public
 
     public func play(track: Track) throws {
@@ -333,7 +358,11 @@ public final class AudioEngine: NSObject {
         // sets it as currentItem without an extra insert call.
         let newPlayer = AVQueuePlayer(items: [item])
         newPlayer.automaticallyWaitsToMinimizeStalling = true
+        // Pin the new player to the user's chosen output device before it
+        // starts pumping audio. No-ops to the system default when no
+        // device is selected or the saved one is gone.
         self.player = newPlayer
+        applyOutputDevice(to: newPlayer)
 
         // Remember the stream so `recoverFromStall` can rebuild a fresh
         // `AVPlayerItem` without re-asking the core for a URL (which would

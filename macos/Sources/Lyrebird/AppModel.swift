@@ -845,6 +845,11 @@ final class AppModel {
         self.mediaSession.attach(delegate: self)
         self.audio.mediaSession = self.mediaSession
         self.audio.delegate = self
+        // Seed the engine with the persisted output-device selection
+        // so the first track honours it without waiting for the Preferences
+        // pane to mount. An empty/absent value means "follow system default".
+        let savedDeviceUID = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
+        self.audio.outputDeviceUID = savedDeviceUID.isEmpty ? nil : savedDeviceUID
     }
 
     // MARK: - Network
@@ -4714,6 +4719,75 @@ final class AppModel {
     }
 
     func setVolume(_ v: Float) { audio.setVolume(v) }
+
+    // MARK: - Output device routing
+
+    /// Select the Core Audio output device playback routes to. Persists the
+    /// UID and re-pins the live + future players. An empty UID means "follow
+    /// the system default". If exclusive mode is on, the hog claim is moved to
+    /// the newly-selected device (and released from the old one); a failure to
+    /// release the old claim or acquire the new one surfaces via `errorMessage`.
+    func setOutputDevice(uid: String) {
+        // Read the previous device from the engine, which still holds the
+        // currently-applied output. The Preferences picker commits its
+        // `@AppStorage` to UserDefaults *before* calling this, so reading the
+        // previous UID from UserDefaults would already see the new value and
+        // strand the old device's hog claim.
+        let previousUID = audio.outputDeviceUID ?? ""
+        UserDefaults.standard.set(uid, forKey: AudioOutputDevices.preferenceKey)
+        audio.outputDeviceUID = uid.isEmpty ? nil : uid
+
+        // Migrate an active hog claim to the new device so exclusive mode keeps
+        // following the user's chosen output instead of stranding the lock on
+        // the old one.
+        let exclusive = UserDefaults.standard.bool(forKey: AudioOutputDevices.exclusiveModePreferenceKey)
+        guard exclusive else { return }
+        Task.detached {
+            // Release the old device's hog claim. A failure here can leave the
+            // previous device permanently hogged, so surface it instead of
+            // swallowing it — but still attempt to claim the new device.
+            var releaseError: Error?
+            do {
+                try AudioOutputDevices.setExclusiveMode(false, forUID: previousUID)
+            } catch {
+                releaseError = error
+            }
+            do {
+                try AudioOutputDevices.setExclusiveMode(true, forUID: uid)
+                if let releaseError {
+                    await MainActor.run {
+                        self.errorMessage = releaseError.localizedDescription
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    UserDefaults.standard.set(false, forKey: AudioOutputDevices.exclusiveModePreferenceKey)
+                }
+            }
+        }
+    }
+
+    /// Toggle exclusive (hog) mode on the currently-selected device. Acquires
+    /// or releases the Core Audio hog claim off the main actor; on failure it
+    /// surfaces `errorMessage` and rolls the persisted flag back to its prior
+    /// value (the optimistic-UI-without-echo pattern — CLAUDE.md gap #5).
+    /// Returns immediately; the caller's `@AppStorage` binding has already
+    /// flipped optimistically.
+    func setExclusiveMode(_ enabled: Bool) {
+        let uid = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
+        Task.detached {
+            do {
+                try AudioOutputDevices.setExclusiveMode(enabled, forUID: uid)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    // Roll the toggle back to its pre-tap state.
+                    UserDefaults.standard.set(!enabled, forKey: AudioOutputDevices.exclusiveModePreferenceKey)
+                }
+            }
+        }
+    }
 
     /// Seek the current track by a relative offset (seconds). Negative rewinds,
     /// positive fast-forwards. Clamped to `[0, duration]` so the seek never
