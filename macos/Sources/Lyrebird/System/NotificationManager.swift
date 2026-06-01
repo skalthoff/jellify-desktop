@@ -12,7 +12,7 @@ import UserNotifications
 ///
 /// Authorization is requested lazily the first time the track-change toggle is
 /// enabled (and again on launch if already enabled) so the user only sees the
-/// system prompt when they opt in, never on a cold first launch. See #266.
+/// system prompt when they opt in, never on a cold first launch.
 final class NotificationManager {
     static let shared = NotificationManager()
 

@@ -44,7 +44,7 @@ struct LyrebirdApp: App {
                 .task { appDelegate.bind(appModel: model) }
                 // Re-request notification authorization on launch if the user
                 // already opted in, so track-change banners work without
-                // re-toggling. No-ops when the preference is off. See #266.
+                // re-toggling. No-ops when the preference is off.
                 .task { NotificationManager.shared.requestAuthorizationIfNeeded() }
                 // Publish the current window's `AppModel` as a focused
                 // scene value so `@FocusedValue(\.appModel)` readers

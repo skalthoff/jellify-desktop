@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Notifications preferences pane (#266).
+/// Notifications preferences pane.
 ///
 /// Three toggles, all `@AppStorage`-backed so they persist across launches
 /// and are readable by `NotificationManager` / `MenuBarController` through the

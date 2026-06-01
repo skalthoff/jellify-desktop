@@ -20,21 +20,43 @@ final class MenuBarController {
     /// can still show it transiently — see `setVisibleWhilePlaying(_:)`.
     private var persistentVisible = false
 
+    /// Tracks the latest transient "Show in menu bar while playing" state so a
+    /// later change to the persistent toggle re-resolves against it (and vice
+    /// versa) rather than dropping one of the two inputs.
+    private var playingVisible = false
+
     /// Show or hide the menu-bar icon for the persistent General preference.
     /// Safe to call repeatedly with the same value — it checks current state
     /// before creating / destroying the status item.
     func setVisible(_ visible: Bool) {
         persistentVisible = visible
-        applyVisibility(visible)
+        applyVisibility(MenuBarController.resolveVisibility(
+            playing: playingVisible,
+            persistent: visible
+        ))
     }
 
     /// Drive transient menu-bar visibility from playback state for the
-    /// "Show in menu bar while playing" preference (#266). When `playing` is
+    /// "Show in menu bar while playing" preference. When `playing` is
     /// true the icon appears; when playback stops it's removed *unless* the
     /// persistent General toggle is keeping it on. Idempotent.
     func setVisibleWhilePlaying(_ playing: Bool) {
+        playingVisible = playing
         // Never hide an icon the user pinned via the persistent toggle.
-        applyVisibility(playing || persistentVisible)
+        applyVisibility(MenuBarController.resolveVisibility(
+            playing: playing,
+            persistent: persistentVisible
+        ))
+    }
+
+    /// Pure decision for whether the menu-bar icon should be on screen, given
+    /// the persistent "Show in menu bar" toggle and the transient "while
+    /// playing" state. The persistent toggle always wins, so a playing→stopped
+    /// transition never hides an icon the user pinned. Factored out so the
+    /// persistent-vs-transient precedence can be unit-tested without realizing
+    /// a live `NSStatusItem` (which requires a window-server connection).
+    static func resolveVisibility(playing: Bool, persistent: Bool) -> Bool {
+        playing || persistent
     }
 
     /// Update the menu-bar button's tooltip with the current track so hovering

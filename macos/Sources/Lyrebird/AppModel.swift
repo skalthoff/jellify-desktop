@@ -4968,7 +4968,7 @@ final class AppModel {
                     } else {
                         Task { await self.fetchCurrentTrackDetails() }
                         Task { await self.fetchCurrentTrackLyrics() }
-                        // Notifications (#266): post a Now Playing banner for
+                        // Post a Now Playing banner for
                         // the new track. The manager no-ops when the toggle is
                         // off, so this is cheap on every change. `before != nil`
                         // skips the very first track at startup-from-resume
@@ -4984,7 +4984,7 @@ final class AppModel {
                         }
                     }
                 }
-                // Menu-bar "while playing" (#266): mirror the play/pause state
+                // Menu-bar "while playing": mirror the play/pause state
                 // onto the transient menu-bar icon when the user opts in. Only
                 // acts on a real state transition so we don't churn the
                 // NSStatusItem every tick.
