@@ -4724,7 +4724,12 @@ final class AppModel {
     /// the newly-selected device (and released from the old one); a failure to
     /// release the old claim or acquire the new one surfaces via `errorMessage`.
     func setOutputDevice(uid: String) {
-        let previousUID = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
+        // Read the previous device from the engine, which still holds the
+        // currently-applied output. The Preferences picker commits its
+        // `@AppStorage` to UserDefaults *before* calling this, so reading the
+        // previous UID from UserDefaults would already see the new value and
+        // strand the old device's hog claim.
+        let previousUID = audio.outputDeviceUID ?? ""
         UserDefaults.standard.set(uid, forKey: AudioOutputDevices.preferenceKey)
         audio.outputDeviceUID = uid.isEmpty ? nil : uid
 
