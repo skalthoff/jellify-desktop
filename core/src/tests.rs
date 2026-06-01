@@ -6187,7 +6187,7 @@ async fn playlist_tracks_populates_playlist_item_id() {
     );
 }
 
-/// #884: `playlist_tracks` must request UserData so favorited tracks in a
+/// `playlist_tracks` must request UserData so favorited tracks in a
 /// playlist render as favorited on first paint. Without `EnableUserData` +
 /// `UserData` in `Fields`, the server omits `UserData` and every track maps
 /// to `is_favorite == false`.
