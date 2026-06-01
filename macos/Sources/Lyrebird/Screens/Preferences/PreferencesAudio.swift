@@ -1,3 +1,4 @@
+import LyrebirdAudio
 import SwiftUI
 
 /// Audio quality preferences pane.
@@ -21,9 +22,18 @@ import SwiftUI
 ///
 /// Spec: `research/03-ux-patterns.md` Issue 69 and GitHub issue #117.
 struct PreferencesAudio: View {
+    @Environment(AppModel.self) private var model
+
     @AppStorage("playback.streamingQuality") private var streamingQuality: PlaybackQuality = .automatic
     @AppStorage("playback.downloadQuality") private var downloadQuality: PlaybackQuality = .lossless
     @AppStorage("audio.transcodingPreference") private var transcodingRaw: String = TranscodingPreference.directPlay.rawValue
+    @AppStorage(AudioOutputDevices.preferenceKey) private var outputDeviceUID: String = ""
+    @AppStorage(AudioOutputDevices.exclusiveModePreferenceKey) private var exclusiveMode: Bool = false
+
+    /// Devices enumerated off the main actor on appear (HAL reads can block —
+    /// CLAUDE.md gap #2). The "System Default" option is presented separately
+    /// and maps to an empty UID.
+    @State private var devices: [AudioOutputDevice] = []
 
     private var transcoding: Binding<TranscodingPreference> {
         Binding(
@@ -32,9 +42,76 @@ struct PreferencesAudio: View {
         )
     }
 
+    /// Picker binding. Reads/writes `@AppStorage` for instant UI, and routes
+    /// the change through `AppModel` so the live player re-pins immediately.
+    private var deviceSelection: Binding<String> {
+        Binding(
+            get: { outputDeviceUID },
+            set: { newUID in
+                outputDeviceUID = newUID
+                model.setOutputDevice(uid: newUID)
+            }
+        )
+    }
+
+    /// Exclusive-mode toggle binding. Flips `@AppStorage` optimistically and
+    /// asks `AppModel` to acquire/release the Core Audio hog claim; on failure
+    /// the model surfaces an error and rolls the flag back.
+    private var exclusiveBinding: Binding<Bool> {
+        Binding(
+            get: { exclusiveMode },
+            set: { enabled in
+                exclusiveMode = enabled
+                model.setExclusiveMode(enabled)
+            }
+        )
+    }
+
+    /// `true` when the saved UID names a device that's no longer present, so
+    /// the row can hint that playback is falling back to the system default.
+    private var savedDeviceMissing: Bool {
+        !outputDeviceUID.isEmpty && !devices.contains { $0.uid == outputDeviceUID }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             header
+
+            PreferenceSection(
+                title: "Output Device",
+                footnote: "Choose where audio plays. System Default follows whatever you pick in Sound settings; choosing a specific device keeps Lyrebird on it even when the system default changes. A disconnected device falls back to the system default automatically."
+            ) {
+                PreferenceRow(
+                    label: "Device",
+                    help: savedDeviceMissing ? "Saved device unavailable — using system default." : nil
+                ) {
+                    Picker("", selection: deviceSelection) {
+                        Text("System Default").tag("")
+                        if savedDeviceMissing {
+                            // Keep the stale selection visible (greyed) so the
+                            // picker doesn't silently jump to System Default.
+                            Text("Unavailable device").tag(outputDeviceUID)
+                        }
+                        ForEach(devices) { device in
+                            Text(device.name).tag(device.uid)
+                        }
+                    }
+                    .labelsHidden()
+                    .frame(width: 260)
+                    .accessibilityLabel("Output device")
+                }
+
+                PreferenceRow(
+                    label: "Exclusive Mode",
+                    help: "Take exclusive control of the device for bit-perfect, lossless output. Other apps can't play audio while this is on."
+                ) {
+                    Toggle("", isOn: exclusiveBinding)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .disabled(outputDeviceUID.isEmpty)
+                        .accessibilityLabel("Exclusive mode")
+                }
+            }
 
             PreferenceSection(
                 title: "Streaming Quality",
@@ -84,6 +161,14 @@ struct PreferencesAudio: View {
 
             Spacer(minLength: 0)
         }
+        .task { await loadDevices() }
+    }
+
+    /// Enumerate output devices off the main actor (HAL property reads can
+    /// block) and publish back to `@State` on the main actor.
+    private func loadDevices() async {
+        let found = await Task.detached { AudioOutputDevices.outputDevices() }.value
+        devices = found
     }
 
     private var header: some View {
@@ -151,10 +236,8 @@ private struct ExplicitQualityPicker: View {
     }
 }
 
-#Preview {
-    PreferencesAudio()
-        .frame(width: 560, height: 520)
-        .padding(32)
-        .background(Theme.bg)
-        .preferredColorScheme(.dark)
-}
+// Note: real rendering requires an `AppModel` in the environment (the pane
+// reads `@Environment(AppModel.self)` to route output-device changes). The
+// Settings scene injects it at runtime; a bare `#Preview` would crash on the
+// missing environment value, so it's intentionally omitted here — matching
+// `PreferencesServer` / `PreferencesAccount`.

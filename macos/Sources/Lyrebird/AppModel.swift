@@ -841,6 +841,11 @@ final class AppModel {
         self.mediaSession.attach(delegate: self)
         self.audio.mediaSession = self.mediaSession
         self.audio.delegate = self
+        // Seed the engine with the persisted output-device selection (#262)
+        // so the first track honours it without waiting for the Preferences
+        // pane to mount. An empty/absent value means "follow system default".
+        let savedDeviceUID = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
+        self.audio.outputDeviceUID = savedDeviceUID.isEmpty ? nil : savedDeviceUID
     }
 
     // MARK: - Network
@@ -4710,6 +4715,56 @@ final class AppModel {
     }
 
     func setVolume(_ v: Float) { audio.setVolume(v) }
+
+    // MARK: - Output device routing (#262)
+
+    /// Select the Core Audio output device playback routes to. Persists the
+    /// UID and re-pins the live + future players. An empty UID means "follow
+    /// the system default". If exclusive mode is on, the hog claim is moved to
+    /// the newly-selected device (and released from the old one).
+    func setOutputDevice(uid: String) {
+        let previousUID = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
+        UserDefaults.standard.set(uid, forKey: AudioOutputDevices.preferenceKey)
+        audio.outputDeviceUID = uid.isEmpty ? nil : uid
+
+        // Migrate an active hog claim to the new device so exclusive mode keeps
+        // following the user's chosen output instead of stranding the lock on
+        // the old one.
+        let exclusive = UserDefaults.standard.bool(forKey: AudioOutputDevices.exclusiveModePreferenceKey)
+        guard exclusive else { return }
+        Task.detached {
+            try? AudioOutputDevices.setExclusiveMode(false, forUID: previousUID)
+            do {
+                try AudioOutputDevices.setExclusiveMode(true, forUID: uid)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    UserDefaults.standard.set(false, forKey: AudioOutputDevices.exclusiveModePreferenceKey)
+                }
+            }
+        }
+    }
+
+    /// Toggle exclusive (hog) mode on the currently-selected device. Acquires
+    /// or releases the Core Audio hog claim off the main actor; on failure it
+    /// surfaces `errorMessage` and rolls the persisted flag back to its prior
+    /// value (the optimistic-UI-without-echo pattern — CLAUDE.md gap #5).
+    /// Returns immediately; the caller's `@AppStorage` binding has already
+    /// flipped optimistically.
+    func setExclusiveMode(_ enabled: Bool) {
+        let uid = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
+        Task.detached {
+            do {
+                try AudioOutputDevices.setExclusiveMode(enabled, forUID: uid)
+            } catch {
+                await MainActor.run {
+                    self.errorMessage = error.localizedDescription
+                    // Roll the toggle back to its pre-tap state.
+                    UserDefaults.standard.set(!enabled, forKey: AudioOutputDevices.exclusiveModePreferenceKey)
+                }
+            }
+        }
+    }
 
     /// Seek the current track by a relative offset (seconds). Negative rewinds,
     /// positive fast-forwards. Clamped to `[0, duration]` so the seek never
