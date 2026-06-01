@@ -48,6 +48,7 @@ final class AppModel {
         case playlist(String)
         case genre(Genre)
         case nowPlaying
+        case fullQueue
     }
 
     /// Drill stack for the current tab. Empty when the user is on the root
@@ -72,6 +73,14 @@ final class AppModel {
     /// the second press pops back rather than stacking another copy.
     var isShowingNowPlaying: Bool {
         navPath.last == .nowPlaying
+    }
+
+    /// True when the full-page Play Queue view is the top of the drill
+    /// stack. Used by the ⌘U menu toggle (see `LyrebirdApp.toggleFullQueue`)
+    /// so the second press pops back rather than stacking another copy. See
+    /// #81.
+    var isShowingFullQueue: Bool {
+        navPath.last == .fullQueue
     }
 
     /// Which chip is active on the Library screen. Driven by the sidebar's
@@ -384,6 +393,20 @@ final class AppModel {
     /// Show / hide the right-side queue inspector panel. Toggled by the
     /// Cmd+Opt+Q shortcut (#79).
     var isQueueInspectorOpen: Bool = false
+
+    /// Tracks played earlier in *this app session*, most-recent first. The
+    /// full-page Play Queue view (⌘U, #81) renders this above Now Playing as
+    /// a "Recently in this session" block so the user can re-queue something
+    /// they just heard. Distinct from `recentlyPlayed`, which is the server's
+    /// cross-device listening history — this is purely in-memory and resets
+    /// on sign-out. Capped at `sessionPlayHistoryLimit`; populated by the
+    /// status-poll track-change hook in `startPolling`.
+    var sessionPlayHistory: [Track] = []
+
+    /// Hard cap on `sessionPlayHistory`. The acceptance criteria call for the
+    /// last 50 played tracks; trimming on every append keeps the array (and
+    /// the view that renders it) bounded regardless of session length.
+    private let sessionPlayHistoryLimit = 50
 
     /// Contributors on the currently-playing track, sourced from Jellyfin's
     /// `Item.People` field. Populated by `fetchCurrentTrackDetails()` on
@@ -956,6 +979,7 @@ final class AppModel {
         currentTrackPeopleForId = nil
         currentLyrics = nil
         currentLyricsForId = nil
+        sessionPlayHistory = []
         resetPaginationState()
         stopPolling()
     }
@@ -1020,6 +1044,7 @@ final class AppModel {
         currentTrackPeopleForId = nil
         currentLyrics = nil
         currentLyricsForId = nil
+        sessionPlayHistory = []
         resetPaginationState()
         stopPolling()
     }
@@ -4894,7 +4919,8 @@ final class AppModel {
         pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             Task { @MainActor in
-                let before = self.status.currentTrack?.id
+                let beforeTrack = self.status.currentTrack
+                let before = beforeTrack?.id
                 let beforeQueuePos = self.status.queuePosition
                 let beforeQueueLen = self.status.queueLength
                 self.status = self.core.status()
@@ -4904,6 +4930,13 @@ final class AppModel {
                 // media keys, or end-of-track auto-advance all get it
                 // for free.
                 if before != after {
+                    // Record the track we just left onto the in-session
+                    // history (#81). Only push real outgoing tracks — a
+                    // start-from-stopped transition (before == nil) has
+                    // nothing to record.
+                    if let outgoing = beforeTrack {
+                        self.recordSessionPlay(outgoing)
+                    }
                     if after == nil {
                         self.currentTrackPeople = []
                         self.currentTrackPeopleForId = nil
@@ -4947,6 +4980,32 @@ final class AppModel {
     /// keyboard shortcut via `MainShell`. See #79.
     func toggleQueueInspector() {
         isQueueInspectorOpen.toggle()
+    }
+
+    /// Push a track onto the in-session play history, most-recent first
+    /// (#81). De-duplicates against the current head so a track that loops
+    /// (e.g. repeat-one) doesn't flood the list with consecutive copies, and
+    /// trims to `sessionPlayHistoryLimit`. Called from the status-poll
+    /// track-change hook with the *outgoing* track.
+    func recordSessionPlay(_ track: Track) {
+        if sessionPlayHistory.first?.id == track.id { return }
+        sessionPlayHistory.insert(track, at: 0)
+        if sessionPlayHistory.count > sessionPlayHistoryLimit {
+            sessionPlayHistory.removeLast(sessionPlayHistory.count - sessionPlayHistoryLimit)
+        }
+    }
+
+    /// Toggle behaviour for the full-page Play Queue view (⌘U, #81): first
+    /// press pushes the queue page onto the drill stack, second press pops
+    /// it. Mirrors `LyrebirdApp.toggleNowPlaying` so either gesture (menu or
+    /// shortcut) behaves the same. Kept here so the ⌘U command and any future
+    /// in-app entry point (PlayerBar button) share one code path.
+    func toggleFullQueue() {
+        if isShowingFullQueue {
+            navPath.removeLast()
+        } else {
+            navPath.append(Route.fullQueue)
+        }
     }
 
     /// Reorder the user-added "Up Next" list. Uses the same `IndexSet` → Int

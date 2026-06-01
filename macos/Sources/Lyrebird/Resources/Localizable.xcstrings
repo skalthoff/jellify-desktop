@@ -757,6 +757,18 @@
         }
       }
     },
+    "menu.nav.play_queue" : {
+      "comment" : "View menu item: \"Play Queue\" (\u2318U) \u2014 opens the full-page Play Queue view.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play Queue"
+          }
+        }
+      }
+    },
     "menu.nav.command_palette" : {
       "comment" : "View menu item that opens the \u2318K Command Palette.",
       "extractionState" : "manual",

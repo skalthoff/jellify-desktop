@@ -261,6 +261,15 @@ struct LyrebirdCommands: Commands {
             .keyboardShortcut("l", modifiers: .command)
             .disabled(model.session == nil)
 
+            // ⌘U opens the full-page Play Queue view and toggles back when
+            // pressed again (same reversible-drill feel as ⌘L Now Playing).
+            // See #81.
+            Button("menu.nav.play_queue") {
+                model.toggleFullQueue()
+            }
+            .keyboardShortcut("u", modifiers: .command)
+            .disabled(model.session == nil)
+
             // Command Palette (#305). Full-screen ⌘K overlay with library
             // search + static action verbs. Toggling the flag here and
             // letting `RootView` mount the overlay keeps the palette

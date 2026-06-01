@@ -92,6 +92,8 @@ enum AppShortcuts {
 		         section: .view, key: "f", modifiers: .command),
 		Shortcut(id: "nav.now_playing", nameKeyString: "menu.nav.now_playing",
 		         section: .view, key: "l", modifiers: .command),
+		Shortcut(id: "nav.play_queue", nameKeyString: "menu.nav.play_queue",
+		         section: .view, key: "u", modifiers: .command),
 		Shortcut(id: "nav.command_palette", nameKeyString: "menu.nav.command_palette",
 		         section: .view, key: "k", modifiers: .command),
 		Shortcut(id: "view.mini_player", nameKeyString: "menu.view.mini_player",
