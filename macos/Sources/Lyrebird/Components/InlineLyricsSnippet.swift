@@ -72,9 +72,12 @@ struct InlineLyricsSnippet: View {
         .accessibilityHint("Opens the full lyrics view")
         .accessibilityAddTraits(.isButton)
         .onAppear { updateActiveLine() }
-        // 0.5s cadence (see type doc). Skip the recompute work when nothing
-        // is playing — a paused inspector shouldn't keep re-scanning.
+        // 0.5s cadence (see type doc). Skip the recompute while paused — a
+        // paused inspector's position is static, so the active line can't move.
+        // onAppear / onChange still re-anchor on visibility or track change so a
+        // paused track shows the right line.
         .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
+            guard model.status.state == .playing else { return }
             updateActiveLine()
         }
         // Re-anchor when the track changes (currentLyrics swaps wholesale).
@@ -129,12 +132,17 @@ struct InlineLyricsSnippet: View {
     /// timestamp-ordered lines; mutates `activeIndex` only on change so most
     /// ticks are no-ops.
     private func updateActiveLine() {
-        let lines = timedLines
-        guard !lines.isEmpty else {
-            if activeIndex != nil { activeIndex = nil }
-            return
+        let newActive = Self.activeLineIndex(in: timedLines, at: model.status.positionSeconds)
+        if newActive != activeIndex {
+            activeIndex = newActive
         }
-        let now = model.status.positionSeconds
+    }
+
+    /// Index of the line whose timestamp is the most recent at or before `now`,
+    /// or `nil` before the first timestamp. Lines are timestamp-ordered, so the
+    /// scan stops at the first cue in the future; lines without a timestamp are
+    /// skipped (they render but never auto-highlight).
+    static func activeLineIndex(in lines: [LyricLine], at now: Double) -> Int? {
         var newActive: Int? = nil
         for (idx, line) in lines.enumerated() {
             guard let ts = line.timestamp else { continue }
@@ -144,9 +152,7 @@ struct InlineLyricsSnippet: View {
                 break
             }
         }
-        if newActive != activeIndex {
-            activeIndex = newActive
-        }
+        return newActive
     }
 
     private func accessibilityLabel(for lines: [LyricLine]) -> String {
