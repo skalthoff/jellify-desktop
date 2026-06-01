@@ -1446,22 +1446,28 @@ final class AppModel {
     /// marshals the ranked result back. Failures leave the prior grid intact
     /// rather than blanking the section mid-session.
     func refreshGenresToExplore() async {
-        let page = await Task.detached(priority: .userInitiated) { [core] in
-            // limit: 500 matches `resolvedGenreId`'s fetch — /MusicGenres sorts
-            // SortName ascending, so a smaller cap would silently drop
-            // alphabetically-late genres from the ranking pool (the test
-            // library has 254 genres).
-            try? core.genres(offset: 0, limit: 500)
-        }.value
-        guard let items = page?.items else { return }
-        // Project the FFI genres to plain tuples before ranking. Passing the
-        // `core.Genre` struct directly would force a `LyrebirdCore.Genre`
-        // annotation, which the generated `open class LyrebirdCore` shadows
-        // (module-vs-type name collision — same reason `resolvedGenreId`
-        // tuple-extracts). Tuples keep the ranking helper pure + testable.
-        self.genresToExplore = AppModel.rankGenresToExplore(
-            items.map { (id: $0.id, name: $0.name, songCount: $0.songCount) }
-        )
+        do {
+            let page = try await Task.detached(priority: .userInitiated) { [core] in
+                // limit: 500 matches `resolvedGenreId`'s fetch — /MusicGenres sorts
+                // SortName ascending, so a smaller cap would silently drop
+                // alphabetically-late genres from the ranking pool (the test
+                // library has 254 genres).
+                try core.genres(offset: 0, limit: 500)
+            }.value
+            // Project the FFI genres to plain tuples before ranking. Passing the
+            // `core.Genre` struct directly would force a `LyrebirdCore.Genre`
+            // annotation, which the generated `open class LyrebirdCore` shadows
+            // (module-vs-type name collision — same reason `resolvedGenreId`
+            // tuple-extracts). Tuples keep the ranking helper pure + testable.
+            self.genresToExplore = AppModel.rankGenresToExplore(
+                page.items.map { (id: $0.id, name: $0.name, songCount: $0.songCount) }
+            )
+        } catch {
+            // Auth expiry must surface so the user is routed to re-login, matching
+            // every other refresh path. Non-auth failures leave the prior grid
+            // intact rather than blanking the section mid-session.
+            _ = handleAuthError(error)
+        }
     }
 
     /// Pure ranking for the "Genres to Explore" grid (#250), split out from
