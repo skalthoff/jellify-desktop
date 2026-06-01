@@ -2073,8 +2073,9 @@ async fn playlist_tracks_preserves_order_and_builds_query() {
         .and(query_param("StartIndex", "0"))
         .and(query_param(
             "Fields",
-            "MediaSources,ParentId,Path,PlaylistItemId,SortName",
+            "MediaSources,ParentId,Path,PlaylistItemId,SortName,UserData",
         ))
+        .and(query_param("EnableUserData", "true"))
         .respond_with(|req: &Request| {
             // Playlist order is load-bearing: the client must NOT send
             // SortBy/SortOrder for this endpoint.
@@ -6183,6 +6184,67 @@ async fn playlist_tracks_populates_playlist_item_id() {
         page.items[0].playlist_item_id.as_deref(),
         Some("pi-alpha"),
         "playlist_item_id must be populated from the server response"
+    );
+}
+
+/// `playlist_tracks` must request UserData so favorited tracks in a
+/// playlist render as favorited on first paint. Without `EnableUserData` +
+/// `UserData` in `Fields`, the server omits `UserData` and every track maps
+/// to `is_favorite == false`.
+#[tokio::test]
+async fn playlist_tracks_populates_favorite_from_user_data() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/Items"))
+        .and(query_param("ParentId", "pl-1"))
+        .and(query_param("EnableUserData", "true"))
+        .respond_with(|req: &Request| {
+            let pairs: std::collections::HashMap<_, _> =
+                req.url.query_pairs().into_owned().collect();
+            let fields = pairs.get("Fields").cloned().unwrap_or_default();
+            assert!(
+                fields.contains("UserData"),
+                "Fields must contain UserData, got: {fields}"
+            );
+            ResponseTemplate::new(200).set_body_json(json!({
+                "Items": [
+                    {
+                        "Id": "t1", "Name": "Faved", "Type": "Audio",
+                        "AlbumId": "a1", "Album": "A", "AlbumArtist": "X",
+                        "Artists": ["X"], "RunTimeTicks": 1000000000u64,
+                        "ImageTags": {},
+                        "UserData": { "IsFavorite": true, "PlayCount": 3 }
+                    }
+                ],
+                "TotalRecordCount": 1
+            }))
+        })
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    let page = client
+        .playlist_tracks("pl-1", crate::models::Paging::new(0, 50))
+        .await
+        .unwrap();
+    assert_eq!(page.items.len(), 1);
+    assert!(
+        page.items[0].is_favorite,
+        "is_favorite must reflect server UserData.IsFavorite"
+    );
+    assert_eq!(
+        page.items[0].user_data.as_ref().map(|u| u.is_favorite),
+        Some(true),
+        "user_data must be populated from the server response"
     );
 }
 
