@@ -182,28 +182,23 @@ struct LibraryView: View {
     /// modifier state. Cmd toggles the hit row; Shift extends a contiguous
     /// range from the anchor; a bare click plays the row and resets the
     /// selection. Mirrors `PlaylistDetailView.handleRowClick`. See #217.
+    ///
+    /// The pure selection arithmetic lives in `TrackSelectionResolver.resolve`
+    /// so it can be unit-tested without a View or an `AppModel`; this method is
+    /// only the thin glue that applies the result to `@State` and fires the
+    /// play side effect.
     private func handleTrackClick(index: Int, in tracks: [Track], modifiers: NSEvent.ModifierFlags) {
-        guard tracks.indices.contains(index) else { return }
-        let track = tracks[index]
-        if modifiers.contains(.command) {
-            if selectedTrackIds.contains(track.id) {
-                selectedTrackIds.remove(track.id)
-            } else {
-                selectedTrackIds.insert(track.id)
-            }
-            anchorIndex = index
-        } else if modifiers.contains(.shift) {
-            let from = anchorIndex ?? index
-            let range = from <= index ? from...index : index...from
-            var next = selectedTrackIds
-            for i in range where tracks.indices.contains(i) {
-                next.insert(tracks[i].id)
-            }
-            selectedTrackIds = next
-            anchorIndex = index
-        } else {
-            clearSelection()
-            anchorIndex = index
+        let outcome = TrackSelectionResolver.resolve(
+            clickedIndex: index,
+            trackIds: tracks.map(\.id),
+            currentSelection: selectedTrackIds,
+            anchorIndex: anchorIndex,
+            modifiers: modifiers
+        )
+        guard let outcome else { return }
+        selectedTrackIds = outcome.selection
+        anchorIndex = outcome.anchorIndex
+        if outcome.shouldPlay {
             model.play(tracks: tracks, startIndex: index)
         }
     }
@@ -1161,5 +1156,62 @@ struct LibrarySortMenu: View {
         .fixedSize()
         .accessibilityLabel("Sort library")
         .accessibilityValue(selection.label)
+    }
+}
+
+/// Pure selection arithmetic for the Library Tracks tab multi-select (#217).
+///
+/// Extracted out of `LibraryView.handleTrackClick` so the Cmd-toggle /
+/// Shift-range / bare-click-plays logic can be exercised by unit tests without
+/// standing up a SwiftUI scene graph or an `AppModel`. The View layer keeps
+/// only the `@State` mutation + the `model.play(...)` side effect.
+enum TrackSelectionResolver {
+    /// The next selection state plus whether the caller should start playback.
+    struct Outcome: Equatable {
+        var selection: Set<String>
+        var anchorIndex: Int?
+        var shouldPlay: Bool
+    }
+
+    /// Resolve a click on `clickedIndex` within `trackIds` given the current
+    /// selection, anchor, and modifier flags.
+    ///
+    /// - Cmd: toggle the hit row in/out of the selection; re-anchor to it.
+    /// - Shift: insert the contiguous range between the anchor (or the hit row
+    ///   if there is no anchor) and the hit row; re-anchor to the hit row.
+    /// - No modifier: clear the selection, anchor the hit row, and signal that
+    ///   playback should start at it.
+    ///
+    /// Returns `nil` when `clickedIndex` is out of bounds, so the caller does
+    /// nothing — matching the previous guard.
+    static func resolve(
+        clickedIndex: Int,
+        trackIds: [String],
+        currentSelection: Set<String>,
+        anchorIndex: Int?,
+        modifiers: NSEvent.ModifierFlags
+    ) -> Outcome? {
+        guard trackIds.indices.contains(clickedIndex) else { return nil }
+        let clickedId = trackIds[clickedIndex]
+
+        if modifiers.contains(.command) {
+            var next = currentSelection
+            if next.contains(clickedId) {
+                next.remove(clickedId)
+            } else {
+                next.insert(clickedId)
+            }
+            return Outcome(selection: next, anchorIndex: clickedIndex, shouldPlay: false)
+        } else if modifiers.contains(.shift) {
+            let from = anchorIndex ?? clickedIndex
+            let range = from <= clickedIndex ? from...clickedIndex : clickedIndex...from
+            var next = currentSelection
+            for i in range where trackIds.indices.contains(i) {
+                next.insert(trackIds[i])
+            }
+            return Outcome(selection: next, anchorIndex: clickedIndex, shouldPlay: false)
+        } else {
+            return Outcome(selection: [], anchorIndex: clickedIndex, shouldPlay: true)
+        }
     }
 }

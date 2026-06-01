@@ -279,6 +279,18 @@ struct TrackListRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isFav ? "Unfavorite" : "Favorite")
+                // On the multi-select path the row carries a low-priority
+                // bare-tap `.gesture` that routes to `onSelect`. A bare tap on
+                // the heart must toggle the favorite *without* also triggering
+                // selection/playback, so we shadow it with a high-priority tap
+                // that wins the gesture arbitration and swallows the event
+                // before it reaches the row's selection gesture. On the
+                // single-select path (`onSelect == nil`) the row has no
+                // competing gesture, so the plain Button action is left to
+                // handle the tap on its own. See #217.
+                .modifier(FavoriteTapShield(onSelect: onSelect) {
+                    model.toggleFavorite(track: track)
+                })
             }
 
             Text(track.durationFormatted)
@@ -331,9 +343,40 @@ private struct SelectionClickModifier: ViewModifier {
                 .gesture(
                     TapGesture().modifiers(.shift).onEnded { onSelect(.shift) }
                 )
-                .simultaneousGesture(
+                // Bare-tap routes to selection at *normal* priority (not
+                // `.simultaneousGesture`) so an interactive subview — the
+                // favorite heart — can claim a tap that lands on it via a
+                // `.highPriorityGesture` and stop it bubbling to selection.
+                // A `.simultaneousGesture` here would always co-fire and
+                // re-introduce the heart-tap-clears-selection regression
+                // (#217 review). The reference `SelectableTrackRow` can use
+                // `.simultaneousGesture` only because it has no interactive
+                // subviews.
+                .gesture(
                     TapGesture().onEnded { onSelect([]) }
                 )
+        } else {
+            content
+        }
+    }
+}
+
+/// Lets the favorite-heart `Button` win the gesture arbitration against the
+/// row's bare-tap selection gesture on the multi-select path. When `onSelect`
+/// is non-nil the row owns a normal-priority bare-tap `.gesture`; attaching a
+/// `.highPriorityGesture` here makes the heart consume taps that land on it,
+/// so toggling a favorite never also clears the selection or starts playback.
+/// When `onSelect` is nil there is no competing row gesture, so this is a
+/// no-op and the plain `Button` action handles the tap unchanged. See #217.
+private struct FavoriteTapShield: ViewModifier {
+    let onSelect: ((NSEvent.ModifierFlags) -> Void)?
+    let toggle: () -> Void
+
+    func body(content: Content) -> some View {
+        if onSelect != nil {
+            content.highPriorityGesture(
+                TapGesture().onEnded { toggle() }
+            )
         } else {
             content
         }
