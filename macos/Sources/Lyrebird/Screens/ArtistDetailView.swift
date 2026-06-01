@@ -49,6 +49,31 @@ struct ArtistDetailView: View {
     /// collapse to `nil` so the About section hides entirely.
     @State private var bioOverview: String?
 
+    /// Scoped (⌘F) search query that filters the Top Songs list in-place.
+    /// Cleared on navigation away and on artist change so it never bleeds
+    /// across pages.
+    @State private var scopedQuery: String = ""
+    @FocusState private var scopedSearchFocused: Bool
+
+    /// Top Songs filtered by `scopedQuery` (case/diacritic-insensitive over
+    /// title + album name). Empty query shows the full list.
+    private var filteredTopTracks: [Track] {
+        Self.filterTopTracks(topTracks, query: scopedQuery)
+    }
+
+    /// Pure filtering predicate behind `filteredTopTracks`, factored out so it
+    /// can be unit-tested without instantiating the view. Trims the query;
+    /// an empty/whitespace-only query returns the list unchanged. Matches
+    /// case/diacritic-insensitively over track title + album name.
+    static func filterTopTracks(_ tracks: [Track], query: String) -> [Track] {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return tracks }
+        return tracks.filter { track in
+            track.name.localizedCaseInsensitiveContains(q)
+                || (track.albumName?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
     /// Resolve the artist: cached library page first, then whichever
     /// record the `.task` block fetched on demand. Missing (server
     /// unreachable or truly deleted) falls through to the gentle
@@ -70,12 +95,24 @@ struct ArtistDetailView: View {
             }
         }
         .background(Theme.bg)
+        // ⌘F → AppModel.requestFind() addresses a focus request to a specific
+        // route. Only pull focus when the request targets *this* artist so a
+        // page stacked under us in the back-stack never steals focus.
+        .onChange(of: model.scopedSearchFocusRequest) { _, _ in
+            if model.consumeScopedSearchFocus(for: .artist(artistID)) {
+                scopedSearchFocused = true
+            }
+        }
+        // Clear the scoped query on navigation away so it never persists into
+        // the next page.
+        .onDisappear { scopedQuery = "" }
         .task(id: artistID) {
             Log.app.info("ArtistDetailView.task fire artist=\(artistID, privacy: .public)")
             // Reset per-artist state so a prior artist's bio / expanded popover
             // never bleeds into this page while the new fetch is in flight.
             bioOverview = nil
             isBioExpanded = false
+            scopedQuery = ""
             isLoadingTopTracks = true
             if model.artists.first(where: { $0.id == artistID }) == nil {
                 fetchedArtist = await model.resolveArtist(id: artistID)
@@ -416,7 +453,19 @@ struct ArtistDetailView: View {
     @ViewBuilder
     private var topSongsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(eyebrow: "MOST PLAYED", title: "Top Songs")
+            HStack(alignment: .bottom) {
+                sectionHeader(eyebrow: "MOST PLAYED", title: "Top Songs")
+                Spacer()
+                // Scoped ⌘F filter. Only meaningful once there's a list
+                // to narrow, so it appears with the loaded Top Songs.
+                if !topTracks.isEmpty {
+                    ScopedSearchBar(
+                        query: $scopedQuery,
+                        isFocused: $scopedSearchFocused,
+                        placeholder: "Filter songs"
+                    )
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
                 if isLoadingTopTracks {
                     ProgressView()
@@ -428,15 +477,22 @@ struct ArtistDetailView: View {
                         icon: "music.note.list",
                         message: "No play history yet for this artist."
                     )
+                } else if filteredTopTracks.isEmpty {
+                    emptySection(
+                        icon: "magnifyingglass",
+                        message: "No songs match \u{201C}\(scopedQuery)\u{201D}."
+                    )
                 } else {
                     // rc9: drop the `Array(topTracks.enumerated())` wrapper.
                     // The wrapped sequence allocates fresh `(Int, Track)`
                     // tuples each render and `id: \.element.id` was the only
                     // identity hint SwiftUI had; the indirection appears to
                     // confuse macOS 26.4's layout-cache invalidation. Direct
-                    // `ForEach(topTracks, id: \.id)` gives SwiftUI a stable
-                    // identity rooted in the persistent `Track.id` value.
-                    ForEach(topTracks, id: \.id) { track in
+                    // `ForEach(filteredTopTracks, id: \.id)` gives SwiftUI a
+                    // stable identity rooted in the persistent `Track.id`.
+                    // Rank + queue stay rooted in the full `topTracks` list so
+                    // the rank badge and play-queue match the unfiltered order.
+                    ForEach(filteredTopTracks, id: \.id) { track in
                         let rank = (topTracks.firstIndex(where: { $0.id == track.id }) ?? 0) + 1
                         TopTrackRow(track: track, rank: rank, queue: topTracks)
                     }

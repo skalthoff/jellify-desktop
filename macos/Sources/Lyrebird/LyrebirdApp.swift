@@ -246,14 +246,24 @@ struct LyrebirdCommands: Commands {
 
             Divider()
 
-            // ⌘F focuses search. `focusSearch()` sets both the legacy
-            // `requestSearchFocus` one-shot and the new `isSearchFieldFocused`
-            // mirror so any field binding a `@FocusState` to either will
-            // receive focus. See #7 / #104.
+            // ⌘F is context-sensitive. On a detail view that owns an
+            // in-content search bar (Artist / Playlist) it focuses that
+            // *scoped* filter; everywhere else it falls through to the global
+            // Search surface. `requestFind()` routes between the two.
             Button("menu.nav.find") {
-                model.focusSearch()
+                model.requestFind()
             }
             .keyboardShortcut("f", modifiers: .command)
+            .disabled(model.session == nil)
+
+            // ⌘⇧F always jumps to the full global Search surface and focuses
+            // its field, regardless of which detail view is on screen.
+            // `focusSearch()` sets both the legacy `requestSearchFocus`
+            // one-shot and the `isSearchFieldFocused` mirror. See #7 / #104.
+            Button("menu.nav.find_global") {
+                model.focusSearch()
+            }
+            .keyboardShortcut("f", modifiers: [.command, .shift])
             .disabled(model.session == nil)
 
             // ⌘L jumps to the full Now Playing view and toggles back to the
