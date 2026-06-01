@@ -37,6 +37,36 @@ struct PlaylistView: View {
     /// reorder can move without requiring multi-select. `nil` = no row focused.
     @FocusState private var keyboardFocusedIndex: Int?
 
+    /// Scoped (⌘F) search query that filters the playlist's track list
+    /// in-place. Cleared on navigation away and on playlist change.
+    @State private var scopedQuery: String = ""
+    @FocusState private var scopedSearchFocused: Bool
+
+    /// `tracks` filtered by `scopedQuery` (case/diacritic-insensitive over
+    /// title + artist + album). Empty query shows the full list. Pairs each
+    /// match with its original index so playback / reorder keep operating on
+    /// the true playlist position.
+    private var filteredTracks: [(index: Int, track: Track)] {
+        Self.filterTracks(tracks, query: scopedQuery)
+    }
+
+    /// Pure filtering predicate behind `filteredTracks`, factored out so it
+    /// can be unit-tested without instantiating the view. Each match keeps its
+    /// **original** index so playback / reorder operate on the true playlist
+    /// position even while filtered. Trims the query; an empty/whitespace-only
+    /// query returns every track paired with its index. Matches
+    /// case/diacritic-insensitively over track title + artist + album name.
+    static func filterTracks(_ tracks: [Track], query: String) -> [(index: Int, track: Track)] {
+        let indexed = tracks.enumerated().map { (index: $0.offset, track: $0.element) }
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return indexed }
+        return indexed.filter { entry in
+            entry.track.name.localizedCaseInsensitiveContains(q)
+                || entry.track.artistName.localizedCaseInsensitiveContains(q)
+                || (entry.track.albumName?.localizedCaseInsensitiveContains(q) ?? false)
+        }
+    }
+
     /// Resolve the playlist: cached library page first, then whichever
     /// record the `.task` block fetched on demand. Nil means the id can't
     /// be resolved (deleted upstream, not a real Playlist, server errored).
@@ -72,9 +102,18 @@ struct PlaylistView: View {
                 isLoadingTracks = false
                 return
             }
+            scopedQuery = ""
             isLoadingTracks = true
             tracks = await model.loadPlaylistTracks(playlist: playlist)
             isLoadingTracks = false
+        }
+        // ⌘F → AppModel.requestFind() addresses a focus request to a specific
+        // route. Only pull focus when the request targets *this* playlist so a
+        // page stacked under us in the back-stack never steals focus.
+        .onChange(of: model.scopedSearchFocusRequest) { _, _ in
+            if model.consumeScopedSearchFocus(for: .playlist(playlistID)) {
+                scopedSearchFocused = true
+            }
         }
         // Keep the local `tracks` snapshot in sync with the shared
         // `playlistTracks` cache so drag-reorder (BATCH-06b, #73) reflects
@@ -91,6 +130,8 @@ struct PlaylistView: View {
         // on disappear ensures the next open starts with the committed value.
         .onDisappear {
             titleDraft = nil
+            // Clear scoped filter on navigation away (acceptance criterion).
+            scopedQuery = ""
         }
     }
 
@@ -278,6 +319,18 @@ struct PlaylistView: View {
     @ViewBuilder
     private var trackList: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !isLoadingTracks && !tracks.isEmpty {
+                // Scoped ⌘F filter, distinct from global search.
+                HStack {
+                    Spacer()
+                    ScopedSearchBar(
+                        query: $scopedQuery,
+                        isFocused: $scopedSearchFocused,
+                        placeholder: "Filter tracks"
+                    )
+                }
+                .padding(.bottom, 8)
+            }
             if isLoadingTracks {
                 ProgressView().tint(Theme.ink2).padding(.vertical, 40).frame(maxWidth: .infinity)
             } else if tracks.isEmpty {
@@ -286,8 +339,16 @@ struct PlaylistView: View {
                     .foregroundStyle(Theme.ink3)
                     .padding(.vertical, 40)
                     .frame(maxWidth: .infinity)
+            } else if filteredTracks.isEmpty {
+                Text("No tracks match \u{201C}\(scopedQuery)\u{201D}")
+                    .font(Theme.font(13, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+                    .padding(.vertical, 40)
+                    .frame(maxWidth: .infinity)
             } else {
-                ForEach(Array(tracks.enumerated()), id: \.element.id) { idx, track in
+                ForEach(filteredTracks, id: \.track.id) { entry in
+                    let idx = entry.index
+                    let track = entry.track
                     // Playlists ignore `indexNumber` (that's the track's
                     // position on its own album) — the playlist order is
                     // implicit in the array order, so number rows by array

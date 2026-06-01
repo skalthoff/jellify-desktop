@@ -745,6 +745,18 @@
         }
       }
     },
+    "menu.nav.find_global" : {
+      "comment" : "View > Find in Library\u2026 menu item (\u2318\u21e7F): focuses the global Search surface.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Find in Library\u2026"
+          }
+        }
+      }
+    },
     "menu.nav.now_playing" : {
       "comment" : "View menu item: \"Go to Now Playing\" (\u2318L).",
       "extractionState" : "manual",

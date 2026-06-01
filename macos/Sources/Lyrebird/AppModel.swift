@@ -112,6 +112,42 @@ final class AppModel {
     /// observers are expected to reset it once focus has landed. See #7 / #104.
     var isSearchFieldFocused: Bool = false
 
+    /// Route-addressed, one-shot focus request for the *scoped* in-content
+    /// search bar on a detail page (Artist / Playlist). `requestFind()` sets
+    /// this when ⌘F is pressed while such a view is the active drill
+    /// destination.
+    ///
+    /// It carries the **target route** (not just a flag) so that when several
+    /// scoped-search-capable views are simultaneously alive in the
+    /// `NavigationStack` back-stack — e.g. Artist → Playlist, where SwiftUI
+    /// keeps the pushed-under view instantiated — only the view whose own
+    /// route matches `route` pulls focus. A bare `Bool` pulse made *every*
+    /// live observer grab focus, so the off-screen page stole the focus state
+    /// from the visible one.
+    ///
+    /// `token` is a monotonic counter bumped on every request so that a repeat
+    /// ⌘F (same route, e.g. the bar is already open) still produces an
+    /// observable change. The matching view consumes the request by calling
+    /// `consumeScopedSearchFocus(for:)`, which clears it. Distinct from
+    /// `isSearchFieldFocused`, which targets the full-screen global Search
+    /// surface (⌘⇧F).
+    var scopedSearchFocusRequest: ScopedSearchFocusRequest?
+
+    /// A route-addressed request to focus a scoped search bar. Equatable so
+    /// SwiftUI `.onChange` fires on each fresh request; the `token` guarantees
+    /// a change even when the same `route` is requested twice in a row.
+    struct ScopedSearchFocusRequest: Equatable {
+        /// The drill destination that should receive focus. Only the view
+        /// rendering this exact route (id included) responds.
+        let route: Route
+        /// Monotonic pulse counter so repeat requests for the same route are
+        /// still observable changes.
+        let token: Int
+    }
+
+    /// Monotonic backing counter for `ScopedSearchFocusRequest.token`.
+    private var scopedSearchFocusToken: Int = 0
+
     /// Track id that currently has keyboard focus inside an arrow-navigable
     /// list row (Library Tracks tab, album / playlist detail). Set by
     /// `TrackListRow` / `TrackRow` when they gain focus and by arrow-key
@@ -2824,6 +2860,52 @@ final class AppModel {
         selectTab(.search)
         requestSearchFocus = true
         isSearchFieldFocused = true
+    }
+
+    /// The active drill destination iff it owns a scoped (in-content) search
+    /// bar — currently the Artist and Playlist detail pages. `nil` otherwise.
+    /// Used by `requestFind` to address the focus request to exactly the
+    /// top-of-stack route, and exposed for tests.
+    var scopedSearchRoute: Route? {
+        switch navPath.last {
+        case .artist, .playlist: return navPath.last
+        default: return nil
+        }
+    }
+
+    /// True when the active drill destination owns a scoped (in-content)
+    /// search bar. Drives whether ⌘F focuses the in-view filter
+    /// (`requestFind`) versus falling through to the global Search surface.
+    var activeRouteSupportsScopedSearch: Bool {
+        scopedSearchRoute != nil
+    }
+
+    /// ⌘F entry point. When the user is on a detail view that exposes a scoped
+    /// search bar (Artist / Playlist), address a focus request to that exact
+    /// route so only the on-top view pulls focus into its in-content filter.
+    /// Otherwise fall back to the global Search surface. Global search remains
+    /// directly reachable via ⌘⇧F regardless of context.
+    func requestFind() {
+        guard let route = scopedSearchRoute else {
+            focusSearch()
+            return
+        }
+        // Bump the token so a repeat ⌘F for the same route is still an
+        // observable change for the owning view's `.onChange`.
+        scopedSearchFocusToken &+= 1
+        scopedSearchFocusRequest = ScopedSearchFocusRequest(route: route, token: scopedSearchFocusToken)
+    }
+
+    /// Called by a detail view in response to `scopedSearchFocusRequest`
+    /// changing. Returns `true` iff the pending request targets `route` (so
+    /// the caller should pull focus into its scoped bar) and, when it does,
+    /// clears the request so a stale value can't re-fire on an unrelated
+    /// state change. Views stacked under the top one (which carry a different
+    /// route) get `false` and never steal focus.
+    func consumeScopedSearchFocus(for route: Route) -> Bool {
+        guard scopedSearchFocusRequest?.route == route else { return false }
+        scopedSearchFocusRequest = nil
+        return true
     }
 
     /// Programmatic drill-navigation entry point. Pushes a `Route` onto
