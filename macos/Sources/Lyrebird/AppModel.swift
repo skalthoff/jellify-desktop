@@ -528,14 +528,14 @@ final class AppModel {
     // MARK: - Autoplay (queue end)
 
     /// UserDefaults key for the persisted "autoplay similar music when the
-    /// queue ends" preference (#83). Same `@Observable` → UserDefaults
-    /// bridge as the mini-player flag above.
+    /// queue ends" preference. Same `@Observable` → UserDefaults bridge as
+    /// the mini-player flag above.
     private static let autoplayWhenQueueEndsKey = "queue.autoplayWhenQueueEnds"
 
     /// Whether playback should extend with an Instant Mix of similar music
-    /// when the user-added queue and its source tail run dry (#83). Default
-    /// **on** to match Apple Music / Spotify's endless-listening behaviour;
-    /// users who dislike endless autoplay flip it off in the queue header and
+    /// when the user-added queue and its source tail run dry. Default **on**
+    /// to match Apple Music / Spotify's endless-listening behaviour; users
+    /// who dislike endless autoplay flip it off in the queue header and
     /// playback simply stops at the end of what they queued. Persisted across
     /// launches; read through `autoplayWhenQueueEndsDefault` so an unset key
     /// resolves to `true` rather than `bool(forKey:)`'s `false`.
@@ -552,10 +552,10 @@ final class AppModel {
         return UserDefaults.standard.bool(forKey: autoplayWhenQueueEndsKey)
     }
 
-    /// Set + persist the autoplay-at-queue-end preference (#83). Wired to the
-    /// queue header toggle; `handleTrackEnded` reads `autoplayWhenQueueEnds`
-    /// when the queue runs dry to decide whether to extend with an Instant
-    /// Mix or stop.
+    /// Set + persist the autoplay-at-queue-end preference. Wired to the queue
+    /// header toggle; `handleTrackEnded` reads `autoplayWhenQueueEnds` when
+    /// the queue runs dry to decide whether to extend with an Instant Mix or
+    /// stop.
     func setAutoplayWhenQueueEnds(_ on: Bool) {
         autoplayWhenQueueEnds = on
         UserDefaults.standard.set(on, forKey: AppModel.autoplayWhenQueueEndsKey)
@@ -4645,7 +4645,7 @@ final class AppModel {
             return
         }
         // Queue ran dry. When "autoplay similar music when queue ends" is on
-        // (#83, default), seed an Instant Mix from the track that just
+        // (the default), seed an Instant Mix from the track that just
         // finished and keep playing — matching Apple Music / Spotify's
         // endless listening. When the user has turned it off, do nothing so
         // playback simply stops at the end of what they queued.

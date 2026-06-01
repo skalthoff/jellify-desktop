@@ -221,7 +221,7 @@ struct QueueInspector: View {
         }
     }
 
-    /// "Autoplay similar music when queue ends" toggle (#83). When on
+    /// "Autoplay similar music when queue ends" toggle. When on
     /// (default), playback extends with an Instant Mix once Up Next and the
     /// source tail run dry; when off, playback stops at the end of what the
     /// user queued. Persists across launches via
