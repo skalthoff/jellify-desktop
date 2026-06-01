@@ -898,6 +898,10 @@ async fn suggestions_builds_query_and_parses() {
         "expected IncludeItemTypes in query: {q}"
     );
     assert!(
+        !q.contains("MusicAlbum"),
+        "must request Audio only; MusicAlbum rows consume Limit slots and get discarded: {q}"
+    );
+    assert!(
         !q.contains("MediaType=Audio"),
         "must not send MediaType=Audio (returns movies+TV): {q}"
     );

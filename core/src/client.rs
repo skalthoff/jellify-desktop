@@ -1226,7 +1226,7 @@ impl JellyfinClient {
     }
 
     /// Server-curated suggestions for the Home "You might like" row.
-    /// Backed by `GET /Items/Suggestions?mediaType=Audio&type=MusicAlbum,MusicArtist`.
+    /// Backed by `GET /Items/Suggestions?IncludeItemTypes=Audio`.
     ///
     /// Jellyfin ranks the result on the server side using tag / play-history
     /// overlap, so this is more useful than the pure recency-ordered
@@ -1244,10 +1244,7 @@ impl JellyfinClient {
         {
             let mut q = url.query_pairs_mut();
             q.append_pair("UserId", user_id);
-            q.append_pair(
-                "IncludeItemTypes",
-                &enums::csv(&[ItemKind::Audio, ItemKind::MusicAlbum], ItemKind::as_str),
-            );
+            q.append_pair("IncludeItemTypes", ItemKind::Audio.as_str());
             q.append_pair("Limit", &limit.max(1).to_string());
             q.append_pair("EnableUserData", "true");
         }
