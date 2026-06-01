@@ -130,7 +130,8 @@ struct PlaylistView: View {
         // on disappear ensures the next open starts with the committed value.
         .onDisappear {
             titleDraft = nil
-            // Clear scoped filter on navigation away (acceptance criterion).
+            // Clear scoped filter on navigation away so it never persists
+            // into the next page.
             scopedQuery = ""
         }
     }

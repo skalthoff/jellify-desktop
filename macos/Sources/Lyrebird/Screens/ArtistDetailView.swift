@@ -104,7 +104,7 @@ struct ArtistDetailView: View {
             }
         }
         // Clear the scoped query on navigation away so it never persists into
-        // the next page (acceptance: clears on navigation away).
+        // the next page.
         .onDisappear { scopedQuery = "" }
         .task(id: artistID) {
             Log.app.info("ArtistDetailView.task fire artist=\(artistID, privacy: .public)")
