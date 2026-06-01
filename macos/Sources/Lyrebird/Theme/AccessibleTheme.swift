@@ -1,15 +1,16 @@
 import SwiftUI
 
-/// Contrast-aware accessor for `Theme` color tokens (#340).
+/// Contrast-aware accessor for `Theme` color tokens.
 ///
-/// `Theme` exposes both the standard brand tokens and their high-contrast
-/// variants. Reading the right one requires knowing whether the user has
-/// enabled System Settings ▸ Accessibility ▸ Display ▸ Increase Contrast,
-/// which SwiftUI surfaces as `@Environment(\.colorSchemeContrast)`.
-///
-/// `AccessibleTheme` wraps that decision so views read a single property and
-/// automatically get the high-contrast value when the setting is on — the
-/// same approach `ThemedFocusRing` (#335) already uses for the focus ring.
+/// Most call sites read the base `Theme` tokens (`ink2`, `ink3`, `border`,
+/// `borderStrong`) directly; those are already appearance-adaptive and lift
+/// to their high-contrast values automatically when Increase Contrast is on.
+/// `AccessibleTheme` is the escape hatch for the few views that have a reason
+/// to branch explicitly on `@Environment(\.colorSchemeContrast)` — e.g. when
+/// the same view needs the standard and high-contrast values side by side, or
+/// when it composes a color that isn't a single token. It maps the contrast
+/// setting to a fixed standard/high-contrast pair so the dispatch is
+/// deterministic and unit-testable.
 ///
 /// Usage:
 /// ```swift
@@ -33,11 +34,11 @@ struct AccessibleTheme {
 	}
 
 	/// Secondary text. Lifts to an opaque ≈7:1 value under Increase Contrast.
-	var ink2: Color { isIncreased ? Theme.ink2HighContrast : Theme.ink2 }
+	var ink2: Color { isIncreased ? Theme.ink2HighContrast : Theme.ink2Base }
 
 	/// Tertiary text. The standard token is alpha-blended and fails at small
 	/// sizes; the HC variant is opaque and reaches ≈7:1.
-	var ink3: Color { isIncreased ? Theme.ink3HighContrast : Theme.ink3 }
+	var ink3: Color { isIncreased ? Theme.ink3HighContrast : Theme.ink3Base }
 
 	/// Body accent. Upgrades from `accent` to the brighter `accentHot` so
 	/// accent-colored text clears 4.5:1.
@@ -45,11 +46,11 @@ struct AccessibleTheme {
 
 	/// Hairline border. Becomes a solid, visible line under Increase Contrast
 	/// instead of an alpha-blended near-invisible one.
-	var border: Color { isIncreased ? Theme.borderHighContrast : Theme.border }
+	var border: Color { isIncreased ? Theme.borderHighContrast : Theme.borderBase }
 
 	/// Strong border / divider. Solid under Increase Contrast.
 	var borderStrong: Color {
-		isIncreased ? Theme.borderStrongHighContrast : Theme.borderStrong
+		isIncreased ? Theme.borderStrongHighContrast : Theme.borderStrongBase
 	}
 }
 
