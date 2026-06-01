@@ -111,7 +111,7 @@ struct DiscoverView: View {
         }
     }
 
-    /// "Song Radio" CTA, seeded from the current context (#255). Always
+    /// "Song Radio" CTA, seeded from the current context. Always
     /// available: when a track is playing it labels itself with that track and
     /// seeds the station from it (`startSongRadio`); when nothing is playing it
     /// falls through to `startInstantMix`, which has its own
