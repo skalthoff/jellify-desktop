@@ -65,7 +65,11 @@ public protocol MediaSessionDelegate: AnyObject {
 @MainActor
 public final class MediaSession {
     private weak var delegate: MediaSessionDelegate?
-    private var artworkCache: [String: MPMediaItemArtwork] = [:]
+    private let artworkCache: NSCache<NSString, MPMediaItemArtwork> = {
+        let cache = NSCache<NSString, MPMediaItemArtwork>()
+        cache.countLimit = 100
+        return cache
+    }()
     private var artworkTask: Task<Void, Never>?
     private var currentTrackID: String?
 
@@ -139,7 +143,7 @@ public final class MediaSession {
 
         // Keep the previous artwork in place until the new one decodes —
         // clearing it first shows a blank square mid-transition (see #30).
-        if let cached = artworkCache[track.id] {
+        if let cached = artworkCache.object(forKey: track.id as NSString) {
             info[MPMediaItemPropertyArtwork] = cached
         } else if let lastArt = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] {
             info[MPMediaItemPropertyArtwork] = lastArt
@@ -480,7 +484,7 @@ public final class MediaSession {
 
         // Cached hit from a prior play of the same track — publish
         // immediately without a network hop.
-        if let cached = artworkCache[track.id] {
+        if let cached = artworkCache.object(forKey: track.id as NSString) {
             guard currentTrackID == expectedTrackID else { return }
             publishArtwork(cached)
             return
@@ -511,7 +515,7 @@ public final class MediaSession {
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
                 Self.resize(image, to: requestedSize)
             }
-            artworkCache[track.id] = artwork
+            artworkCache.setObject(artwork, forKey: track.id as NSString)
             publishArtwork(artwork)
         } catch is CancellationError {
             // Track changed during the fetch — silent no-op.
