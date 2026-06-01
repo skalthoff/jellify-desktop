@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 @preconcurrency import LyrebirdCore
 
@@ -81,29 +82,65 @@ struct LibraryView: View {
     @State private var filter = LibraryFilter()
     /// Drives the filter popover's presentation. Anchored to the filter icon.
     @State private var showFilter = false
+    /// Row density for the Tracks tab, bound to the Appearance preference
+    /// (#217). 48pt roomy / 36pt compact — see `AppearanceDensity`.
+    @AppStorage(AppearanceKeys.density) private var densityRaw: String = AppearanceDensity.roomy.rawValue
+    /// Track ids in the user's multi-selection on the Tracks tab. Empty means
+    /// no selection; the selection banner is shown whenever it's non-empty.
+    /// Cleared on Esc, on a bare click, and on switching chips. See #217.
+    @State private var selectedTrackIds: Set<String> = []
+    /// Anchor row index for Shift+Click range extension. Mirrors the pattern
+    /// in `PlaylistDetailView`.
+    @State private var anchorIndex: Int? = nil
+
+    private var density: AppearanceDensity {
+        AppearanceDensity(rawValue: densityRaw) ?? .roomy
+    }
 
     private let columns = [GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 18)]
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                header
-                chipRow
-                if model.isLoadingLibrary && model.albums.isEmpty {
-                    ProgressView()
-                        .tint(Theme.ink2)
-                        .padding(.top, 40)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    content
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    header
+                    chipRow
+                    if model.isLoadingLibrary && model.albums.isEmpty {
+                        ProgressView()
+                            .tint(Theme.ink2)
+                            .padding(.top, 40)
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        content
+                    }
+                    Spacer(minLength: 24)
                 }
-                Spacer(minLength: 24)
+                .padding(.horizontal, 32)
+                .padding(.top, 28)
+                // Leave room for the floating selection banner so the last
+                // rows aren't occluded while a selection is active.
+                .padding(.bottom, selectedTracks.isEmpty ? 32 : 88)
             }
-            .padding(.horizontal, 32)
-            .padding(.top, 28)
-            .padding(.bottom, 32)
+            .background(backgroundWash)
+
+            if !selectedTracks.isEmpty {
+                TrackSelectionBanner(
+                    selection: selectedTracks,
+                    onClear: clearSelection
+                )
+                .padding(.horizontal, 32)
+                .padding(.bottom, 20)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
-        .background(backgroundWash)
+        .animation(.easeInOut(duration: 0.2), value: selectedTrackIds.isEmpty)
+        // Esc clears the selection from anywhere in the view (the banner's ✕
+        // also has the .escape shortcut for when it holds focus). See #217.
+        .onKeyPress(.escape) {
+            guard !selectedTrackIds.isEmpty else { return .ignored }
+            clearSelection()
+            return .handled
+        }
         .environment(
             \.libraryHoverID,
             LibraryHoverBinding(id: $hoverID, isActive: true)
@@ -122,6 +159,52 @@ struct LibraryView: View {
             if model.libraryTab != newValue {
                 model.libraryTab = newValue
             }
+            // Switching chips abandons any track multi-selection — the rows
+            // it referenced are no longer on screen. See #217.
+            clearSelection()
+        }
+    }
+
+    /// The selected tracks resolved against the currently-sorted list, in
+    /// display order. Used by the selection banner so its batch actions run
+    /// on the same ordering the user sees.
+    private var selectedTracks: [Track] {
+        guard !selectedTrackIds.isEmpty else { return [] }
+        return sortedTracks.filter { selectedTrackIds.contains($0.id) }
+    }
+
+    private func clearSelection() {
+        selectedTrackIds = []
+        anchorIndex = nil
+    }
+
+    /// Resolve a click on `index` within the sorted tracks list given the
+    /// modifier state. Cmd toggles the hit row; Shift extends a contiguous
+    /// range from the anchor; a bare click plays the row and resets the
+    /// selection. Mirrors `PlaylistDetailView.handleRowClick`. See #217.
+    private func handleTrackClick(index: Int, in tracks: [Track], modifiers: NSEvent.ModifierFlags) {
+        guard tracks.indices.contains(index) else { return }
+        let track = tracks[index]
+        if modifiers.contains(.command) {
+            if selectedTrackIds.contains(track.id) {
+                selectedTrackIds.remove(track.id)
+            } else {
+                selectedTrackIds.insert(track.id)
+            }
+            anchorIndex = index
+        } else if modifiers.contains(.shift) {
+            let from = anchorIndex ?? index
+            let range = from <= index ? from...index : index...from
+            var next = selectedTrackIds
+            for i in range where tracks.indices.contains(i) {
+                next.insert(tracks[i].id)
+            }
+            selectedTrackIds = next
+            anchorIndex = index
+        } else {
+            clearSelection()
+            anchorIndex = index
+            model.play(tracks: tracks, startIndex: index)
         }
     }
 
@@ -305,10 +388,19 @@ struct LibraryView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(Array(items.enumerated()), id: \.element.id) { idx, track in
-                            TrackListRow(track: track, tracks: items, index: idx)
-                                .onAppear {
-                                    triggerLoadMoreTracksIfNeeded(atIndex: idx)
-                                }
+                            TrackListRow(
+                                track: track,
+                                tracks: items,
+                                index: idx,
+                                isSelected: selectedTrackIds.contains(track.id),
+                                onSelect: { modifiers in
+                                    handleTrackClick(index: idx, in: items, modifiers: modifiers)
+                                },
+                                density: density
+                            )
+                            .onAppear {
+                                triggerLoadMoreTracksIfNeeded(atIndex: idx)
+                            }
                         }
                     }
                     if model.isLoadingMoreTracks {

@@ -78,6 +78,26 @@ enum AppearanceDensity: String, CaseIterable, Identifiable {
         case .compact: return "Compact"
         }
     }
+
+    /// Target row height for track lists, per the screen spec (#217): 48pt
+    /// roomy / 36pt compact. Row content sizes its artwork + vertical
+    /// padding off this so the two densities read distinctly without the
+    /// caller having to special-case anything.
+    var trackRowHeight: CGFloat {
+        switch self {
+        case .roomy: return 48
+        case .compact: return 36
+        }
+    }
+
+    /// Square artwork edge inside a track row. Shrinks in compact so the
+    /// row can hit the 36pt target without clipping.
+    var trackArtworkSize: CGFloat {
+        switch self {
+        case .roomy: return 40
+        case .compact: return 28
+        }
+    }
 }
 
 /// Sidebar visibility. UI-only today; the sidebar chrome lives in

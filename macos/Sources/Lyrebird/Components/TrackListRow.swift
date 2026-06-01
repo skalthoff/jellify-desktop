@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 @preconcurrency import LyrebirdCore
 
@@ -47,6 +48,20 @@ struct TrackListRow: View {
     /// matches the `AlbumDetailView.trackList` contract.
     let tracks: [Track]
     let index: Int
+    /// Whether this row is part of the caller's multi-selection. When `true`
+    /// the row paints a selection rail + tint regardless of hover / active
+    /// state. Callers that don't support multi-select leave this `false`.
+    var isSelected: Bool = false
+    /// Optional click router for multi-select hosts (#217). When non-nil the
+    /// row hands every click (with its modifier flags) to the caller instead
+    /// of playing immediately, so the host can resolve Cmd-toggle /
+    /// Shift-range / bare-click-plays. When nil the row plays on click exactly
+    /// as before — every existing single-select call site is unaffected.
+    var onSelect: ((NSEvent.ModifierFlags) -> Void)? = nil
+    /// Row density (#217). Bound by the Library Tracks tab to the user's
+    /// `appearance.density` preference; defaults to roomy so other call sites
+    /// keep their current look.
+    var density: AppearanceDensity = .roomy
     @AppStorage("audio.transcodingPreference") private var transcodingRaw: String = TranscodingPreference.directPlay.rawValue
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
@@ -70,157 +85,91 @@ struct TrackListRow: View {
         return !directPlayContainers.contains(container)
     }
 
+    private var artworkSize: CGFloat { density.trackArtworkSize }
+
     var body: some View {
-        Button {
-            model.play(tracks: tracks, startIndex: index)
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Artwork(
-                        url: model.imageURL(
-                            for: track.albumId ?? track.id,
-                            tag: track.imageTag,
-                            maxWidth: 120
-                        ),
-                        seed: track.albumName ?? track.name,
-                        size: 40,
-                        radius: 4
-                    )
-                    if isPlaying {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.black.opacity(0.55))
-                            .frame(width: 40, height: 40)
-                        EqualizerIcon()
-                            .foregroundStyle(Theme.accent)
-                    } else if isHovering {
-                        RoundedRectangle(cornerRadius: 4)
-                            .fill(Color.black.opacity(0.45))
-                            .frame(width: 40, height: 40)
-                        Image(systemName: "play.fill")
-                            .foregroundStyle(.white)
-                            .font(.system(size: 13))
-                            .transition(.opacity)
-                    }
-                }
-                .frame(width: 40, height: 40)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 5) {
-                        Text(track.name)
-                            .font(Theme.font(13, weight: .semibold))
-                            .foregroundStyle(isActive ? Theme.accent : Theme.ink)
-                            .lineLimit(1)
-                        FormatBadge(track: track)
-                        if willTranscode {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Theme.warning)
-                                .help("Transcoding required. Enable in Preferences → Playback.")
-                        }
-                    }
-                    Text(track.artistName)
-                        .font(Theme.font(11, weight: .medium))
-                        .foregroundStyle(Theme.ink2)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                if let album = track.albumName {
-                    Text(album)
-                        .font(Theme.font(12, weight: .medium))
-                        .foregroundStyle(Theme.ink3)
-                        .lineLimit(1)
-                        .frame(maxWidth: 240, alignment: .trailing)
-                }
-
-                let isFav = model.isFavorite(track: track)
-                if isFav || isHovering {
-                    Button {
-                        model.toggleFavorite(track: track)
-                    } label: {
-                        Image(systemName: isFav ? "heart.fill" : "heart")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(isFav ? Theme.accent : Theme.ink2)
-                            .frame(width: 28, height: 28)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(isFav ? "Unfavorite" : "Favorite")
-                }
-
-                Text(track.durationFormatted)
-                    .font(Theme.font(12, weight: .medium))
-                    .foregroundStyle(Theme.ink3)
-                    .monospacedDigit()
-                    .frame(minWidth: 48, alignment: .trailing)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+        rowContent
+            // When a selection host is wired up, route clicks (with modifier
+            // flags) to it; otherwise the inner Button handles the plain play
+            // tap as before. Gestures only attach on the multi-select path so
+            // the single-select path keeps the Button's full accessibility +
+            // hover behaviour untouched.
+            .modifier(SelectionClickModifier(onSelect: onSelect))
             .background(
                 RoundedRectangle(cornerRadius: 6)
                     .fill(rowBackground)
             )
+            .overlay(alignment: .leading) {
+                // Selection rail — 2pt accent bar on the leading edge so a
+                // multi-selected row reads at a glance even when it's also
+                // hovered. See #217.
+                if isSelected {
+                    Rectangle()
+                        .fill(Theme.accent)
+                        .frame(width: 2)
+                        .padding(.vertical, 2)
+                }
+            }
             .overlay(
                 // Subtle outline so focus-via-keyboard is visible even when
                 // the row is also hovered or active. See #105.
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(isFocused ? Theme.accent.opacity(0.6) : .clear, lineWidth: 1)
             )
+            .clipShape(RoundedRectangle(cornerRadius: 6))
             .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            if reduceMotion {
-                isHovering = hovering
-            } else {
-                withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
+            .onHover { hovering in
+                if reduceMotion {
+                    isHovering = hovering
+                } else {
+                    withAnimation(.easeOut(duration: 0.12)) { isHovering = hovering }
+                }
             }
-        }
-        .contextMenu { TrackContextMenu(selection: [track]) }
-        // A single row should read as one VoiceOver element — the wrapping
-        // Button already carries a label, but we override it here to pull
-        // in the active state so playing rows announce "Now playing" and
-        // non-playing rows announce "Plays this track". `.combine` collapses
-        // the artwork and text sub-views so the rotor sees one button per
-        // row rather than several unlabelled children. See #588.
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(track.name) by \(track.artistName)")
-        .accessibilityHint(isPlaying ? "Now playing" : "Plays this track")
-        .accessibilityAddTraits(isPlaying ? [.isButton, .isSelected] : .isButton)
-        // MARK: Keyboard navigation (#105)
-        .focusable()
-        .focused($isFocused)
-        .onChange(of: isFocused) { _, nowFocused in
-            if nowFocused {
-                model.focusedTrackId = track.id
+            .contextMenu { TrackContextMenu(selection: [track]) }
+            // A single row should read as one VoiceOver element — the wrapping
+            // Button already carries a label, but we override it here to pull
+            // in the active state so playing rows announce "Now playing" and
+            // non-playing rows announce "Plays this track". `.combine` collapses
+            // the artwork and text sub-views so the rotor sees one button per
+            // row rather than several unlabelled children. See #588.
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("\(track.name) by \(track.artistName)")
+            .accessibilityHint(isPlaying ? "Now playing" : "Plays this track")
+            .accessibilityAddTraits(accessibilityTraits)
+            // MARK: Keyboard navigation (#105)
+            .focusable()
+            .focused($isFocused)
+            .onChange(of: isFocused) { _, nowFocused in
+                if nowFocused {
+                    model.focusedTrackId = track.id
+                }
             }
-        }
-        .onChange(of: model.focusedTrackId) { _, newId in
-            // Sibling rows observe the shared focus cursor; the one that
-            // matches pulls focus to itself. Without this the arrow keys
-            // would write the new id but no row would actually focus.
-            if newId == track.id && !isFocused {
-                isFocused = true
+            .onChange(of: model.focusedTrackId) { _, newId in
+                // Sibling rows observe the shared focus cursor; the one that
+                // matches pulls focus to itself. Without this the arrow keys
+                // would write the new id but no row would actually focus.
+                if newId == track.id && !isFocused {
+                    isFocused = true
+                }
             }
-        }
-        .onKeyPress(.upArrow) {
-            moveFocus(by: -1)
-            return .handled
-        }
-        .onKeyPress(.downArrow) {
-            moveFocus(by: 1)
-            return .handled
-        }
-        .onKeyPress(.return) {
-            model.play(tracks: tracks, startIndex: index)
-            return .handled
-        }
-        .onKeyPress(.space) {
-            // Space toggles global play/pause regardless of focus target so
-            // "pause while scrolling" works from anywhere in the list.
-            model.togglePlayPause()
-            return .handled
-        }
+            .onKeyPress(.upArrow) {
+                moveFocus(by: -1)
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                moveFocus(by: 1)
+                return .handled
+            }
+            .onKeyPress(.return) {
+                model.play(tracks: tracks, startIndex: index)
+                return .handled
+            }
+            .onKeyPress(.space) {
+                // Space toggles global play/pause regardless of focus target so
+                // "pause while scrolling" works from anywhere in the list.
+                model.togglePlayPause()
+                return .handled
+            }
         // TODO(#105): type-ahead search — buffer letter key presses for
         // ~500ms and move focus to the first row whose title starts with
         // the buffer. Needs either a shared FocusState container above the
@@ -229,7 +178,123 @@ struct TrackListRow: View {
         // timestamp. Out of scope for the first cut of keyboard nav.
     }
 
+    private var accessibilityTraits: AccessibilityTraits {
+        var traits: AccessibilityTraits = .isButton
+        if isPlaying || isSelected { traits.formUnion(.isSelected) }
+        return traits
+    }
+
+    /// The row's visual content. When `onSelect` is nil this is wrapped in a
+    /// play-on-tap `Button`; otherwise the host's gesture handler drives
+    /// playback / selection so the same markup serves both paths.
+    @ViewBuilder
+    private var rowContent: some View {
+        if onSelect == nil {
+            Button {
+                model.play(tracks: tracks, startIndex: index)
+            } label: {
+                rowLabel
+            }
+            .buttonStyle(.plain)
+        } else {
+            rowLabel
+        }
+    }
+
+    private var rowLabel: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Artwork(
+                    url: model.imageURL(
+                        for: track.albumId ?? track.id,
+                        tag: track.imageTag,
+                        maxWidth: 120
+                    ),
+                    seed: track.albumName ?? track.name,
+                    size: artworkSize,
+                    radius: 4
+                )
+                if isPlaying {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.black.opacity(0.55))
+                        .frame(width: artworkSize, height: artworkSize)
+                    EqualizerIcon()
+                        .foregroundStyle(Theme.accent)
+                } else if isHovering {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.black.opacity(0.45))
+                        .frame(width: artworkSize, height: artworkSize)
+                    Image(systemName: "play.fill")
+                        .foregroundStyle(.white)
+                        .font(.system(size: density == .compact ? 11 : 13))
+                        .transition(.opacity)
+                }
+            }
+            .frame(width: artworkSize, height: artworkSize)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(track.name)
+                        .font(Theme.font(13, weight: .semibold))
+                        .foregroundStyle(isActive ? Theme.accent : Theme.ink)
+                        .lineLimit(1)
+                    FormatBadge(track: track)
+                    if willTranscode {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Theme.warning)
+                            .help("Transcoding required. Enable in Preferences → Playback.")
+                    }
+                }
+                // Compact density drops the artist subline so the row can
+                // hit the 36pt target; the artist is still on the context
+                // menu / Track Info and stays on the roomy default.
+                if density != .compact {
+                    Text(track.artistName)
+                        .font(Theme.font(11, weight: .medium))
+                        .foregroundStyle(Theme.ink2)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            if let album = track.albumName {
+                Text(album)
+                    .font(Theme.font(12, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+                    .lineLimit(1)
+                    .frame(maxWidth: 240, alignment: .trailing)
+            }
+
+            let isFav = model.isFavorite(track: track)
+            if isFav || isHovering {
+                Button {
+                    model.toggleFavorite(track: track)
+                } label: {
+                    Image(systemName: isFav ? "heart.fill" : "heart")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(isFav ? Theme.accent : Theme.ink2)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isFav ? "Unfavorite" : "Favorite")
+            }
+
+            Text(track.durationFormatted)
+                .font(Theme.font(12, weight: .medium))
+                .foregroundStyle(Theme.ink3)
+                .monospacedDigit()
+                .frame(minWidth: 48, alignment: .trailing)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, density == .compact ? 4 : 6)
+        .frame(minHeight: density.trackRowHeight)
+        .contentShape(Rectangle())
+    }
+
     private var rowBackground: Color {
+        if isSelected { return Theme.accent.opacity(0.18) }
         if isActive { return Theme.surface2 }
         if isFocused { return Theme.rowHover }
         if isHovering { return Theme.rowHover }
@@ -245,5 +310,32 @@ struct TrackListRow: View {
         let target = index + delta
         guard target >= 0, target < tracks.count else { return }
         model.focusedTrackId = tracks[target].id
+    }
+}
+
+/// Routes clicks to a multi-select host when one is wired up. When `onSelect`
+/// is nil the modifier is a no-op so the underlying play-on-tap `Button`
+/// drives interaction exactly as before. When present, three tap gestures
+/// disambiguate Cmd-toggle / Shift-range / bare-click and forward the
+/// modifier flags so the host can resolve the selection. Mirrors the gesture
+/// stack `PlaylistDetailView.SelectableTrackRow` uses (#74 / #217).
+private struct SelectionClickModifier: ViewModifier {
+    let onSelect: ((NSEvent.ModifierFlags) -> Void)?
+
+    func body(content: Content) -> some View {
+        if let onSelect {
+            content
+                .gesture(
+                    TapGesture().modifiers(.command).onEnded { onSelect(.command) }
+                )
+                .gesture(
+                    TapGesture().modifiers(.shift).onEnded { onSelect(.shift) }
+                )
+                .simultaneousGesture(
+                    TapGesture().onEnded { onSelect([]) }
+                )
+        } else {
+            content
+        }
     }
 }
