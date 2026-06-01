@@ -91,6 +91,19 @@ struct LyrebirdApp: App {
         .defaultSize(width: 320, height: 120)
         .windowStyle(.hiddenTitleBar)
         .defaultPosition(.topTrailing)
+
+        // Keyboard Shortcuts help window (#24). A dedicated single-instance
+        // `Window` (not a `WindowGroup`) so Help > Keyboard Shortcuts / ⌘?
+        // toggles exactly one panel rather than spawning duplicates. It renders
+        // the `AppShortcuts.all` catalog — the same map the menu bar mirrors —
+        // as a searchable two-column list. No `AppModel` needed: the catalog is
+        // static data, so the window stays open and useful even signed out.
+        Window("shortcuts.window.title", id: AppShortcuts.windowID) {
+            KeyboardShortcutsView()
+                .preferredColorScheme(preferredColorScheme)
+        }
+        .defaultSize(width: 480, height: 560)
+        .windowResizability(.contentSize)
     }
 }
 
@@ -144,6 +157,11 @@ extension FocusedValues {
 struct LyrebirdCommands: Commands {
     @Bindable var model: AppModel
     @ObservedObject var updater: Updater
+
+    /// Opens the Keyboard Shortcuts help scene (#24). `@Environment(\.openWindow)`
+    /// resolves inside a `Commands` body on macOS 14+, letting the Help menu
+    /// item summon the single-instance `Window(id: AppShortcuts.windowID)`.
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         // MARK: App menu — Check for Updates… (Sparkle, #864)
@@ -372,6 +390,16 @@ struct LyrebirdCommands: Commands {
                     NSWorkspace.shared.open(url)
                 }
             }
+
+            Divider()
+
+            // Keyboard Shortcuts help window (#24). ⌘? — on US layouts that's
+            // ⌘⇧/, which is what SwiftUI binds when you ask for "?" with the
+            // command modifier, matching Doppler's "Keyboard Shortcuts" item.
+            Button("menu.help.keyboard_shortcuts") {
+                openWindow(id: AppShortcuts.windowID)
+            }
+            .keyboardShortcut("?", modifiers: .command)
         }
 
         // Note: ⌘, (Preferences), ⌘Q (Quit), Hide / Hide Others / Services,
