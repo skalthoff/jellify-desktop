@@ -936,10 +936,12 @@ impl JellyfinClient {
                         ItemField::Path,
                         ItemField::PlaylistItemId,
                         ItemField::SortName,
+                        ItemField::UserData,
                     ],
                     ItemField::as_str,
                 ),
             );
+            q.append_pair("EnableUserData", "true");
         }
         let resp = self
             .send_with_retry(|| Ok(self.http.get(url.clone()).headers(self.build_headers()?)))
