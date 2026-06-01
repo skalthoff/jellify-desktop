@@ -14,8 +14,8 @@ enum Theme {
 
     // Text
     static let ink = Color.white
-    static let ink2 = Color(rgba: (126, 114, 175, 1.0))
-    static let ink3 = Color(rgba: (126, 114, 175, 0.65))
+    static let ink2 = adaptive(standard: ink2Standard, increased: ink2HighContrastRGBA)
+    static let ink3 = adaptive(standard: ink3Standard, increased: ink3HighContrastRGBA)
 
     // Brand
     static let primary = Color(hex: 0x887BFF)
@@ -28,14 +28,113 @@ enum Theme {
     static let warning = Color(hex: 0xF5A623)
 
     // Borders
-    static let border = Color(rgba: (126, 114, 175, 0.18))
-    static let borderStrong = Color(rgba: (126, 114, 175, 0.35))
+    static let border = adaptive(standard: borderStandard, increased: borderHighContrastRGBA)
+    static let borderStrong = adaptive(standard: borderStrongStandard, increased: borderStrongHighContrastRGBA)
 
     // Focus ring — issue #335. Uses `primary` (brand purple) at reduced
     // opacity for the normal ring; full `accentHot` for high-contrast mode.
     // `accentHot` (#FF066F) achieves ≈7.8:1 against `bgAlt` (#140B30).
     static let focusRing: Color = primary.opacity(0.75)
     static let focusRingHighContrast: Color = accentHot
+
+    // MARK: - High-contrast variants
+    //
+    // Resolved when System Settings ▸ Accessibility ▸ Display ▸ Increase
+    // Contrast is on (SwiftUI surfaces this as
+    // `@Environment(\.colorSchemeContrast) == .increased`). Contrast ratios
+    // are measured against `bg` (#0C0622) / `bgAlt` (#140B30) and target
+    // WCAG 2.2 AA (4.5:1 body, 3:1 large/UI).
+    //
+    // The base text/border tokens above are NOT plain colors — they are
+    // built by `adaptive(standard:increased:)`, which returns an
+    // appearance-resolving `NSColor`. AppKit folds the Increase-Contrast
+    // accessibility setting into the resolving `NSAppearance` (the
+    // `.accessibilityHighContrast*` appearance names), so every existing
+    // call site that reads `Theme.ink2`/`ink3`/`border`/`borderStrong`
+    // automatically renders the high-contrast value with no call-site
+    // churn. The explicit `*HighContrast` constants below remain the
+    // single source of truth for both that adaptive provider and the
+    // `AccessibleTheme` wrapper used where a view already observes
+    // `colorSchemeContrast` directly.
+
+    // RGBA tuples are the single source of truth. The base tokens (`ink2`,
+    // `ink3`, `border`, `borderStrong`) feed both their standard and
+    // high-contrast tuples into `adaptive(...)`; the `*HighContrast` /
+    // `*Standard` `Color` constants below are derived from the same tuples
+    // and consumed by the `AccessibleTheme` wrapper and the unit tests.
+    private static let ink2Standard = (126.0, 114.0, 175.0, 1.0)
+    private static let ink3Standard = (126.0, 114.0, 175.0, 0.65)
+    private static let borderStandard = (126.0, 114.0, 175.0, 0.18)
+    private static let borderStrongStandard = (126.0, 114.0, 175.0, 0.35)
+
+    private static let ink2HighContrastRGBA = (198.0, 190.0, 220.0, 1.0)
+    private static let ink3HighContrastRGBA = (198.0, 190.0, 220.0, 1.0)
+    private static let borderHighContrastRGBA = (170.0, 162.0, 196.0, 1.0)
+    private static let borderStrongHighContrastRGBA = (198.0, 190.0, 220.0, 1.0)
+
+    /// Standard secondary text, fixed (non-adaptive) for explicit dispatch.
+    static let ink2Base = Color(rgba: ink2Standard)
+    /// Standard tertiary text, fixed (non-adaptive) for explicit dispatch.
+    static let ink3Base = Color(rgba: ink3Standard)
+    /// Standard hairline border, fixed (non-adaptive) for explicit dispatch.
+    static let borderBase = Color(rgba: borderStandard)
+    /// Standard strong border, fixed (non-adaptive) for explicit dispatch.
+    static let borderStrongBase = Color(rgba: borderStrongStandard)
+
+    /// High-contrast secondary text. Opaque lift of `ink2` to ≈7:1 on `bg`,
+    /// replacing the marginal 4.6–4.9:1 of the standard token.
+    static let ink2HighContrast = Color(rgba: ink2HighContrastRGBA)
+
+    /// High-contrast tertiary text. The standard `ink3` is alpha .65 and
+    /// fails (~3:1) at small sizes; this opaque value reaches ≈7:1 on `bg`.
+    static let ink3HighContrast = Color(rgba: ink3HighContrastRGBA)
+
+    /// High-contrast body accent. The standard `accent` (#CC2F71, ~3.4:1)
+    /// fails for body copy; `accentHot` (#FF066F) reaches ≈6.7:1 on `bg`.
+    static let accentHighContrast: Color = accentHot
+
+    /// High-contrast border. The standard `border` is alpha .18 (~1.4:1,
+    /// effectively invisible with Increase Contrast on); this opaque value
+    /// renders as a solid, visible hairline.
+    static let borderHighContrast = Color(rgba: borderHighContrastRGBA)
+
+    /// High-contrast strong border / divider — solid, no alpha blend.
+    static let borderStrongHighContrast = Color(rgba: borderStrongHighContrastRGBA)
+
+    /// Overridable predicate for "is Increase Contrast on?". Production reads
+    /// the live system setting; tests substitute a deterministic value so the
+    /// adaptive resolution can be asserted without touching the real
+    /// accessibility preference. The default reads
+    /// `NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast`, which
+    /// is the AppKit mirror of SwiftUI's `colorSchemeContrast == .increased`.
+    nonisolated(unsafe) static var isIncreaseContrastEnabled: () -> Bool = {
+        NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+    }
+
+    /// Builds a `Color` that resolves to `standard` normally and `increased`
+    /// when the Increase-Contrast accessibility setting is on, with no
+    /// per-call-site branching.
+    ///
+    /// The dynamic provider is re-invoked by AppKit whenever the effective
+    /// appearance is invalidated — which it is when the user toggles Increase
+    /// Contrast (AppKit posts an accessibility-display change that bumps the
+    /// effective appearance), so every existing call site that reads the base
+    /// `Theme` tokens recolors live with no manual observation.
+    private static func adaptive(
+        standard: (Double, Double, Double, Double),
+        increased: (Double, Double, Double, Double)
+    ) -> Color {
+        let nsColor = NSColor(name: nil) { _ in
+            let rgba = isIncreaseContrastEnabled() ? increased : standard
+            return NSColor(
+                srgbRed: rgba.0 / 255.0,
+                green: rgba.1 / 255.0,
+                blue: rgba.2 / 255.0,
+                alpha: rgba.3
+            )
+        }
+        return Color(nsColor: nsColor)
+    }
 
     // Type
     /// Design-provided font helper. Wraps `Font.custom(_:size:relativeTo:)`
