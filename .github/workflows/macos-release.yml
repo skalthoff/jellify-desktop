@@ -80,10 +80,19 @@ jobs:
           tag="${RELEASE_TAG}"
           version="${tag#v}"              # strip leading 'v' for CFBundleShortVersionString
           build=$(date -u +%Y%m%d%H%M)    # UTC timestamp — monotonically increasing CFBundleVersion
+          # A hyphen only appears in a tag as a semver pre-release suffix
+          # (the version core uses dots); GitHub's auto-latest heuristic
+          # must never promote one of these over the stable release.
+          if [[ "$tag" == *-* ]]; then
+            is_prerelease=true
+          else
+            is_prerelease=false
+          fi
           {
             echo "tag=$tag"
             echo "version=$version"
             echo "build=$build"
+            echo "is_prerelease=$is_prerelease"
           } >> "$GITHUB_OUTPUT"
 
       # ------------------------------------------------------------------
@@ -206,6 +215,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
+          IS_PRERELEASE: ${{ steps.version.outputs.is_prerelease }}
         run: |
           # Don't clobber a release that already exists (re-runs via
           # workflow_dispatch). Instead, upload the freshly built DMG to
@@ -213,12 +223,28 @@ jobs:
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists — uploading asset with --clobber"
             gh release upload "$TAG" macos/build/*.dmg --clobber --repo "$GITHUB_REPOSITORY"
+            # Re-enforce the never-Latest invariant on re-runs: a release
+            # created by an older workflow (or manually) may still be
+            # marked Latest. Demote pre-releases only — re-marking a
+            # stable re-cut as --latest could wrongly promote an old tag
+            # over a newer release.
+            if [[ "$IS_PRERELEASE" == "true" ]]; then
+              gh release edit "$TAG" --prerelease --latest=false --repo "$GITHUB_REPOSITORY"
+            fi
           else
+            # Stable tags pass --latest explicitly so GitHub's auto-latest
+            # heuristic can't be confused by an out-of-order tag; pre-
+            # releases are pinned out of the Latest slot entirely.
+            latest_args=(--prerelease --latest=false)
+            if [[ "$IS_PRERELEASE" != "true" ]]; then
+              latest_args=(--latest)
+            fi
             gh release create "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --title "Lyrebird $TAG" \
               --generate-notes \
               --verify-tag \
+              "${latest_args[@]}" \
               macos/build/*.dmg
           fi
 
