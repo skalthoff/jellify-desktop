@@ -111,21 +111,14 @@ struct DiscoverView: View {
         }
     }
 
-    /// "Song Radio" CTA, seeded from the current context. Always
-    /// available: when a track is playing it labels itself with that track and
-    /// seeds the station from it (`startSongRadio`); when nothing is playing it
-    /// falls through to `startInstantMix`, which has its own
-    /// current-track → recently-played → album seed fallback so the action is
-    /// never a dead end. Mirrors the "Start Song Radio" entry in
-    /// `TrackContextMenu`.
+    /// "Song Radio" CTA, the Discover-screen twin of `TrackContextMenu`'s
+    /// "Start Song Radio". Kept always-enabled rather than disabled-when-idle so
+    /// the surface never presents a dead button: with no current track it seeds
+    /// from `startInstantMix`'s own library fallback instead.
     private var songRadioButton: some View {
         let current = model.status.currentTrack
         return Button {
-            if let current {
-                model.startSongRadio(track: current)
-            } else {
-                model.startInstantMix()
-            }
+            model.startDiscoverSongRadio()
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "dot.radiowaves.left.and.right")
