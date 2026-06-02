@@ -201,7 +201,12 @@ public final class AudioEngine: NSObject {
     /// ahead of stream-URL construction. Both are `nil` on error so the
     /// caller falls back to the server's default source and an
     /// opportunistic (uncorrelated) session — the URL is still playable.
-    private func resolvePlaybackSource(for trackId: String) -> (mediaSourceId: String?, playSessionId: String?) {
+    ///
+    /// Runs off the main actor: the `core.playbackInfo` FFI blocks the calling
+    /// thread on the full `POST /Items/{id}/PlaybackInfo` round-trip, which
+    /// would beach-ball the UI if taken on the main actor.
+    private func resolvePlaybackSource(for trackId: String) async -> (mediaSourceId: String?, playSessionId: String?) {
+        let core = self.core
         let opts = PlaybackInfoOpts(
             userId: nil,
             startTimeTicks: nil,
@@ -213,10 +218,12 @@ public final class AudioEngine: NSObject {
             autoOpenLiveStream: nil,
             deviceProfile: nil
         )
-        guard let info = try? core.playbackInfo(itemId: trackId, opts: opts) else {
-            return (nil, nil)
-        }
-        return (info.mediaSources.first?.id, info.playSessionId)
+        return await Task.detached {
+            guard let info = try? core.playbackInfo(itemId: trackId, opts: opts) else {
+                return (nil, nil)
+            }
+            return (info.mediaSources.first?.id, info.playSessionId)
+        }.value
     }
 
     /// The currently-reporting session, captured at the last
@@ -325,13 +332,13 @@ public final class AudioEngine: NSObject {
 
     // MARK: - Public
 
-    public func play(track: Track) throws {
+    public func play(track: Track) async throws {
         // Resolve media source + play session id via PlaybackInfo so the
         // server picks the right source for multi-version items and can
         // correlate subsequent /Sessions/Playing* reports with the stream.
         // Falling back to nil is harmless — the server just picks its
         // default source and correlation stays opportunistic.
-        let (mediaSourceId, playSessionId) = resolvePlaybackSource(for: track.id)
+        let (mediaSourceId, playSessionId) = await resolvePlaybackSource(for: track.id)
         let urlString = try core.streamUrl(
             trackId: track.id,
             mediaSourceId: mediaSourceId,

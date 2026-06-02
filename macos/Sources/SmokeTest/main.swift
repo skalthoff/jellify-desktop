@@ -95,7 +95,7 @@ struct SmokeTest {
         // ─── Step 1: play ────────────────────────────────────────────────
         do {
             _ = try core.setQueue(tracks: tracks, startIndex: 0)
-            try engine.play(track: first)
+            try await engine.play(track: first)
         } catch {
             fputs("play: \(error)\n", stderr); exit(1)
         }
@@ -168,7 +168,7 @@ struct SmokeTest {
         if tracks.count >= 2 {
             let beforeId = core.status().currentTrack?.id
             if let next = core.skipNext() {
-                try? engine.play(track: next)
+                try? await engine.play(track: next)
                 // Poll instead of sleeping — AudioEngine.play() schedules
                 // the AVPlayer item replacement asynchronously, which on a
                 // headless runner can take longer than a fixed 1.5s.
