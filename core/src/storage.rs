@@ -153,6 +153,23 @@ impl Database {
         Ok(())
     }
 
+    /// Persist an ambient palette derived from an album's artwork so the
+    /// macOS Now Playing wash doesn't re-sample the image on every open.
+    /// Stored as a single `settings` row under the `palette:<album_id>` key;
+    /// the value is an opaque, caller-defined encoding (the macOS side packs
+    /// two hex colors). Keyed under the existing settings table rather than a
+    /// new schema so it rides the same migration and `clear_user_data`
+    /// lifecycle.
+    pub fn set_album_palette(&self, album_id: &str, value: &str) -> Result<()> {
+        self.set_setting(&format!("palette:{album_id}"), value)
+    }
+
+    /// Read back a cached album palette written by [`Self::set_album_palette`].
+    /// Returns `None` when no palette has been sampled for this album yet.
+    pub fn get_album_palette(&self, album_id: &str) -> Result<Option<String>> {
+        self.get_setting(&format!("palette:{album_id}"))
+    }
+
     pub fn record_play(&self, track_id: &str, played_at: i64) -> Result<()> {
         self.conn.lock().execute(
             "INSERT INTO play_history (track_id, played_at) VALUES (?1, ?2)",

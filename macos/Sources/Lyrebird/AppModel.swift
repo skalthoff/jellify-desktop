@@ -3478,6 +3478,49 @@ final class AppModel {
         return result
     }
 
+    // MARK: - Ambient palette (#271)
+
+    /// In-process palette cache keyed by album id. The per-album palette is
+    /// deterministic for a given cover, so once sampled (or read back from
+    /// the SQLite cache) we never cross the FFI boundary or re-decode the
+    /// image again this session.
+    private var ambientPaletteCache: [String: AmbientPalette] = [:]
+
+    /// Resolve the ambient wash palette for an album, sampled from its
+    /// artwork (#271). Resolution order, cheapest first:
+    ///   1. this session's in-memory cache,
+    ///   2. the core's per-album SQLite palette cache (`cachedAlbumPalette`),
+    ///   3. a fresh `CIAreaAverage` sample of the Nuke-cached artwork, which
+    ///      is then written back to both caches.
+    ///
+    /// The FFI reads/writes are wrapped in `Task.detached` and the Core Image
+    /// sampling runs off the main actor (gap pattern #2 — never sample or take
+    /// the `Inner` mutex on the MainActor per open). Returns `nil` when there
+    /// is no artwork URL or extraction fails; callers fall back to the theme
+    /// wash, so a miss is never user-visible as a failure.
+    func ambientPalette(forAlbumId albumId: String, imageURL: URL?) async -> AmbientPalette? {
+        if let cached = ambientPaletteCache[albumId] { return cached }
+
+        // SQLite cache read — off the MainActor so the `Inner` mutex isn't
+        // taken on the main thread.
+        if let encoded = await Task.detached(priority: .utility, operation: { [core] in
+            core.cachedAlbumPalette(albumId: albumId)
+        }).value, let palette = AmbientPalette(encoded: encoded) {
+            ambientPaletteCache[albumId] = palette
+            return palette
+        }
+
+        guard let imageURL else { return nil }
+        guard let palette = await PaletteSampler.sample(from: imageURL) else { return nil }
+
+        ambientPaletteCache[albumId] = palette
+        let encoded = palette.encoded
+        Task.detached(priority: .utility) { [core] in
+            core.cacheAlbumPalette(albumId: albumId, value: encoded)
+        }
+        return palette
+    }
+
     // MARK: - Playback
 
     func play(tracks: [Track], startIndex: Int = 0) {

@@ -1206,6 +1206,30 @@ impl LyrebirdCore {
             .save_shuffle_repeat(status.shuffle, mode);
     }
 
+    /// Persist a per-album ambient palette so the macOS Now Playing wash can
+    /// paint the artwork-derived colors instantly on re-open instead of
+    /// re-sampling the image every time (issue #271). `value` is an opaque
+    /// string the caller defines — the macOS side packs the two dominant hex
+    /// colors. Backed by the SQLite `settings` table via a `palette:<id>` key.
+    ///
+    /// Errors are swallowed: a failed palette write only costs a re-sample on
+    /// the next open, never a user-visible failure, so callers don't have to
+    /// thread a Result through a purely-cosmetic cache.
+    pub fn cache_album_palette(&self, album_id: String, value: String) {
+        let _ = self.inner.lock().db.set_album_palette(&album_id, &value);
+    }
+
+    /// Read the cached ambient palette for an album, or `None` when one has
+    /// not been sampled yet. Counterpart to [`Self::cache_album_palette`].
+    pub fn cached_album_palette(&self, album_id: String) -> Option<String> {
+        self.inner
+            .lock()
+            .db
+            .get_album_palette(&album_id)
+            .ok()
+            .flatten()
+    }
+
     pub fn stop(&self) {
         self.stop_heartbeat();
         self.player.clear();

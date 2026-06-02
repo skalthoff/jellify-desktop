@@ -29,6 +29,12 @@ struct NowPlayingView: View {
     @State private var tab: Tab = .queue
     @State private var resolvedAlbum: Album?
 
+    /// Artwork-derived ambient wash for the player background (#271). `nil`
+    /// until the current track's palette is sampled / read from cache; the
+    /// `AmbientWash` view falls back to the theme primary/accent pair in the
+    /// meantime so the screen is never bare.
+    @State private var ambientPalette: AmbientPalette?
+
     enum Tab: String, CaseIterable, Identifiable {
         case queue = "Queue"
         case lyrics = "Lyrics"
@@ -46,13 +52,28 @@ struct NowPlayingView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.bg)
+        .background(AmbientWash(palette: ambientPalette))
         // Re-fetch the People array + lyrics on open and on track change.
         // The polling loop in AppModel already handles mid-session
         // transitions; this keeps the open-from-cold path honest too.
         .task(id: model.status.currentTrack?.id) {
             await model.fetchCurrentTrackDetails()
             await model.fetchCurrentTrackLyrics()
+        }
+        // Sample the ambient palette from the current track's album artwork
+        // (#271). Keyed on the album id so it only re-samples on a genuine
+        // album change, not on every metadata refresh; cleared to nil first
+        // so the wash cross-fades from the theme fallback into the new colors.
+        .task(id: model.status.currentTrack?.albumId ?? model.status.currentTrack?.id) {
+            ambientPalette = nil
+            guard let track = model.status.currentTrack else { return }
+            let albumId = track.albumId ?? track.id
+            let url = model.imageURL(
+                for: albumId,
+                tag: track.imageTag,
+                maxWidth: 480
+            )
+            ambientPalette = await model.ambientPalette(forAlbumId: albumId, imageURL: url)
         }
         // Honor a one-shot tab request (#91): the inline lyrics snippet in
         // the Queue Inspector taps `openLyrics()`, which sets

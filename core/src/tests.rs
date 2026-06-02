@@ -7873,3 +7873,35 @@ async fn album_tracks_parses_negative_bitrate_sentinel() {
     assert_eq!(tracks.len(), 1);
     assert_eq!(tracks[0].bitrate, Some(-1000));
 }
+
+/// #271 — the per-album ambient palette cache round-trips through SQLite.
+/// A fresh album id reads back `None`; after `cache_album_palette` the same id
+/// returns the exact stored value, and a re-cache overwrites in place.
+#[test]
+fn album_palette_cache_round_trips() {
+    let tmp = tempfile::tempdir().unwrap();
+    let core = resume_test_core(&tmp);
+
+    assert!(
+        core.cached_album_palette("album-1".into()).is_none(),
+        "unsampled album must read back None"
+    );
+
+    core.cache_album_palette("album-1".into(), "0C0622,887BFF".into());
+    assert_eq!(
+        core.cached_album_palette("album-1".into()).as_deref(),
+        Some("0C0622,887BFF"),
+        "cached palette must round-trip verbatim"
+    );
+
+    // Distinct albums don't alias each other.
+    assert!(core.cached_album_palette("album-2".into()).is_none());
+
+    // Re-cache overwrites rather than appending a second row.
+    core.cache_album_palette("album-1".into(), "140B30,FF066F".into());
+    assert_eq!(
+        core.cached_album_palette("album-1".into()).as_deref(),
+        Some("140B30,FF066F"),
+        "re-cache must overwrite the prior palette"
+    );
+}
