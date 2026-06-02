@@ -32,6 +32,7 @@ struct HomeView: View {
                 recentlyPlayedSection
                 jumpBackInSection
                 recentlyPlayedTracksSection
+                yourPlaylistsSection
                 recentlyAddedSection
                 quickPicksSection
                 suggestionsSection
@@ -458,6 +459,35 @@ struct HomeView: View {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(model.recentlyPlayed.prefix(20), id: \.id) { track in
                         RecentlyPlayedTrackRow(track: track)
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    /// "Your Playlists" — a carousel of the user's own playlists. Reads the
+    /// already-loaded `model.playlists` slice so the shelf adds no extra
+    /// round-trip and never drifts from the Library tab's Playlists chip.
+    /// Hidden when there are no playlists so a fresh library doesn't render
+    /// an empty shelf.
+    @ViewBuilder
+    private var yourPlaylistsSection: some View {
+        if !model.playlists.isEmpty {
+            carouselSection(
+                icon: "music.note.list",
+                iconColor: Theme.accent,
+                title: "Your Playlists",
+                subtitle: "Jump back into a playlist you've made",
+                onSeeAll: {
+                    model.libraryTab = .playlists
+                    model.selectTab(.library)
+                }
+            ) {
+                HStack(alignment: .top, spacing: 16) {
+                    ForEach(model.playlists.prefix(8), id: \.id) { playlist in
+                        PlaylistCard(playlist: playlist)
+                            .frame(width: 180)
                     }
                 }
                 .padding(.vertical, 4)
