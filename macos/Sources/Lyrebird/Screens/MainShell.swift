@@ -368,6 +368,10 @@ struct MainShell: View {
             segments.append("Albums")
             if let album = model.albums.first(where: { $0.id == id }) {
                 segments.append(album.name)
+            } else if let name = model.resolvedNameCache[id] {
+                // The album was navigated to from outside the loaded library
+                // page; its name was seeded into the cache by `resolveAlbum`.
+                segments.append(name)
             } else {
                 // Ellipsis is more informative than a section-name-matching
                 // literal fallback ("Albums > Album") that reads like a bug.
@@ -378,6 +382,8 @@ struct MainShell: View {
             segments.append("Artists")
             if let artist = model.artists.first(where: { $0.id == id }) {
                 segments.append(artist.name)
+            } else if let name = model.resolvedNameCache[id] {
+                segments.append(name)
             } else {
                 segments.append("…")
             }
