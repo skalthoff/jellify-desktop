@@ -2429,6 +2429,18 @@ final class AppModel {
     /// its name instead of "…". Cleared on `logout()` / `forgetToken()`.
     var resolvedNameCache: [String: String] = [:]
 
+    /// Breadcrumb display name for an album id: the loaded `albums` page first,
+    /// then `resolvedNameCache` (seeded by `resolveAlbum` on drill-in), then nil
+    /// when neither knows the name so the caller can render an ellipsis.
+    func breadcrumbAlbumName(id: String) -> String? {
+        albums.first(where: { $0.id == id })?.name ?? resolvedNameCache[id]
+    }
+
+    /// Breadcrumb display name for an artist id, mirroring `breadcrumbAlbumName`.
+    func breadcrumbArtistName(id: String) -> String? {
+        artists.first(where: { $0.id == id })?.name ?? resolvedNameCache[id]
+    }
+
     /// Resolve an `Album` record by id — cache-first, falling back to
     /// `core.fetchItem` for libraries larger than the loaded `albums`
     /// page. Returns nil on error or missing id.

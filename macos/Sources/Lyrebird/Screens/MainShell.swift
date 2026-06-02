@@ -366,11 +366,7 @@ struct MainShell: View {
         case .album(let id)?:
             if model.screen != .library { segments.append("Library") }
             segments.append("Albums")
-            if let album = model.albums.first(where: { $0.id == id }) {
-                segments.append(album.name)
-            } else if let name = model.resolvedNameCache[id] {
-                // The album was navigated to from outside the loaded library
-                // page; its name was seeded into the cache by `resolveAlbum`.
+            if let name = model.breadcrumbAlbumName(id: id) {
                 segments.append(name)
             } else {
                 // Ellipsis is more informative than a section-name-matching
@@ -380,9 +376,7 @@ struct MainShell: View {
         case .artist(let id)?:
             if model.screen != .library { segments.append("Library") }
             segments.append("Artists")
-            if let artist = model.artists.first(where: { $0.id == id }) {
-                segments.append(artist.name)
-            } else if let name = model.resolvedNameCache[id] {
+            if let name = model.breadcrumbArtistName(id: id) {
                 segments.append(name)
             } else {
                 segments.append("…")
