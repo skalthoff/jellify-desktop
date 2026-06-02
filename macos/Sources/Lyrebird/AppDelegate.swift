@@ -10,9 +10,11 @@ import SwiftUI
 ///   the Dock icon surfaces Play/Pause, Next, Previous, and a live list
 ///   of recent albums so a user can jump back into something without
 ///   bringing the window forward. See issues #16 / #17.
-/// - **Dock badge** — shows "▶" on the Dock icon while a track is playing
-///   so the user knows at a glance that audio is active without raising the
-///   window. Clears automatically when playback is paused or stopped. See #322.
+/// - **Dock tile** — replaces the stock app icon with the current album
+///   art wrapped in a thin progress ring (filling in real time) plus a
+///   pause overlay while paused, via `DockTileController`. Falls back to a
+///   "▶" text badge as a lightweight signal when no track is loaded yet.
+///   Restores the stock icon on quit.
 /// - **Window tabbing** — opts the app into macOS' automatic window-tab
 ///   behaviour so `WindowGroup`'s extra windows show up as tabs under the
 ///   Window menu. See issue #27.
@@ -48,6 +50,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// and keeps the dock badge in sync. Started in `bind(appModel:)` and
     /// cancelled in `applicationWillTerminate`. See #322.
     private var dockBadgeTask: Task<Void, Never>?
+
+    /// Owns the custom Dock tile (album art + progress ring + pause overlay).
+    /// Throttles its own `display()` calls to ≤1 Hz.
+    private let dockTile = DockTileController()
 
     /// How long to wait after a wake event before probing the server.
     /// 2 s gives the NIC time to associate and the OS time to re-establish
@@ -89,6 +95,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         wakeProbeTask?.cancel()
         dockBadgeTask?.cancel()
+        // Drop the custom tile so the Dock shows the stock icon after quit.
+        dockTile.uninstall()
         if let observer = sleepObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -170,40 +178,79 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.appModel = appModel
         dockBadgeTask?.cancel()
         dockBadgeTask = startDockBadgeObserver(model: appModel)
+        // Paint the tile immediately so a session that resumes already-playing
+        // shows its art on launch rather than waiting for the first transition.
+        refreshDockTile()
     }
 
     /// Returns a `Task` that loops indefinitely, using `withObservationTracking`
-    /// to watch `model.status.state` and update `NSApp.dockTile.badgeLabel`
-    /// whenever playback starts or stops. The task is fully cooperative — it
-    /// suspends between state changes and does not spin. See #322.
+    /// to watch `model.status.state` and refresh the Dock tile whenever
+    /// playback starts / pauses / stops. The task is fully cooperative — it
+    /// suspends between state changes and does not spin. Per-second progress
+    /// updates ride the existing 1 s status poll via `refreshDockTile()`; this
+    /// loop only catches the discrete play/pause/stop transitions so the ring
+    /// flips its overlay the moment state changes rather than on the next tick.
     @MainActor
     private func startDockBadgeObserver(model: AppModel) -> Task<Void, Never> {
         Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                // `withObservationTracking` registers access to the @Observable
-                // properties read inside `apply:` and calls `onChange:` exactly
-                // once the next time any of them change. We only read
-                // `status.state` so only playback-state transitions wake us up.
+                // Only `status.state` is read inside the tracking closure, so the
+                // loop wakes solely on playback-state transitions rather than on
+                // every status mutation (position ticks, queue edits, etc.).
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
                     withObservationTracking {
-                        // Read the property so the Observation framework registers
-                        // this access and will fire the onChange closure on change.
                         _ = model.status.state
                     } onChange: {
                         continuation.resume()
                     }
                 }
                 guard !Task.isCancelled else { break }
-                self?.updateDockBadge(model: model)
+                self?.refreshDockTile()
             }
         }
     }
 
-    /// Reflects the current playback state onto `NSApp.dockTile.badgeLabel`.
-    /// Shows "▶" while a track is actively playing; clears the badge otherwise.
+    /// Rebuild the Dock tile from the current player status. Idempotent and
+    /// cheap: the `DockTileController` throttles its own `display()` to ≤1 Hz
+    /// and skips redundant redraws, so this is safe to call from both the
+    /// state-change observer and the 1 s status poll.
+    ///
+    /// While a track is loaded the controller installs the custom album-art +
+    /// progress-ring tile; when nothing is loaded it tears the tile down and
+    /// we fall back to the lightweight "▶" text badge so the user still has a
+    /// playing signal during the brief gap before the first track resolves.
     @MainActor
-    private func updateDockBadge(model: AppModel) {
-        NSApp.dockTile.badgeLabel = model.status.state == .playing ? "▶" : nil
+    func refreshDockTile() {
+        guard let model = appModel else { return }
+        let status = model.status
+        let hasTrack = status.currentTrack != nil
+
+        if hasTrack, let track = status.currentTrack {
+            // No text badge competes with the custom tile.
+            NSApp.dockTile.badgeLabel = nil
+            dockTile.update(
+                hasTrack: true,
+                isPaused: status.state == .paused,
+                position: status.positionSeconds,
+                duration: status.durationSeconds,
+                artworkURL: model.imageURL(
+                    for: track.albumId ?? track.id,
+                    tag: track.imageTag,
+                    maxWidth: 256
+                ),
+                seed: track.name
+            )
+        } else {
+            dockTile.update(
+                hasTrack: false,
+                isPaused: false,
+                position: 0,
+                duration: 0,
+                artworkURL: nil,
+                seed: DockTileSnapshot.placeholderSeed
+            )
+            NSApp.dockTile.badgeLabel = status.state == .playing ? "▶" : nil
+        }
     }
 
     // MARK: - Sleep / wake
