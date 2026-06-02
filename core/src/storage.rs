@@ -158,8 +158,15 @@ impl Database {
     /// Stored as a single `settings` row under the `palette:<album_id>` key;
     /// the value is an opaque, caller-defined encoding (the macOS side packs
     /// two hex colors). Keyed under the existing settings table rather than a
-    /// new schema so it rides the same migration and `clear_user_data`
-    /// lifecycle.
+    /// new schema so it rides the same migration lifecycle.
+    ///
+    /// Note: `palette:*` rows are deliberately **not** removed by
+    /// [`Self::clear_user_data`] — they survive logout and server switches.
+    /// A palette is derived purely from public album artwork (no user-scoped
+    /// data), is content-addressed by album id, and is cheap to regenerate,
+    /// so keeping it across sessions just avoids needless re-sampling. If a
+    /// future change makes palettes user-scoped, add the `palette:` prefix to
+    /// `clear_user_data`'s deletion set.
     pub fn set_album_palette(&self, album_id: &str, value: &str) -> Result<()> {
         self.set_setting(&format!("palette:{album_id}"), value)
     }
