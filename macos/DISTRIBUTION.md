@@ -582,9 +582,63 @@ Deploy from a branch → Branch: gh-pages / (root)**.
   DMG wasn't notarized or the staple wasn't applied. Re-run
   `notarize.sh` locally on the DMG and re-upload to the GitHub release.
 
+## Uninstalling Lyrebird
+
+macOS has no uninstall standard. Dragging **Lyrebird.app** to the Trash
+removes the app bundle but leaves behind the data Lyrebird writes outside
+it. Lyrebird ships **outside** the Mac App Store and deliberately runs
+**without the App Sandbox** (see `macos/Resources/Lyrebird.entitlements`),
+so these files live directly under `~/Library/…` — not under
+`~/Library/Containers/`.
+
+### What Lyrebird leaves behind
+
+| Location | Contents | Source |
+| --- | --- | --- |
+| `~/Library/Application Support/lyrebird-desktop/` | UniFFI SQLite store (library cache, queue, settings). | `core/src/storage.rs` → `default_data_dir()` |
+| `~/Library/Preferences/org.lyrebird.desktop.plist` | `UserDefaults` / SwiftUI `@AppStorage` (onboarding flag, preferences). | macOS `UserDefaults` |
+| `~/Library/Caches/org.lyrebird.desktop/` | Artwork tiles (Nuke), `URLCache`, and offline downloads. | `FileManager .cachesDirectory` |
+| Keychain service `org.lyrebird.desktop` | Access + refresh tokens, one entry per `server_id/username`. | `core/src/storage.rs` → `keyring` (`SERVICE`) |
+
+The bundle identifier (`org.lyrebird.desktop`), the credential-store
+service name, and the data-dir folder name are the canonical anchors —
+they're defined in `macos/Resources/Info.plist` and
+`core/src/storage.rs`. If any of those change, update this table.
+
+### Complete removal
+
+After moving **Lyrebird.app** to the Trash, run:
+
+```bash
+# App data, preferences, and caches.
+rm -rf ~/Library/Application\ Support/lyrebird-desktop
+rm -f  ~/Library/Preferences/org.lyrebird.desktop.plist
+rm -rf ~/Library/Caches/org.lyrebird.desktop
+
+# Cached preferences daemon copy (so the deleted plist doesn't get
+# rewritten from memory). Harmless if it isn't running.
+defaults delete org.lyrebird.desktop 2>/dev/null || true
+
+# Keychain credentials (access + refresh tokens). Deletes every entry
+# for the service; repeat until it reports "could not be found".
+while security delete-generic-password -s org.lyrebird.desktop >/dev/null 2>&1; do :; done
+```
+
+The Keychain entries can also be removed interactively in **Keychain
+Access** by searching for `org.lyrebird.desktop` and deleting the
+matching items.
+
+> **In-app reset:** Lyrebird's **Settings → Advanced** pane already
+> offers a *Clear Caches* button (removes `~/Library/Caches/<bundle-id>/`
+> only — credentials and preferences are untouched). A full
+> "Reset Lyrebird…" menu item that drops every location above behind a
+> confirmation dialog is tracked as a follow-up (see #197 option 2).
+
+---
+
 ## Reference
 
 - Sparkle 2 docs: <https://sparkle-project.org/documentation/>
 - Apple notary service: <https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution>
-- Issues this doc addresses: #183, #184, #185, #186, #188, #189, #190.
+- Issues this doc addresses: #183, #184, #185, #186, #188, #189, #190, #197.
 
