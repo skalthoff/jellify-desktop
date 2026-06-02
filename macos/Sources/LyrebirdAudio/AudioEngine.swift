@@ -201,7 +201,14 @@ public final class AudioEngine: NSObject {
     /// ahead of stream-URL construction. Both are `nil` on error so the
     /// caller falls back to the server's default source and an
     /// opportunistic (uncorrelated) session — the URL is still playable.
-    private func resolvePlaybackSource(for trackId: String) -> (mediaSourceId: String?, playSessionId: String?) {
+    ///
+    /// The `core.playbackInfo` call crosses the FFI into Rust and blocks the
+    /// calling thread on the core's `block_on` for the full `POST
+    /// /Items/{id}/PlaybackInfo` round-trip (50–500 ms local, unbounded on a
+    /// slow link). It runs off the main actor so `play(track:)` never beach-
+    /// balls the UI for the duration of that request (#936).
+    private func resolvePlaybackSource(for trackId: String) async -> (mediaSourceId: String?, playSessionId: String?) {
+        let core = self.core
         let opts = PlaybackInfoOpts(
             userId: nil,
             startTimeTicks: nil,
@@ -213,10 +220,12 @@ public final class AudioEngine: NSObject {
             autoOpenLiveStream: nil,
             deviceProfile: nil
         )
-        guard let info = try? core.playbackInfo(itemId: trackId, opts: opts) else {
-            return (nil, nil)
-        }
-        return (info.mediaSources.first?.id, info.playSessionId)
+        return await Task.detached {
+            guard let info = try? core.playbackInfo(itemId: trackId, opts: opts) else {
+                return (nil, nil)
+            }
+            return (info.mediaSources.first?.id, info.playSessionId)
+        }.value
     }
 
     /// The currently-reporting session, captured at the last
@@ -325,13 +334,15 @@ public final class AudioEngine: NSObject {
 
     // MARK: - Public
 
-    public func play(track: Track) throws {
+    public func play(track: Track) async throws {
         // Resolve media source + play session id via PlaybackInfo so the
         // server picks the right source for multi-version items and can
         // correlate subsequent /Sessions/Playing* reports with the stream.
         // Falling back to nil is harmless — the server just picks its
-        // default source and correlation stays opportunistic.
-        let (mediaSourceId, playSessionId) = resolvePlaybackSource(for: track.id)
+        // default source and correlation stays opportunistic. The resolution
+        // runs off the main actor (#936) so the network POST never blocks the
+        // UI; everything below resumes on the main actor.
+        let (mediaSourceId, playSessionId) = await resolvePlaybackSource(for: track.id)
         let urlString = try core.streamUrl(
             trackId: track.id,
             mediaSourceId: mediaSourceId,

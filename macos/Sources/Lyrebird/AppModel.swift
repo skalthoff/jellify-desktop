@@ -3556,8 +3556,15 @@ final class AppModel {
         do {
             _ = try core.setQueue(tracks: tracks, startIndex: UInt32(startIndex))
             guard let first = tracks[safe: startIndex] else { return }
-            try audio.play(track: first)
-            errorMessage = nil
+            Task {
+                do {
+                    try await audio.play(track: first)
+                    errorMessage = nil
+                } catch {
+                    if handleAuthError(error) { return }
+                    errorMessage = LyrebirdErrorPresenter.message(for: error, context: .playback)
+                }
+            }
         } catch {
             if handleAuthError(error) { return }
             errorMessage = LyrebirdErrorPresenter.message(for: error, context: .playback)
@@ -5051,11 +5058,13 @@ final class AppModel {
     }
 
     private func playCurrent(_ track: Track) {
-        do {
-            try audio.play(track: track)
-        } catch {
-            if handleAuthError(error) { return }
-            errorMessage = LyrebirdErrorPresenter.message(for: error, context: .playback)
+        Task {
+            do {
+                try await audio.play(track: track)
+            } catch {
+                if handleAuthError(error) { return }
+                errorMessage = LyrebirdErrorPresenter.message(for: error, context: .playback)
+            }
         }
     }
 
