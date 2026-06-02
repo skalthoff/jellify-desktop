@@ -2027,7 +2027,9 @@ final class AppModel {
         limit: UInt32,
         extraFields: [String],
         minDateLastSaved: String?,
-        parentId: String?
+        parentId: String?,
+        years: [Int]? = nil,
+        tags: [String]? = nil
     ) -> URLRequest? {
         guard let session = session,
               let baseURL = URL(string: session.server.url),
@@ -2058,6 +2060,14 @@ final class AppModel {
         }
         if let parentId, !parentId.isEmpty {
             queryItems.append(URLQueryItem(name: "ParentId", value: parentId))
+        }
+        if let years, !years.isEmpty {
+            queryItems.append(
+                URLQueryItem(name: "Years", value: years.map(String.init).joined(separator: ","))
+            )
+        }
+        if let tags, !tags.isEmpty {
+            queryItems.append(URLQueryItem(name: "Tags", value: tags.joined(separator: "|")))
         }
         comps?.queryItems = queryItems
         guard let url = comps?.url else { return nil }
@@ -4866,6 +4876,156 @@ final class AppModel {
                 }
                 errorMessage = "Couldn't load tracks for \(genre.name): \(error.localizedDescription)"
             }
+        }
+    }
+
+    // MARK: - Decade / Mood radio (#256)
+    //
+    // The Discover/Home "Radio" surface offers Genre, Decade, and Mood
+    // stations (per `06-screen-specs.md` §9). Genre radio reuses
+    // `startGenreRadio` (Instant Mix seeded by the genre). Decade and Mood
+    // have no Instant-Mix seed item, so they assemble a shuffled station out
+    // of a random page of audio tracks matching the decade's ten-year
+    // `Years` window / the mood `Tag`, then play it like any other queue.
+    // We go through the raw `/Items` query (the established
+    // `buildItemsQuery` pattern) rather than a new core FFI because the
+    // dimensions we need — `Years`, `Tags` — are just extra query params.
+
+    /// The fixed mood set the spec calls for, each backed by a Jellyfin tag.
+    /// `tag` is matched case-insensitively server-side; `label`/`symbol` drive
+    /// the tile. Only moods whose tag actually returns tracks are surfaced
+    /// (see `availableMoods`), so a library with no mood tags shows no row.
+    struct Mood: Identifiable, Hashable, Sendable {
+        let tag: String
+        let label: String
+        let symbol: String
+
+        var id: String { tag }
+
+        /// The five moods from `06-screen-specs.md` §9, in spec order.
+        static let all: [Mood] = [
+            Mood(tag: "chill", label: "Chill", symbol: "leaf"),
+            Mood(tag: "focus", label: "Focus", symbol: "scope"),
+            Mood(tag: "workout", label: "Workout", symbol: "figure.run"),
+            Mood(tag: "sleep", label: "Sleep", symbol: "moon.stars"),
+            Mood(tag: "party", label: "Party", symbol: "party.popper"),
+        ]
+    }
+
+    /// Subset of `Mood.all` whose tag returns at least one track in this
+    /// library. Empty until `probeAvailableMoods()` runs; the Mood radio row
+    /// hides itself while empty so a library with no mood tags doesn't render
+    /// a dead band. Moods are sourced from tags "if present" per the spec.
+    var availableMoods: [Mood] = []
+
+    /// Best-effort probe of which spec moods have any tagged tracks. Fires one
+    /// tiny (`limit: 1`) `/Items` HEAD-style fetch per mood concurrently and
+    /// keeps only the moods that came back non-empty. Idempotent and cheap;
+    /// safe to call on Discover/Home appearance. Failures (auth/network) leave
+    /// `availableMoods` unchanged rather than blanking an already-populated row.
+    func probeAvailableMoods() async {
+        guard session != nil else { return }
+        let present = await withTaskGroup(of: Mood?.self) { group in
+            for mood in Mood.all {
+                group.addTask { [weak self] in
+                    guard let self else { return nil }
+                    let hit = await self.moodHasTracks(tag: mood.tag)
+                    return hit ? mood : nil
+                }
+            }
+            var found: [Mood] = []
+            for await result in group {
+                if let mood = result { found.append(mood) }
+            }
+            return found
+        }
+        guard !present.isEmpty else { return }
+        // Re-order to the canonical spec order rather than completion order.
+        availableMoods = Mood.all.filter { mood in present.contains(mood) }
+    }
+
+    /// Does the given mood tag have at least one audio track? One `limit: 1`
+    /// `/Items` probe; returns false on auth/network/parse failure.
+    private func moodHasTracks(tag: String) async -> Bool {
+        guard let request = buildItemsQuery(
+            includeItemTypes: "Audio",
+            sortBy: "Random",
+            sortOrder: "Ascending",
+            filters: nil,
+            limit: 1,
+            extraFields: [],
+            minDateLastSaved: nil,
+            parentId: nil,
+            tags: [tag]
+        ) else { return false }
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: request)
+            if let http = resp as? HTTPURLResponse, http.statusCode == 401 {
+                markAuthExpired()
+                return false
+            }
+            return !Self.parseTracksFromItems(data: data).isEmpty
+        } catch {
+            return false
+        }
+    }
+
+    /// Start a Decade Radio station — a shuffled queue of audio tracks whose
+    /// `ProductionYear` falls inside the decade's ten-year window. Replaces the
+    /// queue and plays from the top. Surfaces `errorMessage` when the decade
+    /// has no tracks (rather than silently no-op'ing).
+    func startDecadeRadio(startingYear start: Int) {
+        let years = Array(start...(start + 9))
+        Task {
+            let tracks = await fetchRadioTracks(years: years, tags: nil)
+            guard !tracks.isEmpty else {
+                errorMessage = "No tracks from the \(start)s in your library yet."
+                return
+            }
+            play(tracks: tracks, startIndex: 0)
+        }
+    }
+
+    /// Start a Mood Radio station — a shuffled queue of audio tracks carrying
+    /// the mood's Jellyfin tag. Replaces the queue and plays from the top.
+    func startMoodRadio(mood: Mood) {
+        Task {
+            let tracks = await fetchRadioTracks(years: nil, tags: [mood.tag])
+            guard !tracks.isEmpty else {
+                errorMessage = "No \(mood.label) tracks in your library yet."
+                return
+            }
+            play(tracks: tracks, startIndex: 0)
+        }
+    }
+
+    /// Fetch up to `limit` random audio tracks matching the given `Years`
+    /// window and/or `Tags`, already server-shuffled (`SortBy=Random`). Backs
+    /// the Decade and Mood radio stations. Returns `[]` on auth/network/parse
+    /// failure (the callers turn an empty result into a user-facing message).
+    private func fetchRadioTracks(years: [Int]?, tags: [String]?, limit: UInt32 = 100) async -> [Track] {
+        guard let request = buildItemsQuery(
+            includeItemTypes: "Audio",
+            sortBy: "Random",
+            sortOrder: "Ascending",
+            filters: nil,
+            limit: limit,
+            extraFields: [],
+            minDateLastSaved: nil,
+            parentId: nil,
+            years: years,
+            tags: tags
+        ) else { return [] }
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: request)
+            if let http = resp as? HTTPURLResponse, http.statusCode == 401 {
+                markAuthExpired()
+                return []
+            }
+            return Self.parseTracksFromItems(data: data)
+        } catch {
+            Log.net.error("fetchRadioTracks failed: \(error.localizedDescription, privacy: .public)")
+            return []
         }
     }
 
