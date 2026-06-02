@@ -492,7 +492,7 @@ struct CommandPalette: View {
 
 // MARK: - Row
 
-private struct PaletteRow: View {
+struct PaletteRow: View {
     let row: CommandPalette.Row
     let isSelected: Bool
     let onActivate: () -> Void
@@ -595,6 +595,7 @@ private struct PaletteRow: View {
         "nav.library": "Go to Library",
         "nav.home": "Go to Home",
         "nav.discover": "Go to Discover",
+        "nav.favorites": "Go to Favorites",
         "app.openPreferences": "Open Preferences",
         "playback.toggleShuffle": "Toggle Shuffle",
         "playback.toggleRepeat": "Toggle Repeat",
@@ -610,6 +611,7 @@ private struct PaletteRow: View {
         "nav.library": "music.note.list",
         "nav.home": "house",
         "nav.discover": "sparkles",
+        "nav.favorites": "heart",
         "app.openPreferences": "gearshape",
         "playback.toggleShuffle": "shuffle",
         "playback.toggleRepeat": "repeat",
