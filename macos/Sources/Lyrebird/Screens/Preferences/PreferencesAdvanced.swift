@@ -19,9 +19,11 @@ import SwiftUI
 ///    - *Reset onboarding* writes `false` to `hasCompletedOnboarding`
 ///      (same key used by `OnboardingView`) so the welcome / server-setup
 ///      flow re-runs on the next launch.
-///    - *Clear caches* removes the `~/Library/Caches/<bundle-id>/` tree —
-///      artwork tiles and other ephemeral data. Does not touch stored
-///      credentials or user preferences.
+///    - *Clear caches* removes Lyrebird's own `~/Library/Caches/<bundle-id>/`
+///      subtree — artwork tiles and other ephemeral data. Scoped to the
+///      bundle id (the app is unsandboxed, so the bare Caches lookup
+///      resolves to the shared root). Does not touch stored credentials or
+///      user preferences.
 ///
 /// 3. **Show internal IDs** — toggle stored in
 ///    `@AppStorage("advanced.showInternalIds")`. When enabled, detail views
@@ -340,17 +342,36 @@ struct PreferencesAdvanced: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
-    /// Removes the app's `Caches` sandbox directory subtree. This clears
-    /// artwork tiles and any other ephemeral blobs the app has written.
-    /// Credentials (Keychain), preferences (UserDefaults / AppStorage),
-    /// and downloaded offline tracks are stored elsewhere and are not
-    /// affected.
+    /// Removes Lyrebird's own `Caches` subtree
+    /// (`~/Library/Caches/<bundle-id>/`). This clears artwork tiles and any
+    /// other ephemeral blobs the app has written. Credentials (Keychain),
+    /// preferences (UserDefaults / AppStorage), and downloaded offline
+    /// tracks are stored elsewhere and are not affected.
+    ///
+    /// Lyrebird runs **outside** the App Sandbox, so
+    /// `FileManager.urls(for: .cachesDirectory, …)` resolves to the shared
+    /// `~/Library/Caches/` root — deleting that would wipe *every* app's
+    /// cache. We therefore scope to the bundle-id subdirectory and refuse
+    /// to operate if, for any reason, we can't resolve it (no bundle id, or
+    /// the resolved path is the Caches root itself).
     private func clearCaches() {
         let fm = FileManager.default
-        guard let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else { return }
-        try? fm.removeItem(at: caches)
+        guard let cachesRoot = fm.urls(for: .cachesDirectory, in: .userDomainMask).first else {
+            return
+        }
+        guard let bundleID = Bundle.main.bundleIdentifier, !bundleID.isEmpty else {
+            // Without a bundle id we can't safely scope; bail rather than
+            // risk removing the shared Caches root.
+            return
+        }
+        let appCaches = cachesRoot.appendingPathComponent(bundleID, isDirectory: true)
+        // Defensive: never let the target collapse back onto the Caches root.
+        guard appCaches.standardizedFileURL != cachesRoot.standardizedFileURL else {
+            return
+        }
+        try? fm.removeItem(at: appCaches)
         // Recreate the directory so subsequent writes don't fail.
-        try? fm.createDirectory(at: caches, withIntermediateDirectories: true)
+        try? fm.createDirectory(at: appCaches, withIntermediateDirectories: true)
     }
 }
 
