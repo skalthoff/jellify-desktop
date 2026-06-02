@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// A gradient station tile used by the Genre / Decade / Mood radio rows on
-/// the Radio / Home screen (#256). Unlike `ArtistRadioTile` (a circular
+/// the Radio / Home screen. Unlike `ArtistRadioTile` (a circular
 /// artwork thumb), these stations have no single seed image — they're
 /// abstract "play me this slice of the library" presets — so the tile leans
 /// on a per-tile gradient + a huge italic label, matching the screen-spec

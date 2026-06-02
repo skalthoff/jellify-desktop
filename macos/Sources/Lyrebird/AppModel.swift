@@ -4851,7 +4851,7 @@ final class AppModel {
         PinnedStationsStore.save(stations)
     }
 
-    // MARK: - Decade / Mood radio (Radio page rows, #256)
+    // MARK: - Decade / Mood radio (Radio page rows)
     //
     // Genre Radio already routes through `startGenreRadio` (Instant Mix on a
     // resolved genre UUID). Decade and Mood don't have a single seed item to
@@ -4862,7 +4862,7 @@ final class AppModel {
 
     /// Start a "decade radio" — plays a randomized page of tracks whose
     /// production year falls in `[startYear, endYear]`. Backs the Decade
-    /// Radio tile row on the Radio page (#256). The FFI runs off the
+    /// Radio tile row on the Radio page. The FFI runs off the
     /// MainActor per CLAUDE.md gap pattern #2.
     func startDecadeRadio(startYear: UInt32, endYear: UInt32, label: String) {
         Task {
@@ -4892,7 +4892,7 @@ final class AppModel {
 
     /// Start a "mood radio" — plays a randomized page of tracks carrying the
     /// given tag (chill / focus / workout / sleep / party). Backs the Mood
-    /// Radio tile row on the Radio page (#256). Surfaces a friendly message
+    /// Radio tile row on the Radio page. Surfaces a friendly message
     /// when the library has no tracks tagged with the mood rather than
     /// silently doing nothing. The FFI runs off the MainActor per CLAUDE.md
     /// gap pattern #2.

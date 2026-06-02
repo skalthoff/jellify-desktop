@@ -270,7 +270,7 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Genre / Decade / Mood radio rows (#256)
+    // MARK: - Genre / Decade / Mood radio rows
 
     /// The three station rows from the Radio screen spec (§9, Issue 57):
     /// Genre Radio, Decade Radio, and Mood Radio. Each is a horizontal row of
