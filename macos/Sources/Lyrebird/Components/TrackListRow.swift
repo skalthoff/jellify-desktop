@@ -374,9 +374,9 @@ private struct SelectionClickModifier: ViewModifier {
                 // `.highPriorityGesture` and stop it bubbling to selection.
                 // A `.simultaneousGesture` here would always co-fire and
                 // re-introduce the heart-tap-clears-selection regression
-                // (#217 review). The reference `SelectableTrackRow` can use
-                // `.simultaneousGesture` only because it has no interactive
-                // subviews.
+                // (#217 review). `SelectableTrackRow` uses the same `.gesture`
+                // pattern so Cmd/Shift taps aren't co-fired by the bare-tap
+                // recognizer (which would defeat multiselect).
                 .gesture(
                     TapGesture().onEnded { onSelect([]) }
                 )

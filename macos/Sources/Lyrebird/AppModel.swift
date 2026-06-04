@@ -3037,8 +3037,12 @@ final class AppModel {
     /// `core.playlistTracks(playlistId:)` for up to 500 entries — same cap as
     /// `loadPlaylistTracks(playlist:)`. Errors surface through the usual
     /// auth / reachability / error-banner path.
-    func loadPlaylistTracks(playlistId: String) async {
-        if let cached = playlistTracks[playlistId] {
+    ///
+    /// Pass `forceRefresh: true` to bypass the cache and re-fetch from the
+    /// server — required after a mutation (e.g. drop-to-add) that changed the
+    /// track list but couldn't reconstruct full `Track` rows locally.
+    func loadPlaylistTracks(playlistId: String, forceRefresh: Bool = false) async {
+        if !forceRefresh, let cached = playlistTracks[playlistId] {
             currentPlaylistTracks = cached
             return
         }
@@ -3225,9 +3229,21 @@ final class AppModel {
     /// `PlaylistDetailView` and any future "Add to playlist" affordance. See
     /// #236. Updates the in-memory caches optimistically and fires the core
     /// call in a detached task.
+    ///
+    /// We only know the bare track ids here, not full `Track` records, so the
+    /// visible list can't be appended to optimistically. Instead, on a
+    /// successful add we invalidate `playlistTracks[playlistId]` and — when
+    /// that playlist is the one currently on screen — re-fetch it so the new
+    /// rows actually appear. Without this the drop "succeeds" but the list
+    /// keeps showing the pre-drop tracks (the cache was never refreshed).
     func addToPlaylist(playlistId: String, trackIds: [String]) {
         guard !trackIds.isEmpty else { return }
         let ids = trackIds
+        // Is this the playlist currently on screen? `currentPlaylistTracks` is
+        // populated from `playlistTracks[playlistId]` whenever a playlist
+        // loads, so matching id sequences means the detail view is showing it
+        // and needs a re-fetch once the add lands.
+        let isShowingThisPlaylist = playlistTracks[playlistId]?.map(\.id) == currentPlaylistTracks.map(\.id)
         // Optimistically bump the count BEFORE the FFI call so the drop
         // visually lands without waiting for the round-trip. We don't know
         // the full `Track` records for ids that aren't already resident, so
@@ -3252,7 +3268,16 @@ final class AppModel {
                 try await Task.detached(priority: .userInitiated) { [core] in
                     try core.addToPlaylist(playlistId: playlistRef, itemIds: ids, position: nil)
                 }.value
-                self?.serverReachability.noteSuccess()
+                guard let self else { return }
+                self.serverReachability.noteSuccess()
+                // The add persisted but we only had bare ids, so the cached
+                // rows are now stale (missing the new tracks). Invalidate the
+                // cache and, if this playlist is on screen, re-fetch so the
+                // dropped tracks actually appear in the list.
+                self.playlistTracks[playlistRef] = nil
+                if isShowingThisPlaylist {
+                    await self.loadPlaylistTracks(playlistId: playlistRef, forceRefresh: true)
+                }
             } catch {
                 guard let self else { return }
                 if self.handleAuthError(error) { return }
