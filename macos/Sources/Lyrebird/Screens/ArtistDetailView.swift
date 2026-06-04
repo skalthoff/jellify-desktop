@@ -8,8 +8,8 @@ import SwiftUI
 /// Layout (top-to-bottom):
 /// 1. **Hero band** (360pt) — blurred backdrop art, 200pt circular portrait,
 ///    eyebrow "ARTIST", 72pt italic-black title, genre line, stats strip.
-/// 2. **Transport row** — 54pt Play All, Shuffle, Follow / Following pill,
-///    Artist Radio, Instant Mix. Mirrors the album detail transport for
+/// 2. **Transport row** — 54pt Play, Shuffle, Follow / Following pill,
+///    Artist Radio. Mirrors the album detail transport for
 ///    consistency. Following an artist favorites the artist entity on the
 ///    server (Jellyfin has no separate follow primitive) so it can seed a
 ///    future "New from artists you follow" home section.
@@ -52,6 +52,14 @@ struct ArtistDetailView: View {
     /// collapse to `nil` so the About section hides entirely.
     @State private var bioOverview: String?
 
+    /// Pre-resolved discography artwork URLs, keyed by album id. Populated
+    /// off the main thread in the `.task` block (see `model.resolveImageURLs`)
+    /// so the eager discography `HStack` hands each tile a ready URL instead of
+    /// taking the Rust `Inner` mutex on the MainActor inside every tile body
+    /// (gap pattern #2). A missing key means "not resolved yet"; the tile
+    /// shows its gradient placeholder until the warm pass lands.
+    @State private var discographyArtwork: [String: URL] = [:]
+
     /// Scoped (⌘F) search query that filters the Top Songs list in-place.
     /// Cleared on navigation away and on artist change so it never bleeds
     /// across pages.
@@ -77,6 +85,24 @@ struct ArtistDetailView: View {
         }
     }
 
+    /// Help-tooltip text for the primary play button. The button plays the
+    /// loaded Top Songs when there is play history, and only falls back to the
+    /// full catalog when there is none — so the label must reflect which of the
+    /// two it will actually do, rather than always promising "all tracks".
+    /// Factored out (with `primaryPlayAccessibilityLabel`) so the label/behavior
+    /// contract is unit-testable without instantiating the view.
+    static func primaryPlayHelp(hasTopTracks: Bool) -> String {
+        hasTopTracks ? "Play top songs" : "Play all tracks"
+    }
+
+    /// VoiceOver label for the primary play button. Mirrors `primaryPlayHelp`
+    /// but names the artist, matching the resting album-detail transport voice.
+    static func primaryPlayAccessibilityLabel(hasTopTracks: Bool, artistName: String) -> String {
+        hasTopTracks
+            ? "Play top songs by \(artistName)"
+            : "Play all tracks by \(artistName)"
+    }
+
     /// Resolve the artist: cached library page first, then whichever
     /// record the `.task` block fetched on demand. Missing (server
     /// unreachable or truly deleted) falls through to the gentle
@@ -86,16 +112,23 @@ struct ArtistDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
+        // Resolve the artist exactly once per render. `artist` is an O(n) scan
+        // over `model.artists` (potentially thousands of entries), and `body`
+        // invalidates on every keystroke in the scoped filter — so resolving
+        // it per sub-view would run the scan five-plus times per keystroke.
+        // One `let` here, threaded into each section, collapses that to one
+        // scan per render.
+        let artist = self.artist
+        return ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                hero
-                transportBar
+                hero(artist)
+                transportBar(artist)
                 topSongsSection
                 discographySection
-                featuringPlaylistsSection
+                featuringPlaylistsSection(artist)
                 similarArtistsSection
-                aboutSection
-                footer
+                aboutSection(artist)
+                footer(artist)
             }
         }
         .background(Theme.bg)
@@ -118,6 +151,7 @@ struct ArtistDetailView: View {
             isBioExpanded = false
             scopedQuery = ""
             featuringPlaylists = []
+            discographyArtwork = [:]
             isLoadingTopTracks = true
             if model.artists.first(where: { $0.id == artistID }) == nil {
                 fetchedArtist = await model.resolveArtist(id: artistID)
@@ -127,6 +161,17 @@ struct ArtistDetailView: View {
             // first page of 100 library-wide albums, so Discography
             // rendered empty for most artists on a large library.
             artistAlbums = await model.loadArtistAlbums(artistId: artistID)
+            // Warm the discography artwork URLs off the main thread before the
+            // eager tiles render, so the per-tile `imageURL` calls are pure
+            // cache hits instead of ~200 serialized mutex-guarded FFI calls on
+            // the MainActor (gap pattern #2). Each tile gets a pre-resolved URL.
+            let resolved = await model.resolveImageURLs(
+                for: artistAlbums.map { (id: $0.id, tag: $0.imageTag) },
+                maxWidth: 400
+            )
+            discographyArtwork = resolved.reduce(into: [:]) { acc, pair in
+                if let url = pair.value { acc[pair.key] = url }
+            }
             topTracks = await model.loadArtistTopTracks(artistId: artistID)
             isLoadingTopTracks = false
             similarArtistsState = await model.loadSimilarArtists(artistId: artistID)
@@ -150,7 +195,7 @@ struct ArtistDetailView: View {
     /// has no image we fall back to a deterministic gradient placeholder and
     /// `person.circle.fill` so the band doesn't read as broken.
     @ViewBuilder
-    private var hero: some View {
+    private func hero(_ artist: Artist?) -> some View {
         if let artist = artist {
             ZStack(alignment: .bottomLeading) {
                 backdrop(for: artist)
@@ -346,20 +391,21 @@ struct ArtistDetailView: View {
 
     // MARK: - Transport (#228)
 
-    /// Play All / Shuffle / Follow / Radio / Mix row. Matches the album
-    /// detail transport so the two detail screens share a transport mental
-    /// model. Most actions delegate to stubs on `AppModel` pending core
-    /// work — the UI is live, the wiring lights up when each FFI lands.
+    /// Play / Shuffle / Follow / Radio row. Matches the album detail transport
+    /// so the two detail screens share a transport mental model. Most actions
+    /// delegate to stubs on `AppModel` pending core work — the UI is live, the
+    /// wiring lights up when each FFI lands.
     @ViewBuilder
-    private var transportBar: some View {
+    private func transportBar(_ artist: Artist?) -> some View {
         if let artist = artist {
             HStack(spacing: 14) {
                 Button {
-                    // Play All delegates to `playAll` on AppModel. That path
-                    // falls back to "play the top 5" today (see #156 / #465)
-                    // because the artist-tracks FFI isn't wired yet — so for
-                    // the primary CTA we use the top-tracks list when Play
-                    // All would no-op, which matches user expectation.
+                    // Primary CTA. With play history we play the loaded Top
+                    // Songs; the rank/queue UI is already built around that
+                    // list. Only when there's no play history do we fall
+                    // through to `playAll(artist:)` (the full catalog). The
+                    // button is labeled to match this — "Play top songs" — so
+                    // it doesn't promise a full-catalog play it rarely does.
                     if topTracks.isEmpty {
                         model.playAll(artist: artist)
                     } else {
@@ -374,8 +420,13 @@ struct ArtistDetailView: View {
                         .shadow(color: Theme.accent.opacity(0.35), radius: 12, y: 8)
                 }
                 .buttonStyle(.plain)
-                .help("Play all tracks")
-                .accessibilityLabel("Play all tracks by \(artist.name)")
+                .help(Self.primaryPlayHelp(hasTopTracks: !topTracks.isEmpty))
+                .accessibilityLabel(
+                    Self.primaryPlayAccessibilityLabel(
+                        hasTopTracks: !topTracks.isEmpty,
+                        artistName: artist.name
+                    )
+                )
 
                 if model.supportsArtistPlayShuffle {
                     transportSecondary(
@@ -386,18 +437,14 @@ struct ArtistDetailView: View {
 
                 followButton(for: artist)
 
+                // Artist radio = Instant Mix seeded by this artist. The core
+                // exposes a single polymorphic `instantMix` primitive, so a
+                // separate "Instant Mix" button would call the exact same path
+                // — one button, one honest affordance, rather than two
+                // identically-behaving controls under different labels.
                 transportSecondary(
                     icon: "dot.radiowaves.left.and.right",
                     help: "Start artist radio"
-                ) { model.startArtistRadio(artist: artist) }
-
-                // Instant Mix from the artist — same stub as the above radio
-                // today, but they're separate affordances per the brief so
-                // when #144 lands we can split them (radio = artist-seeded
-                // station; mix = polymorphic Instant Mix).
-                transportSecondary(
-                    icon: "waveform.path.ecg",
-                    help: "Start instant mix"
                 ) { model.startArtistRadio(artist: artist) }
 
                 Spacer()
@@ -564,7 +611,15 @@ struct ArtistDetailView: View {
                 // the lazy-recycle buffer churn that triggers the UAF.
                 HStack(alignment: .top, spacing: 16) {
                     ForEach(group.albums, id: \.id) { album in
-                        ArtistDiscographyTile(album: album)
+                        // Hand the tile its artwork URL pre-resolved off the
+                        // main thread (see `.task` → `resolveImageURLs`) so the
+                        // eager HStack never calls the sync `imageURL` FFI on
+                        // the MainActor inside a tile body. `nil` until the warm
+                        // pass lands; the tile shows its placeholder meanwhile.
+                        ArtistDiscographyTile(
+                            album: album,
+                            artworkURL: discographyArtwork[album.id]
+                        )
                     }
                 }
                 .padding(.vertical, 4)
@@ -660,7 +715,7 @@ struct ArtistDetailView: View {
     /// section never reads as a broken empty shelf. Data comes from
     /// `featuringPlaylists`, populated by the `.task(id:)` block.
     @ViewBuilder
-    private var featuringPlaylistsSection: some View {
+    private func featuringPlaylistsSection(_ artist: Artist?) -> some View {
         if !featuringPlaylists.isEmpty, let artist = artist {
             VStack(alignment: .leading, spacing: 12) {
                 sectionHeader(eyebrow: "APPEARS ON", title: "Featuring \(artist.name)")
@@ -731,7 +786,7 @@ struct ArtistDetailView: View {
     /// doesn't grow a dead About region. Genres already surface in the hero
     /// and catalog depth in the footer, so nothing useful is lost.
     @ViewBuilder
-    private var aboutSection: some View {
+    private func aboutSection(_ artist: Artist?) -> some View {
         if let artist = artist, let overview = bioOverview, !overview.isEmpty {
             VStack(alignment: .leading, spacing: 12) {
                 sectionHeader(eyebrow: "ABOUT", title: "About \(artist.name)")
@@ -906,7 +961,7 @@ struct ArtistDetailView: View {
     // MARK: - Footer
 
     @ViewBuilder
-    private var footer: some View {
+    private func footer(_ artist: Artist?) -> some View {
         if let artist = artist {
             Text("\(artist.name) · \(artistAlbums.count) \(artistAlbums.count == 1 ? "album" : "albums") in your library")
                 .font(Theme.font(11, weight: .medium))
@@ -927,6 +982,10 @@ private struct ArtistDiscographyTile: View {
     @Environment(AppModel.self) private var model
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let album: Album
+    /// Artwork URL resolved off the main thread by the parent's `.task` block.
+    /// `nil` while the warm pass is in flight — `Artwork` then renders its
+    /// deterministic gradient placeholder, never a sync FFI from this body.
+    let artworkURL: URL?
     @State private var isHovering = false
 
     var body: some View {
@@ -936,7 +995,7 @@ private struct ArtistDiscographyTile: View {
             VStack(alignment: .leading, spacing: 8) {
                 ZStack(alignment: .bottomTrailing) {
                     Artwork(
-                        url: model.imageURL(for: album.id, tag: album.imageTag, maxWidth: 400),
+                        url: artworkURL,
                         seed: album.name,
                         size: 160,
                         radius: 6
