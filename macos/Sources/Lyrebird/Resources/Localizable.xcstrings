@@ -1381,6 +1381,30 @@
         }
       }
     },
+    "mini_player.accessibility.open_album" : {
+      "comment" : "VoiceOver label for the Mini Player album-art region when it links to the album page (a click opens the album in the main window). A drag still repositions the window.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Album art. Tap to open the album; drag to move the Mini Player."
+          }
+        }
+      }
+    },
+    "mini_player.accessibility.open_artist" : {
+      "comment" : "VoiceOver hint for the Mini Player artist-name button, which opens the artist page in the main window.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open artist page"
+          }
+        }
+      }
+    },
     "mini_player.expand" : {
       "comment" : "Accessibility label for the expand button in the Mini Player hover overlay that returns to the full window.",
       "extractionState" : "manual",

@@ -699,6 +699,29 @@ final class AppModel {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
+    /// Drill the **main** window to a detail `Route` from the detached Mini
+    /// Player, raising the full window first so the navigation is visible.
+    ///
+    /// The Mini Player floats in its own borderless window (optionally
+    /// always-on-top), so a bare `navigate(to:)` would push onto the main
+    /// window's `NavigationStack` while that window stays buried behind
+    /// everything else — the user would tap album art and see nothing move.
+    /// Activating the app raises the main `WindowGroup` window back to the
+    /// foreground the same way `returnToFullWindow` does, *then* we drill.
+    /// Unlike `returnToFullWindow` this intentionally leaves
+    /// `isMiniPlayerVisible` untouched: clicking through to a detail page is
+    /// not a request to dismiss the mini player, so an always-on-top widget
+    /// keeps floating over the now-foregrounded detail view (the Apple Music /
+    /// Spotify mini-widget contract).
+    ///
+    /// Routing through one seam (rather than letting `MiniPlayerView` poke
+    /// `navPath` + `NSApp` itself) keeps the activate-then-navigate ordering in
+    /// a single testable place and matches `openLyrics` / `navigate(to:)`.
+    func openInMainWindowFromMiniPlayer(_ route: Route) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        navigate(to: route)
+    }
+
     // MARK: - Command Palette (⌘K)
 
     /// Whether the command-palette overlay is currently visible. Toggled by

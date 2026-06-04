@@ -169,20 +169,50 @@ struct MiniPlayerView: View {
     // MARK: - Artwork (drag region)
 
     /// Square album art on the leading edge. The album-art region doubles as a
-    /// drag target, so it hosts a `MiniPlayerDragHandle` overlay that performs
-    /// `NSWindow.performDrag` — the rest of the window is also draggable via the
-    /// configurator's `isMovableByWindowBackground`, but the artwork is the
+    /// drag target *and* a click-through to the album page, so it hosts a
+    /// `MiniPlayerDragHandle` overlay that performs `NSWindow.performDrag` once
+    /// the pointer moves past a small threshold but reports a *tap* (press +
+    /// release without that movement) back through `onTap`. The rest of the
+    /// window is also draggable via the configurator's
+    /// `isMovableByWindowBackground`, but the artwork is the
     /// guaranteed-draggable target even where controls sit.
+    ///
+    /// A bare click opens the album in the main window (raising it first); the
+    /// `onTap` only fires for tracks that actually carry an `albumId`, so a
+    /// track with no album home stays a pure drag handle and doesn't navigate
+    /// to a dead route.
     @ViewBuilder
     private func artwork(for track: Track) -> some View {
+        let albumId = track.albumId
         Artwork(
             url: model.imageURL(for: track.albumId ?? track.id, tag: track.imageTag, maxWidth: 192),
             seed: track.name,
             size: 96,
             radius: 8
         )
-        .overlay(MiniPlayerDragHandle())
-        .accessibilityLabel(Text("mini_player.accessibility.drag_artwork"))
+        .overlay(
+            MiniPlayerDragHandle(onTap: albumId.map { id in
+                { model.openInMainWindowFromMiniPlayer(.album(id)) }
+            })
+        )
+        // Promote to a button trait + open-album hint only when the artwork is
+        // actually a link; otherwise keep the plain drag-handle label so VO
+        // doesn't advertise a tap that goes nowhere. The tap itself is handled
+        // by the AppKit drag handle (pointer path), so we also register a
+        // SwiftUI `.accessibilityAction` to give VoiceOver users an actionable
+        // activation that matches the `.isButton` trait.
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(albumId == nil ? [] : .isButton)
+        .accessibilityLabel(Text(
+            albumId == nil
+                ? "mini_player.accessibility.drag_artwork"
+                : "mini_player.accessibility.open_album"
+        ))
+        .accessibilityAction {
+            if let albumId {
+                model.openInMainWindowFromMiniPlayer(.album(albumId))
+            }
+        }
     }
 
     // MARK: - Header (title + artist + settings menu)
@@ -196,11 +226,28 @@ struct MiniPlayerView: View {
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Text(track.artistName)
-                    .font(Theme.font(11, weight: .medium))
-                    .foregroundStyle(Theme.ink2)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
+                // Artist name is a click-through to the artist page (raising
+                // the main window first), matching the full Now Playing view's
+                // tappable artist line. A plain `Button` (not a drag target)
+                // here is safe: it sits in the text column, not over the
+                // window-drag artwork, so `isMovableByWindowBackground` still
+                // moves the window from any empty space around it. Disabled —
+                // and so styled like inert text — when the track carries no
+                // `artistId`, so the affordance never routes nowhere.
+                Button {
+                    if let artistId = track.artistId {
+                        model.openInMainWindowFromMiniPlayer(.artist(artistId))
+                    }
+                } label: {
+                    Text(track.artistName)
+                        .font(Theme.font(11, weight: .medium))
+                        .foregroundStyle(Theme.ink2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .buttonStyle(.plain)
+                .disabled(track.artistId == nil)
+                .accessibilityHint(track.artistId == nil ? Text("") : Text("mini_player.accessibility.open_artist"))
             }
             Spacer(minLength: 0)
             // Favorite heart + settings menu only join the header while the
@@ -567,21 +614,91 @@ private struct MiniPlayerWindowConfigurator: NSViewRepresentable {
 
 // MARK: - Drag handle
 
-/// Transparent overlay whose mouse-down forwards to `NSWindow.performDrag`, so
-/// the album-art region (and the idle placeholder) drags the borderless window
-/// even though there's no title bar. `isMovableByWindowBackground` already
-/// makes empty areas draggable; this guarantees the artwork is a drag target
-/// regardless of what sits on top of it.
-private struct MiniPlayerDragHandle: NSViewRepresentable {
+/// Transparent overlay over the album-art region (and the idle placeholder)
+/// that disambiguates a **window drag** from a **tap**:
+///
+/// * Press-and-move past `Self.dragThreshold` points hands off to
+///   `NSWindow.performDrag`, so the artwork still drags the borderless window
+///   exactly as before (`isMovableByWindowBackground` only covers empty areas;
+///   this guarantees the artwork is a drag target regardless of what sits on
+///   top of it).
+/// * Press-and-release without crossing that threshold is reported as a tap
+///   through `onTap` — the click-through to the album page (#110).
+///
+/// A `nil` `onTap` (e.g. the idle placeholder, or a track with no album)
+/// degenerates to the original pure-drag behaviour: any press immediately
+/// starts a window drag, so nothing changes for the no-link case.
+///
+/// The press is tracked with a synchronous `nextEvent` loop rather than
+/// SwiftUI gestures because the underlying interaction is `performDrag`, an
+/// AppKit-only call that must run off the original `mouseDown` event; mixing a
+/// SwiftUI `DragGesture` with `performDrag` races the two event streams.
+struct MiniPlayerDragHandle: NSViewRepresentable {
+    /// Invoked on a tap (press + release within the drag threshold). `nil`
+    /// when the region is drag-only.
+    var onTap: (() -> Void)?
+
     func makeNSView(context: Context) -> NSView {
         DraggingView()
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        (nsView as? DraggingView)?.onTap = onTap
+    }
 
-    private final class DraggingView: NSView {
+    /// Pointer travel (in window points) past which a press is treated as a
+    /// window drag rather than a tap. Generous enough that a normal click's
+    /// incidental jitter still registers as a tap, tight enough that a
+    /// deliberate reposition isn't swallowed as a click.
+    static let dragThreshold: CGFloat = 4
+
+    final class DraggingView: NSView {
+        var onTap: (() -> Void)?
+
         override func mouseDown(with event: NSEvent) {
-            window?.performDrag(with: event)
+            // No tap handler → preserve the original behaviour exactly: every
+            // press is a window drag.
+            guard onTap != nil, let window else {
+                window?.performDrag(with: event)
+                return
+            }
+
+            let start = event.locationInWindow
+            var didDrag = false
+
+            // Track the press until release. On the first move past the
+            // threshold, promote to a window drag and stop tracking (the
+            // window takes over the event stream). If release arrives first,
+            // it was a tap.
+            trackingLoop: while let next = window.nextEvent(matching: [.leftMouseDragged, .leftMouseUp]) {
+                switch next.type {
+                case .leftMouseDragged:
+                    if MiniPlayerView_dragExceedsThreshold(from: start, to: next.locationInWindow) {
+                        didDrag = true
+                        window.performDrag(with: next)
+                        break trackingLoop
+                    }
+                case .leftMouseUp:
+                    break trackingLoop
+                default:
+                    break
+                }
+            }
+
+            if !didDrag {
+                onTap?()
+            }
         }
     }
+}
+
+/// Whether the pointer has travelled past `MiniPlayerDragHandle.dragThreshold`
+/// from `start` to `current` (window-space points). Factored to a free
+/// function — rather than buried in `DraggingView.mouseDown` — so the
+/// tap-vs-drag boundary can be unit-tested without a live window-server event
+/// stream. See `MiniPlayerClickThroughTests`.
+func MiniPlayerView_dragExceedsThreshold(from start: CGPoint, to current: CGPoint) -> Bool {
+    let dx = current.x - start.x
+    let dy = current.y - start.y
+    return (dx * dx + dy * dy) > (MiniPlayerDragHandle.dragThreshold * MiniPlayerDragHandle.dragThreshold)
 }
