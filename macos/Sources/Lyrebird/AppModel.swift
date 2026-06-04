@@ -6272,35 +6272,52 @@ final class AppModel {
     /// contract as SwiftUI `List.onMove`, so the inspector can wire this up
     /// directly. See #80.
     ///
-    /// Today this only reorders the in-app overlay because the core has no
-    /// `reorder_queue` primitive. When that lands (TODO(core-#282)), this
-    /// should also push the new order down to `core.setQueue` so the
-    /// engine's view of "what plays next" matches the inspector.
+    /// Reorders the in-app overlay, then rebuilds and pushes the flat queue to
+    /// `core.setQueue` via `syncCoreQueueAfterReorder()` so the engine's view
+    /// of "what plays next" matches the inspector (#565).
     func moveUpNext(from source: IndexSet, to destination: Int) {
         upNextUserAdded.move(fromOffsets: source, toOffset: destination)
-        // Sync the reordered user-added list to the Rust core (#565).
-        // Rebuild a flat track array — current track at index 0, then the
-        // reordered Up Next overlay, then the auto-queue tail — and hand it
-        // back to `core.setQueue` with startIndex 0 so the engine keeps
-        // playing the current track while honouring the new order for
-        // everything that follows. The `try?` silences the throw so a core
-        // hiccup (e.g. session not ready) doesn't crash the UI.
+        syncCoreQueueAfterReorder()
+    }
+
+    /// Rebuild the flat core queue from the current inspector state and push
+    /// it down to `core.setQueue` so the engine's "what plays next" matches
+    /// the inspector's Up Next order (#565). Layout: current track at index 0,
+    /// then the (possibly reordered / shuffled / pruned) user-added overlay,
+    /// then the auto-queue tail. `startIndex: 0` keeps the current track
+    /// playing while honouring the new order for everything that follows.
+    ///
+    /// Shared by `moveUpNext`, `shuffleUpNext`, and `removeFromUpNext` so all
+    /// three actually re-sequence playback rather than only mutating the Swift
+    /// overlay. Errors surface on `errorMessage` (auth failures route through
+    /// `handleAuthError`) instead of being swallowed by `try?`, so a failed
+    /// sync is visible rather than silently leaving the engine on the old
+    /// order.
+    private func syncCoreQueueAfterReorder() {
         var allTracks: [Track] = []
         if let current = status.currentTrack { allTracks.append(current) }
         allTracks.append(contentsOf: upNextUserAdded.map(\.track))
         allTracks.append(contentsOf: upNextAutoQueue.map(\.track))
         guard !allTracks.isEmpty else { return }
-        try? core.setQueue(tracks: allTracks, startIndex: 0)
+        do {
+            _ = try core.setQueue(tracks: allTracks, startIndex: 0)
+        } catch {
+            if handleAuthError(error) { return }
+            errorMessage = LyrebirdErrorPresenter.message(for: error, context: .playback)
+        }
     }
 
     /// Remove one entry from the user-added "Up Next" list by its stable
     /// per-item `queueId`. Uses `queueId` rather than `track.id` so users
     /// can queue the same track twice and still remove a single instance.
     /// See #80.
+    ///
+    /// After pruning the overlay we rebuild and push the core queue so the
+    /// removed track actually drops out of playback — previously this mutated
+    /// only the Swift overlay and the engine still played the removed track.
     func removeFromUpNext(id: UUID) {
         upNextUserAdded.removeAll { $0.id == id }
-        // TODO(core-#282): drop the corresponding entry in the core queue
-        // once we have an addressable `remove_from_queue` primitive.
+        syncCoreQueueAfterReorder()
     }
 
     // MARK: - Queue actions (BATCH-07b, #284)
@@ -6403,9 +6420,44 @@ final class AppModel {
     func shuffleUpNext() {
         guard upNextUserAdded.count > 1 else { return }
         upNextUserAdded.shuffle()
-        // TODO(core-#282): when `reorder_queue` / `shuffle_queue` exists,
-        // push the new order down so the engine plays in the shuffled
-        // order rather than its original load order.
+        // Push the shuffled order down so the engine plays in the new order
+        // rather than its original load order — same rebuild contract as
+        // `moveUpNext`.
+        syncCoreQueueAfterReorder()
+    }
+
+    /// Jump playback to a specific queue entry (the Queue Inspector's
+    /// double-click on an Up Next / "Playing From" row). Rebuilds the flat
+    /// track list the inspector shows — current track, then the user-added
+    /// overlay, then the auto-queue tail — locates `entry` by its stable
+    /// per-instance `queueId`, and replays the whole list starting at that
+    /// index via `play(tracks:startIndex:)`. Routing through `play(...)`
+    /// means the core queue is re-seated and the engine auto-advances from
+    /// the jumped track onward, exactly like picking a track from a track
+    /// list. Matching by `queueId` (not `track.id`) means double-clicking the
+    /// second of two identical tracks jumps to that instance, not the first.
+    ///
+    /// No-ops if the entry isn't found in the current queue (e.g. it was
+    /// removed between render and tap).
+    func jumpToQueueEntry(_ entry: Queue) {
+        guard let plan = queueJumpPlan(for: entry.id) else { return }
+        play(tracks: plan.tracks, startIndex: plan.startIndex)
+    }
+
+    /// Pure helper for `jumpToQueueEntry`: flattens the inspector's three
+    /// sections into the play order (current track, then user-added overlay,
+    /// then auto-queue tail) and resolves `queueId` to a `(tracks,
+    /// startIndex)` pair for `play(tracks:startIndex:)`. Factored out so the
+    /// index arithmetic — which has to account for the current track
+    /// occupying slot 0 — is unit-testable without the playback FFI. Returns
+    /// `nil` when the id isn't present in any section.
+    func queueJumpPlan(for queueId: UUID) -> (tracks: [Track], startIndex: Int)? {
+        var entries: [Queue] = []
+        if let current = status.currentTrack { entries.append(Queue(track: current)) }
+        entries.append(contentsOf: upNextUserAdded)
+        entries.append(contentsOf: upNextAutoQueue)
+        guard let index = entries.firstIndex(where: { $0.id == queueId }) else { return nil }
+        return (entries.map(\.track), index)
     }
 
     /// Navigate to the source that started the current auto queue. Wired
