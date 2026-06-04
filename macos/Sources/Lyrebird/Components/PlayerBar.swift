@@ -418,27 +418,12 @@ struct PlayerBar: View {
     }
 
     private func format(_ seconds: Double) -> String {
-        let total = Int(seconds)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%d:%02d", m, s)
+        DurationFormatter.colon(seconds)
     }
 
     /// Convert a duration in seconds to a word-based string for VoiceOver.
     /// "0 seconds", "45 seconds", "1 minute 5 seconds", "2 minutes", etc.
     private static func voiceOverTime(_ seconds: Double) -> String {
-        let safe = seconds.isFinite ? max(0, seconds) : 0
-        let total = Int(safe.rounded())
-        let m = total / 60
-        let s = total % 60
-        switch (m, s) {
-        case (0, 0): return "0 seconds"
-        case (0, _): return s == 1 ? "1 second" : "\(s) seconds"
-        case (_, 0): return m == 1 ? "1 minute" : "\(m) minutes"
-        default:
-            let mins = m == 1 ? "1 minute" : "\(m) minutes"
-            let secs = s == 1 ? "1 second" : "\(s) seconds"
-            return "\(mins) \(secs)"
-        }
+        DurationFormatter.spokenAccessibility(seconds)
     }
 }
