@@ -397,7 +397,7 @@ struct LibraryView: View {
                 filter: $filter,
                 availableGenres: availableGenres,
                 yearBounds: yearBounds,
-                showDownloaded: model.supportsDownloads,
+                tab: selectedTab,
                 onClose: { showFilter = false }
             )
         }
