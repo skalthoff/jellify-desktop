@@ -90,6 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] _ in
             self?.handleWake()
         }
+
+        // First-launch "move to Applications" prompt (LetsMove). Self-gates:
+        // shows only for a release build running from outside /Applications
+        // that isn't translocated/on a DMG and hasn't been suppressed. See #193.
+        MoveToApplications.promptIfNeeded()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
