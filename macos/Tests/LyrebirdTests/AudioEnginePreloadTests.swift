@@ -1,4 +1,5 @@
 import XCTest
+@testable import Lyrebird
 @testable import LyrebirdAudio
 import LyrebirdCore
 
@@ -88,4 +89,105 @@ private final class RecoverySpy: AudioEngineDelegate {
     func audioEngineDidStall() {}
     func audioEngineDidFail(_ message: String) {}
     func audioEngineDidRecover() { didRecoverCount += 1 }
+}
+
+/// #931 — gapless must engage on a *normal* queue advance, not just stall
+/// recovery. `AppModel.handleTrackEnded` advances the queue and rebuilds the
+/// player via `play(track:)` (a fresh single-item `AVQueuePlayer`), which drops
+/// any pre-inserted next item. The advance must therefore re-arm the engine's
+/// pre-load for the track *after* the new current one — selecting it with the
+/// same precedence stall recovery uses (user-added "Up Next" over the
+/// auto-queue tail).
+///
+/// These exercise the production arming step directly (`armNextTrackPreload`,
+/// surfaced for tests as `armNextTrackPreloadForTesting`) rather than the async
+/// `play(track:)` path, which throws against the un-authed test core before the
+/// arm would run. The engine records the armed track id before its off-main
+/// stream resolve, so we can assert the *intent* without a network round-trip.
+///
+/// `AppModel` is `@MainActor`; constructing it boots a live `LyrebirdCore`. We
+/// redirect the core's data dir to a throwaway temp dir via `XDG_DATA_HOME`
+/// (honoured by `storage::default_data_dir()`) so tests never touch the real
+/// app database — same pattern as `AutoplayWhenQueueEndsTests`.
+@MainActor
+final class AppModelAdvancePreloadTests: XCTestCase {
+    override class func setUp() {
+        super.setUp()
+        let dir = NSTemporaryDirectory() + "lyrebird-advance-preload-\(UUID().uuidString)"
+        setenv("XDG_DATA_HOME", dir, 1)
+    }
+
+    private func makeTrack(_ id: String) -> Track {
+        Track(
+            id: id,
+            name: "t-\(id)",
+            albumId: nil,
+            albumName: nil,
+            artistName: "",
+            artistId: nil,
+            indexNumber: nil,
+            discNumber: nil,
+            year: nil,
+            runtimeTicks: 0,
+            isFavorite: false,
+            playCount: 0,
+            container: nil,
+            bitrate: nil,
+            imageTag: nil,
+            playlistItemId: nil,
+            userData: nil
+        )
+    }
+
+    /// A normal advance arms the engine pre-load for the head of the auto-queue
+    /// tail when there is no user-added "Up Next". Without the #931 wiring the
+    /// freshly built player would carry no queued-ahead item and the engine's
+    /// `lastPreloadedTrackIdForTesting` would stay nil.
+    func testAdvanceArmsPreloadFromAutoQueueTail() throws {
+        let model = try AppModel()
+        model.audio.installEmptyPlayerForTesting()
+        model.upNextAutoQueue = [Queue(track: makeTrack("auto-next"))]
+
+        model.armNextTrackPreloadForTesting()
+
+        XCTAssertEqual(
+            model.audio.lastPreloadedTrackIdForTesting,
+            "auto-next",
+            "advance must pre-load the next auto-queue track for gapless playback"
+        )
+    }
+
+    /// User-added "Up Next" wins over the auto-queue tail — the engine advances
+    /// through explicit queue entries first, so the pre-loaded item must match.
+    func testAdvancePrefersUserAddedOverAutoQueue() throws {
+        let model = try AppModel()
+        model.audio.installEmptyPlayerForTesting()
+        model.upNextUserAdded = [Queue(track: makeTrack("user-next"))]
+        model.upNextAutoQueue = [Queue(track: makeTrack("auto-next"))]
+
+        model.armNextTrackPreloadForTesting()
+
+        XCTAssertEqual(
+            model.audio.lastPreloadedTrackIdForTesting,
+            "user-next",
+            "user-added Up Next must take precedence over the auto-queue tail"
+        )
+    }
+
+    /// At the end of the queue (nothing user-added, empty tail) there is no
+    /// next track to arm, so the advance must leave the engine pre-load
+    /// untouched rather than re-arming a stale item.
+    func testAdvanceAtEndOfQueueArmsNothing() throws {
+        let model = try AppModel()
+        model.audio.installEmptyPlayerForTesting()
+        model.upNextUserAdded = []
+        model.upNextAutoQueue = []
+
+        model.armNextTrackPreloadForTesting()
+
+        XCTAssertNil(
+            model.audio.lastPreloadedTrackIdForTesting,
+            "no upcoming track means nothing to pre-load at end of queue"
+        )
+    }
 }

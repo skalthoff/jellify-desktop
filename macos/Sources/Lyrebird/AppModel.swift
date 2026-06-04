@@ -5247,10 +5247,22 @@ final class AppModel {
         }
     }
 
-    private func playCurrent(_ track: Track) {
+    private func playCurrent(_ track: Track, armPreload: Bool = false) {
         Task {
             do {
                 try await audio.play(track: track)
+                // `play(track:)` builds a fresh single-item `AVQueuePlayer`,
+                // so any previously pre-loaded next item is gone. On a normal
+                // end-of-track advance, re-arm the gapless path now that the
+                // new player exists by pre-inserting the upcoming track — same
+                // selection the engine would otherwise pick when this track
+                // ends (#931). Only the advance path opts in; manual skips and
+                // the ⌘-Space restart build their player the same way but the
+                // poll loop re-arms via `audioEngineDidRecover` only on stall
+                // recovery, so leaving them off keeps this change scoped.
+                if armPreload {
+                    armNextTrackPreload()
+                }
             } catch {
                 if handleAuthError(error) { return }
                 errorMessage = LyrebirdErrorPresenter.message(for: error, context: .playback)
@@ -5258,10 +5270,42 @@ final class AppModel {
         }
     }
 
+    /// The track the engine should pre-load for gapless playback after the
+    /// current one: the user-added "Up Next" overlay takes precedence over the
+    /// auto-queue tail, matching the order the engine advances through. Shared
+    /// by the end-of-track advance (`handleTrackEnded`) and stall recovery
+    /// (`audioEngineDidRecover`) so both arm the same item. See #931.
+    private var nextTrackForPreload: Track? {
+        upNextUserAdded.first?.track ?? upNextAutoQueue.first?.track
+    }
+
+    /// Arm the engine's gapless pre-load for whatever comes after the current
+    /// track. A no-op when the queue holds nothing further (end of queue), in
+    /// which case the engine simply has no item to splice ahead. Single source
+    /// of truth shared by the normal advance and stall recovery (#931).
+    private func armNextTrackPreload() {
+        guard let next = nextTrackForPreload else { return }
+        audio.preloadNextTrack(next)
+    }
+
+    #if DEBUG
+    /// Test seam: run the exact gapless-arming step the normal end-of-track
+    /// advance performs once `play(track:)` has settled. Lets a test prove the
+    /// advance re-arms the pre-load without driving the async `play(track:)`
+    /// path (which throws un-authed before the arm would run). See #931.
+    func armNextTrackPreloadForTesting() {
+        armNextTrackPreload()
+    }
+    #endif
+
     private func handleTrackEnded() {
-        // Advance to the next track in the queue if there is one.
+        // Advance to the next track in the queue if there is one. Arm the
+        // gapless pre-load for the track *after* this new one so the next
+        // end-of-track transition is seamless — without this the freshly
+        // built single-item player never has a queued-ahead item and every
+        // advance falls back to the gap-prone play(track:) rebuild (#931).
         if let next = core.skipNext() {
-            playCurrent(next)
+            playCurrent(next, armPreload: true)
             return
         }
         // Queue ran dry. When "autoplay similar music when queue ends" is on
@@ -6114,10 +6158,7 @@ extension AppModel: AudioEngineDelegate {
     /// user-added "Up Next" overlay takes precedence over the auto-queue
     /// tail, matching the order the engine would otherwise advance through.
     func audioEngineDidRecover() {
-        guard let next = upNextUserAdded.first?.track ?? upNextAutoQueue.first?.track else {
-            return
-        }
-        audio.preloadNextTrack(next)
+        armNextTrackPreload()
     }
 }
 
