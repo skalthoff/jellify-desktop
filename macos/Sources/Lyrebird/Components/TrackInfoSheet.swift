@@ -69,7 +69,11 @@ struct TrackInfoSheet: View {
             if let year = track.year {
                 row(label: "track.info.year", value: String(year))
             }
-            row(label: "track.info.duration", value: durationString)
+            row(
+                label: "track.info.duration",
+                value: durationString,
+                accessibilityValue: durationAccessibilityValue
+            )
             if let format = formatString {
                 row(label: "track.info.format", value: format)
             }
@@ -102,7 +106,14 @@ struct TrackInfoSheet: View {
 
     // MARK: - Helpers
 
-    private func row(label: LocalizedStringKey, value: String) -> some View {
+    /// `accessibilityValue` overrides what VoiceOver speaks for the value Text
+    /// when the visible string is ambiguous aloud (the duration row passes the
+    /// spelled-out form so `3:05` isn't read as "three oh five"). See #349.
+    private func row(
+        label: LocalizedStringKey,
+        value: String,
+        accessibilityValue: String? = nil
+    ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             Text(label)
                 .font(Theme.font(11, weight: .semibold))
@@ -114,6 +125,7 @@ struct TrackInfoSheet: View {
                 .foregroundStyle(Theme.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
+                .accessibilityValue(accessibilityValue ?? value)
         }
     }
 
@@ -131,14 +143,13 @@ struct TrackInfoSheet: View {
     /// is the Apple-style 100-ns count (`seconds * 10_000_000`); divide once
     /// at present-time so callers don't repeat the math.
     private var durationString: String {
-        let totalSeconds = Int(track.runtimeTicks / 10_000_000)
-        let h = totalSeconds / 3600
-        let m = (totalSeconds % 3600) / 60
-        let s = totalSeconds % 60
-        if h > 0 {
-            return String(format: "%d:%02d:%02d", h, m, s)
-        }
-        return String(format: "%d:%02d", m, s)
+        DurationFormatter.colon(track.durationSeconds)
+    }
+
+    /// Spelled-out duration ("3 minutes 5 seconds") VoiceOver reads instead of
+    /// the ambiguous "three oh five" timecode. See #349.
+    private var durationAccessibilityValue: String {
+        DurationFormatter.spokenAccessibility(track.durationSeconds)
     }
 
     /// `FLAC · 1042 kbps` / `MP3 · 320 kbps` / `MP3` if bitrate's unknown.
