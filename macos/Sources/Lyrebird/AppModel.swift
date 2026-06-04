@@ -1116,6 +1116,11 @@ final class AppModel {
         // pane to mount. An empty/absent value means "follow system default".
         let savedDeviceUID = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
         self.audio.outputDeviceUID = savedDeviceUID.isEmpty ? nil : savedDeviceUID
+        // Seed the engine with the persisted ReplayGain / pre-gain selection so
+        // the first track is normalized without waiting for the Preferences
+        // pane to mount (#42). `.off` (the default) leaves the level untouched.
+        self.audio.normalizationMode = AppModel.normalizationMode(forStoredValue: UserDefaults.standard.string(forKey: AppModel.normalizationKey))
+        self.audio.normalizationPreGainDb = UserDefaults.standard.double(forKey: AppModel.preGainKey)
         // Seed the scrobble-connected flag from the core's persisted token so
         // the Preferences pane shows the right state on first open.
         self.scrobbleConnected = core.isScrobbleConfigured()
@@ -5613,6 +5618,42 @@ final class AppModel {
                 }
             }
         }
+    }
+
+    /// `@AppStorage` key for the ReplayGain mode (`NormalizationMode` raw value).
+    /// Mirrors the literal used by `PreferencesPlayback`; kept here so the init
+    /// seed and the picker route never drift apart. See #42.
+    static let normalizationKey = "playback.normalization"
+
+    /// `@AppStorage` key for the user pre-gain in dB. See #42.
+    static let preGainKey = "playback.preGainDb"
+
+    /// Map the persisted `NormalizationMode` raw value onto the engine's
+    /// `ReplayGainMode`. Both enums share the same `off`/`track`/`album` tokens,
+    /// so the raw string round-trips; an unknown / absent value (e.g. a key
+    /// that was never written) falls back to `.off`, matching the picker's
+    /// default. Pure + static (and `nonisolated`, since it touches no
+    /// `@MainActor` state) so the test target — and the engine-seed path — can
+    /// exercise the mapping from any context without building an `AppModel`.
+    nonisolated static func normalizationMode(forStoredValue raw: String?) -> ReplayGainMode {
+        ReplayGainMode(rawValue: raw ?? "") ?? .off
+    }
+
+    /// Apply the chosen ReplayGain mode + pre-gain to the live engine (#42).
+    /// Persists both values and pushes them onto `AudioEngine`, which re-reads
+    /// the current item's loudness tags and re-applies (or clears) the gain on
+    /// the playing track immediately — the same eager-apply contract as
+    /// `setOutputDevice`. The Preferences picker routes through here so a change
+    /// takes effect on the current song, not just the next one.
+    ///
+    /// Pre-gain only matters while `mode != .off`; passing it through regardless
+    /// keeps the stored value and the engine in sync so flipping normalization
+    /// back on later already reflects the saved pre-gain.
+    func setNormalization(mode: NormalizationMode, preGainDb: Double) {
+        UserDefaults.standard.set(mode.rawValue, forKey: AppModel.normalizationKey)
+        UserDefaults.standard.set(preGainDb, forKey: AppModel.preGainKey)
+        audio.normalizationMode = AppModel.normalizationMode(forStoredValue: mode.rawValue)
+        audio.normalizationPreGainDb = preGainDb
     }
 
     /// Seek the current track by a relative offset (seconds). Negative rewinds,

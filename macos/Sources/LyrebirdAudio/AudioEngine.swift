@@ -171,6 +171,38 @@ public final class AudioEngine: NSObject {
         didSet { applyOutputDevice(to: player) }
     }
 
+    /// ReplayGain / loudness-normalization mode (#42). Mirrors the
+    /// `playback.normalization` preference; the owner (`AppModel`) seeds it at
+    /// startup and updates it from the Preferences picker. Changing it re-reads
+    /// the current item's tags and re-applies (or clears) the gain on the live
+    /// player immediately, and every player built afterwards picks it up via
+    /// `applyReplayGain(to:)`. `.off` is a true no-op — the item's `audioMix`
+    /// is cleared so playback runs at the raw stream level.
+    public var normalizationMode: ReplayGainMode = .off {
+        didSet {
+            guard normalizationMode != oldValue else { return }
+            reapplyReplayGainToCurrentItem()
+        }
+    }
+
+    /// User pre-gain in dB (`playback.preGainDb`), summed on top of the
+    /// resolved ReplayGain value before the linear multiplier is computed. Only
+    /// takes effect while `normalizationMode != .off`; on its own it does not
+    /// turn normalization on (matching the Preferences copy, which frames
+    /// pre-gain as an adjustment to the normalization result).
+    public var normalizationPreGainDb: Double = 0 {
+        didSet {
+            guard normalizationPreGainDb != oldValue else { return }
+            reapplyReplayGainToCurrentItem()
+        }
+    }
+
+    /// Monotonic counter so a slow metadata-driven gain resolve can't clobber a
+    /// newer item. Each `applyReplayGain(to:)` captures the value at dispatch
+    /// time and bails on the marshal-back if a newer apply (track change, mode
+    /// flip) has superseded it.
+    private var replayGainGeneration: Int = 0
+
     public init(core: LyrebirdCore) {
         self.core = core
         super.init()
@@ -340,6 +372,68 @@ public final class AudioEngine: NSObject {
         }
     }
 
+    /// Resolve the ReplayGain tags on `item`'s asset and apply the matching
+    /// linear gain through an `AVAudioMix` (#42). No-ops cleanly to "no
+    /// adjustment" in three cases: normalization off, item has no audio track,
+    /// or the asset carries no usable loudness tag — in all of them the item's
+    /// `audioMix` is cleared so the stream plays at its natural level.
+    ///
+    /// The metadata load crosses into AVFoundation's async asset machinery
+    /// (network I/O for a remote stream), so it runs off the main actor; only
+    /// the cheap `AVMutableAudioMix` build + assignment marshals back to main.
+    /// A generation check drops the result if a newer item or a mode change has
+    /// superseded this resolve in the meantime.
+    private func applyReplayGain(to item: AVPlayerItem) {
+        replayGainGeneration &+= 1
+        let generation = replayGainGeneration
+        let mode = normalizationMode
+        let preGainDb = normalizationPreGainDb
+
+        // Off: clear any prior mix synchronously and skip the metadata read
+        // entirely. Cheap, and guarantees flipping the picker to "Off"
+        // immediately restores the raw level.
+        guard mode != .off else {
+            item.audioMix = nil
+            return
+        }
+
+        let asset = item.asset
+        Task.detached { [weak self] in
+            let gains = await ReplayGain.gains(for: asset)
+            guard let volume = ReplayGain.linearVolume(mode: mode, gains: gains, preGainDb: preGainDb) else {
+                // No usable tag — leave the level alone (clear any stale mix).
+                await MainActor.run {
+                    guard let self, generation == self.replayGainGeneration else { return }
+                    item.audioMix = nil
+                }
+                return
+            }
+            guard let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first else {
+                await MainActor.run {
+                    guard let self, generation == self.replayGainGeneration else { return }
+                    item.audioMix = nil
+                }
+                return
+            }
+            await MainActor.run {
+                guard let self, generation == self.replayGainGeneration else { return }
+                let params = AVMutableAudioMixInputParameters(track: audioTrack)
+                params.setVolume(volume, at: .zero)
+                let mix = AVMutableAudioMix()
+                mix.inputParameters = [params]
+                item.audioMix = mix
+            }
+        }
+    }
+
+    /// Re-run gain resolution against the player's current item after a mode /
+    /// pre-gain change so the live track responds without waiting for the next
+    /// track. No-op when nothing is loaded.
+    private func reapplyReplayGainToCurrentItem() {
+        guard let item = player?.currentItem else { return }
+        applyReplayGain(to: item)
+    }
+
     // MARK: - Public
 
     public func play(track: Track) async throws {
@@ -380,6 +474,9 @@ public final class AudioEngine: NSObject {
         // device is selected or the saved one is gone.
         self.player = newPlayer
         applyOutputDevice(to: newPlayer)
+        // Resolve + apply ReplayGain for the new item (#42). No-ops when
+        // normalization is off or the stream carries no loudness tags.
+        applyReplayGain(to: item)
 
         // Remember the stream so `recoverFromStall` can rebuild a fresh
         // `AVPlayerItem` without re-asking the core for a URL (which would
@@ -582,6 +679,10 @@ public final class AudioEngine: NSObject {
                     // Append the new item after the current one (or as the only item if
                     // the player was empty — shouldn't happen in normal flow but safe).
                     player.insert(nextItem, after: player.currentItem)
+                    // Pre-resolve ReplayGain for the queued item so the gain is
+                    // already applied when it becomes current at the gapless
+                    // transition (#42). No-ops when normalization is off.
+                    self.applyReplayGain(to: nextItem)
                 }
             } catch {
                 engineLog.error("preload skipped: failed to resolve track \(track.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
@@ -913,6 +1014,10 @@ public final class AudioEngine: NSObject {
         attachItemFailureObservers(to: item)
 
         player.replaceCurrentItem(with: item)
+        // Re-apply ReplayGain to the rebuilt item — the swap drops the old
+        // item's audioMix, so without this a normalized track would lose its
+        // gain after a stall recovery (#42).
+        applyReplayGain(to: item)
         player.play()
         delegate?.audioEngineDidRecover()
     }
