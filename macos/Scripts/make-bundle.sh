@@ -110,16 +110,26 @@ cp "$EXE" "$APP/Contents/MacOS/Lyrebird"
 # Bundle.main, so no Swift-side change for the i18n path.
 RES_SRC="$MACOS/Sources/Lyrebird/Resources"
 if [[ -d "$RES_SRC" ]]; then
-    # Localizable.xcstrings is the source format. SwiftUI's
-    # LocalizedStringKey can't read xcstrings directly — it looks for
-    # compiled `<lang>.lproj/Localizable.strings` files. Compile via
-    # xcstringstool so the .app gets the runtime layout SwiftUI expects.
-    # Without this step, every LocalizedStringKey site falls through to
-    # rendering its lookup key (`auth.sign_in`, `app.name`, etc.).
-    if [[ -f "$RES_SRC/Localizable.xcstrings" ]] && command -v xcrun >/dev/null 2>&1; then
-        xcrun xcstringstool compile "$RES_SRC/Localizable.xcstrings" \
-            -o "$APP/Contents/Resources/" 2>/dev/null || \
-            cp "$RES_SRC/Localizable.xcstrings" "$APP/Contents/Resources/"
+    # *.xcstrings are the source format. SwiftUI's LocalizedStringKey and
+    # macOS's bundle-metadata loader can't read xcstrings directly — they
+    # look for compiled `<lang>.lproj/<Name>.strings` files. Compile each
+    # catalog via xcstringstool so the .app gets the runtime layout they
+    # expect:
+    #   - Localizable.xcstrings → <lang>.lproj/Localizable.strings. Without
+    #     this, every LocalizedStringKey site falls through to rendering its
+    #     lookup key (`auth.sign_in`, `app.name`, etc.).
+    #   - InfoPlist.xcstrings → <lang>.lproj/InfoPlist.strings. macOS reads
+    #     this to localize CFBundleDisplayName / CFBundleName /
+    #     NSHumanReadableCopyright (the Dock/Finder name + About copyright);
+    #     without it those fall back to the Info.plist literals (#359).
+    if command -v xcrun >/dev/null 2>&1; then
+        for catalog in Localizable InfoPlist; do
+            if [[ -f "$RES_SRC/$catalog.xcstrings" ]]; then
+                xcrun xcstringstool compile "$RES_SRC/$catalog.xcstrings" \
+                    -o "$APP/Contents/Resources/" 2>/dev/null || \
+                    cp "$RES_SRC/$catalog.xcstrings" "$APP/Contents/Resources/"
+            fi
+        done
     fi
     # Fonts/*.otf — flatten into Contents/Resources/ so Bundle.main
     # finds them with `url(forResource: "Figtree-Bold", withExtension:
