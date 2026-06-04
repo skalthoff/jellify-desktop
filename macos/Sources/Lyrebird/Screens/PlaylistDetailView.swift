@@ -234,9 +234,9 @@ struct PlaylistDetailView: View {
             Menu {
                 if let playlist = playlist {
                     Button("Play Next") { model.playNext(playlist: playlist) }
-                        .disabled(true)
+                        .disabled(tracks.isEmpty)
                     Button("Add to Queue") { model.addToQueue(playlist: playlist) }
-                        .disabled(true)
+                        .disabled(tracks.isEmpty)
                     Divider()
                     Button("Export as M3U…") { model.exportPlaylist(playlist: playlist) }
                         .disabled(tracks.isEmpty)
@@ -333,29 +333,25 @@ struct PlaylistDetailView: View {
     /// Resolve a click on `index` given the current modifier state into a
     /// new selection set. Cmd toggles the hit row. Shift extends the range
     /// from `anchorIndex` to the hit row. Bare click plays the row.
+    ///
+    /// `index` is captured at render time and can be stale (e.g. the track
+    /// array shrank after a remove). The pure arithmetic lives in
+    /// `TrackSelectionResolver.resolve`, which returns `nil` for an
+    /// out-of-bounds index, so a stale click is a no-op instead of a crash.
+    /// This is the same glue `LibraryView.handleTrackClick` uses.
     private func handleRowClick(index: Int, modifiers: NSEvent.ModifierFlags) {
-        let track = tracks[index]
-        if modifiers.contains(.command) {
-            if selectedTrackIds.contains(track.id) {
-                selectedTrackIds.remove(track.id)
-            } else {
-                selectedTrackIds.insert(track.id)
-            }
-            anchorIndex = index
-        } else if modifiers.contains(.shift) {
-            let from = anchorIndex ?? index
-            let range = from <= index ? from...index : index...from
-            var next = selectedTrackIds
-            for i in range where tracks.indices.contains(i) {
-                next.insert(tracks[i].id)
-            }
-            selectedTrackIds = next
-            anchorIndex = index
-        } else {
-            // Bare click → play the track and reset any selection.
-            selectedTrackIds = []
-            anchorIndex = index
-            model.play(tracks: tracks, startIndex: index)
+        let snapshot = tracks
+        guard let outcome = TrackSelectionResolver.resolve(
+            clickedIndex: index,
+            trackIds: snapshot.map(\.id),
+            currentSelection: selectedTrackIds,
+            anchorIndex: anchorIndex,
+            modifiers: modifiers
+        ) else { return }
+        selectedTrackIds = outcome.selection
+        anchorIndex = outcome.anchorIndex
+        if outcome.shouldPlay {
+            model.play(tracks: snapshot, startIndex: index)
         }
     }
 
@@ -449,50 +445,65 @@ struct PlaylistDetailView: View {
     ///   from external sources (e.g. a text file of ids, or a hand-rolled
     ///   `.plainText` Transferable implementation).
     ///
-    /// Returns `true` as long as at least one provider is in flight so
-    /// SwiftUI's drop affordance confirms the drop visually. The actual
-    /// add happens asynchronously after the provider resolves.
+    /// Returns `true` only when at least one provider advertises a type we can
+    /// read (data or plain text) — i.e. the drop has a chance of yielding ids,
+    /// so SwiftUI's affordance confirms it. A drop of solely unreadable
+    /// providers is rejected so the OS plays the "no" animation.
+    ///
+    /// The actual add happens asynchronously once the provider resolves. The
+    /// list refresh is owned by `AppModel.addToPlaylist` (it re-fetches on
+    /// success), so there's no follow-up `loadPlaylistTracks` here. Failures
+    /// inside the async callbacks — a nil payload, a provider error, or bytes
+    /// that yield no ids — surface on `model.errorMessage` rather than
+    /// vanishing silently.
     private func handleDrop(providers: [NSItemProvider]) -> Bool {
         guard !providers.isEmpty else { return false }
         let playlistId = playlistID
+        var accepted = false
         // Best-effort: try data first, then fall back to plain-text.
         for provider in providers {
             if provider.hasItemConformingToTypeIdentifier(UTType.data.identifier) {
-                provider.loadDataRepresentation(forTypeIdentifier: UTType.data.identifier) { data, _ in
-                    guard let data else { return }
-                    let ids = parseTrackIds(from: data)
-                    guard !ids.isEmpty else { return }
-                    Task { @MainActor in
-                        model.addToPlaylist(playlistId: playlistId, trackIds: ids)
-                        await model.loadPlaylistTracks(playlistId: playlistId)
-                    }
+                accepted = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.data.identifier) { data, error in
+                    handleDroppedPayload(data, error: error, into: playlistId)
                 }
             } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
-                provider.loadDataRepresentation(forTypeIdentifier: UTType.plainText.identifier) { data, _ in
-                    guard let data else { return }
-                    let ids = parseTrackIds(from: data)
-                    guard !ids.isEmpty else { return }
-                    Task { @MainActor in
-                        model.addToPlaylist(playlistId: playlistId, trackIds: ids)
-                        await model.loadPlaylistTracks(playlistId: playlistId)
-                    }
+                accepted = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.plainText.identifier) { data, error in
+                    handleDroppedPayload(data, error: error, into: playlistId)
                 }
             }
         }
-        return true
+        return accepted
     }
 
-    /// Pull a list of track ids out of arbitrary dropped bytes. Tries JSON
-    /// first, then newline-separated text; ignores blanks and whitespace.
-    private func parseTrackIds(from data: Data) -> [String] {
-        if let json = try? JSONSerialization.jsonObject(with: data) as? [String] {
-            return json.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    /// Resolve one provider's loaded bytes into track ids and forward to
+    /// `AppModel.addToPlaylist`, surfacing any failure on `model.errorMessage`.
+    /// Runs on the provider's callback queue, so it hops to the main actor
+    /// before touching the model.
+    private func handleDroppedPayload(_ data: Data?, error: Error?, into playlistId: String) {
+        if let error {
+            Task { @MainActor in
+                model.errorMessage = "Couldn't read the dropped item: \(error.localizedDescription)"
+            }
+            return
         }
-        guard let text = String(data: data, encoding: .utf8) else { return [] }
-        return text
-            .split(whereSeparator: { $0.isNewline })
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        guard let data else {
+            Task { @MainActor in
+                model.errorMessage = "Couldn't read the dropped item."
+            }
+            return
+        }
+        let ids = PlaylistDropPayload.parseTrackIds(from: data)
+        guard !ids.isEmpty else {
+            Task { @MainActor in
+                model.errorMessage = "That drop didn't contain any tracks to add."
+            }
+            return
+        }
+        Task { @MainActor in
+            model.addToPlaylist(playlistId: playlistId, trackIds: ids)
+        }
     }
 }
 
@@ -600,7 +611,13 @@ private struct SelectableTrackRow: View {
         .gesture(
             TapGesture().modifiers(.shift).onEnded { onClick(.shift) }
         )
-        .simultaneousGesture(
+        // Plain tap must use `.gesture` (not `.simultaneousGesture`): with a
+        // simultaneous gesture the bare-tap recognizer fires *alongside* the
+        // Cmd/Shift recognizers when a modifier is held, so a Cmd+Click both
+        // toggled selection AND played+cleared it, defeating multiselect.
+        // `.gesture` lets the modifier-qualified gestures take precedence.
+        // Matches `TrackListRow`'s working pattern.
+        .gesture(
             TapGesture().onEnded { onClick([]) }
         )
         .accessibilityLabel("\(track.name) by \(track.artistName)")
@@ -625,6 +642,26 @@ private struct SelectableTrackRow: View {
 
 /// Direction enum used by `handleKeyboardReorder` to avoid raw booleans.
 private enum VerticalDirection { case up, down }
+
+/// Pure parsing for drop-to-add payloads. Extracted out of the view so the
+/// "what counts as a droppable track-id list" contract — which `handleDrop`
+/// leans on to decide acceptance and error surfacing (#236) — can be
+/// unit-tested without an `NSItemProvider` or a SwiftUI scene.
+enum PlaylistDropPayload {
+    /// Pull a list of track ids out of arbitrary dropped bytes. Tries JSON
+    /// first (a `["id-1","id-2"]` array of strings), then newline-separated
+    /// text; ignores blanks and surrounding whitespace.
+    static func parseTrackIds(from data: Data) -> [String] {
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String] {
+            return json.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        }
+        guard let text = String(data: data, encoding: .utf8) else { return [] }
+        return text
+            .split(whereSeparator: { $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+}
 
 // MARK: - Undo toast
 
