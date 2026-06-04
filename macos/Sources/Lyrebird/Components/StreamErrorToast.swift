@@ -42,22 +42,32 @@ struct StreamErrorToast: View {
         self.onDismiss = onDismiss
     }
 
-    private var message: String {
-        "\u{201C}\(trackName)\u{201D} couldn't play. Skipping."
+    /// The toast body copy. Resolves through `Localizable.xcstrings` via the
+    /// `stream.error.skipping %@` key so the phrasing is translatable; the
+    /// `trackName` is user data interpolated into the localized format string
+    /// (matching the `tour.a11y.shortcut %@` pattern used elsewhere).
+    private var message: LocalizedStringKey {
+        "stream.error.skipping \(trackName)"
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "exclamationmark.octagon.fill")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(Theme.danger)
-                .accessibilityHidden(true)
+            // Icon + message read as one combined VoiceOver element so the
+            // failure is announced as a single phrase, while the action
+            // buttons below remain independently focusable siblings.
+            HStack(spacing: 12) {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Theme.danger)
+                    .accessibilityHidden(true)
 
-            Text(message)
-                .font(Theme.font(12, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
+                Text(message)
+                    .font(Theme.font(12, weight: .semibold))
+                    .foregroundStyle(Theme.ink)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .accessibilityElement(children: .combine)
 
             Spacer(minLength: 12)
 
@@ -77,7 +87,7 @@ struct StreamErrorToast: View {
                     )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("stream.error.retry.a11y")
+            .accessibilityLabel(Text("stream.error.retry.a11y"))
 
             Button(action: onGoToTrack) {
                 Text("stream.error.go_to_track")
@@ -97,7 +107,7 @@ struct StreamErrorToast: View {
                         .frame(width: 20, height: 20)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("common.dismiss.a11y")
+                .accessibilityLabel(Text("common.dismiss.a11y"))
             }
         }
         .padding(.horizontal, 16)
@@ -115,9 +125,11 @@ struct StreamErrorToast: View {
         )
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .shadow(color: Color.black.opacity(0.35), radius: 12, y: 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(message)
-        .accessibilityAddTraits(.isStaticText)
+        // No container-level `.accessibilityElement(children: .combine)` here:
+        // collapsing the whole toast into one static-text element hid the
+        // Retry / Go to track / Dismiss buttons from VoiceOver. The icon +
+        // message are combined in their own inner element above; the buttons
+        // stay independently focusable siblings.
     }
 }
 

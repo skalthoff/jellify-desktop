@@ -336,10 +336,23 @@ final class AppModel {
     /// render as "nothing here for this scope yet".
     var searchPageResults: [String: [SearchItem]] = [:]
 
-    /// The query that drove `searchPageResults`. Stored separately from
-    /// `searchQuery` so the page doesn't race with whatever the instant
-    /// dropdown is showing when that surface lands.
+    /// Raw, user-facing text of the full-search field. Bound directly to
+    /// the `TextField` on `SearchView` (and the toolbar field on
+    /// `MainShell`), so it must reflect exactly what the user typed —
+    /// including any trailing/leading whitespace mid-edit. `runFullSearch`
+    /// deliberately does NOT write a trimmed value back here, otherwise a
+    /// debounced pass would silently delete a space the user just typed.
+    /// The trimmed query that actually drove the results lives in
+    /// `searchPageActiveQuery`.
     var searchPageQuery: String = ""
+
+    /// The trimmed query that produced the current `searchPageResults`.
+    /// Distinct from the user-facing `searchPageQuery` binding so that
+    /// pagination (`loadMoreFullSearch`) and "what drove these results"
+    /// checks read a stable, normalized value without ever mutating the
+    /// text the user is editing. Stored separately from `searchQuery` so
+    /// the page doesn't race with whatever the instant dropdown is showing.
+    var searchPageActiveQuery: String = ""
 
     /// Scope chip the user has selected on the full search page. `.all`
     /// shows every section; anything else filters the page down to a single
@@ -360,6 +373,27 @@ final class AppModel {
     /// A full-search pass is in flight. Views use this to show a spinner
     /// and to debounce re-entrant submits from the Return key.
     var isLoadingFullSearch: Bool = false
+
+    /// Set once the server has nothing further to give for the current
+    /// query: either `searchPageLoaded` has reached `searchPageTotal`, or
+    /// a `loadMoreFullSearch` page came back with zero *new* deduplicated
+    /// items in the paged buckets. The latter guard matters because
+    /// `searchPageTotal` is the server's raw `TotalRecordCount` (it can
+    /// count item types we don't page, or be deduplicated server-side),
+    /// so `searchPageLoaded < searchPageTotal` can stay true after the
+    /// server has actually returned everything it will. Without this flag
+    /// the "Load more" button would stay live forever. Reset on every
+    /// fresh `runFullSearch`.
+    var searchPageExhausted: Bool = false
+
+    /// Whether a follow-up `loadMoreFullSearch` could plausibly yield new
+    /// rows from the server. False once we've hit the total or a page
+    /// added nothing. Only meaningful for the server-paged scopes
+    /// (artists / albums / tracks); derived scopes (genres) and
+    /// not-yet-paged scopes (playlists) never consult this.
+    var searchPageHasMore: Bool {
+        !searchPageExhausted && searchPageLoaded < Int(searchPageTotal)
+    }
 
     /// Combined page size for `runFullSearch`. Chosen so each typed
     /// section (artists / albums / tracks) usually gets well above the
@@ -489,8 +523,31 @@ final class AppModel {
     /// source (e.g. a single track picked from "All Tracks").
     var currentContext: QueueContext?
     /// Show / hide the right-side queue inspector panel. Toggled by the
-    /// Cmd+Opt+Q shortcut (#79).
+    /// Cmd+Opt+Q shortcut (#79) and the View ▸ "Show Queue" menu item.
+    /// `toggleQueueInspector()` lives in the Queue-inspector section below.
     var isQueueInspectorOpen: Bool = false
+
+    /// Mirror of `MainShell`'s `NavigationSplitView` column visibility, exposed
+    /// so the View ▸ "Show Sidebar" menu item can render a checkmark that
+    /// tracks the real rail state. `MainShell` is the source of truth — it owns
+    /// the `@State columnVisibility` plus the width-driven auto-hide reducer —
+    /// and writes this on every change (toolbar toggle, separator drag, restore).
+    /// `true` whenever the sidebar column is showing (`.all` / `.doubleColumn`).
+    var isSidebarVisible: Bool = true
+
+    /// One-shot, monotonic request to flip the sidebar. The menu can't write
+    /// `MainShell`'s private `columnVisibility` directly, and driving it through
+    /// a plain `Bool` would fight the auto-hide reducer's own writes, so the
+    /// menu bumps this counter and `MainShell` observes it and runs its
+    /// existing `toggleSidebarManually()` (which records the manual override so
+    /// width-driven auto-hide steps aside). Counter so a second request with the
+    /// rail already in the requested state still produces an observable change.
+    private(set) var sidebarToggleRequest: Int = 0
+
+    /// Ask `MainShell` to toggle the sidebar. See `sidebarToggleRequest`.
+    func requestSidebarToggle() {
+        sidebarToggleRequest += 1
+    }
 
     /// Tracks played earlier in *this app session*, most-recent first. The
     /// full-page Play Queue view (⌘U, #81) renders this above Now Playing as
@@ -782,7 +839,14 @@ final class AppModel {
     /// through view code. See #307.
     struct PaletteAction: Identifiable {
         let id: String
+        /// Display title, localized when a strings catalog is registered.
         let title: LocalizedStringKey
+        /// Stable, owned plain-text title used for command-palette search
+        /// matching. Held separately from `title` because `LocalizedStringKey`
+        /// has no public way to recover its underlying string — matching off a
+        /// real `String` keeps search working across OS updates instead of
+        /// depending on the key's private layout. Keep in sync with `title`.
+        let searchTitle: String
         let symbol: String
         let run: () -> Void
     }
@@ -803,6 +867,7 @@ final class AppModel {
                 actions.append(PaletteAction(
                     id: "playback.pause",
                     title: "Pause",
+                    searchTitle: "Pause",
                     symbol: "pause.fill",
                     run: { [weak self] in self?.pause() }
                 ))
@@ -810,6 +875,7 @@ final class AppModel {
                 actions.append(PaletteAction(
                     id: "playback.play",
                     title: "Play",
+                    searchTitle: "Play",
                     symbol: "play.fill",
                     run: { [weak self] in self?.togglePlayPause() }
                 ))
@@ -822,6 +888,7 @@ final class AppModel {
             actions.append(PaletteAction(
                 id: "playback.play",
                 title: "Play",
+                searchTitle: "Play",
                 symbol: "play.fill",
                 run: { [weak self] in self?.togglePlayPause() }
             ))
@@ -829,6 +896,7 @@ final class AppModel {
         actions.append(PaletteAction(
             id: "playback.playNext",
             title: "Play Next",
+            searchTitle: "Play Next",
             symbol: "text.line.first.and.arrowtriangle.forward",
             run: { [weak self] in
                 guard let track = self?.status.currentTrack else { return }
@@ -838,6 +906,7 @@ final class AppModel {
         actions.append(PaletteAction(
             id: "playback.addToQueue",
             title: "Add to Queue",
+            searchTitle: "Add to Queue",
             symbol: "text.badge.plus",
             run: { [weak self] in
                 guard let track = self?.status.currentTrack else { return }
@@ -849,24 +918,28 @@ final class AppModel {
         actions.append(PaletteAction(
             id: "nav.library",
             title: "Go to Library",
+            searchTitle: "Go to Library",
             symbol: "music.note.list",
             run: { [weak self] in self?.selectTab(.library) }
         ))
         actions.append(PaletteAction(
             id: "nav.home",
             title: "Go to Home",
+            searchTitle: "Go to Home",
             symbol: "house",
             run: { [weak self] in self?.selectTab(.home) }
         ))
         actions.append(PaletteAction(
             id: "nav.discover",
             title: "Go to Discover",
+            searchTitle: "Go to Discover",
             symbol: "sparkles",
             run: { [weak self] in self?.goToDiscover() }
         ))
         actions.append(PaletteAction(
             id: "nav.favorites",
             title: "Go to Favorites",
+            searchTitle: "Go to Favorites",
             symbol: "heart",
             run: { [weak self] in self?.selectTab(.favorites) }
         ))
@@ -878,6 +951,7 @@ final class AppModel {
         actions.append(PaletteAction(
             id: "app.openPreferences",
             title: "Open Preferences",
+            searchTitle: "Open Preferences",
             symbol: "gearshape",
             run: {
                 // `showSettingsWindow:` is the documented selector for
@@ -907,6 +981,7 @@ final class AppModel {
         actions.append(PaletteAction(
             id: "playback.toggleShuffle",
             title: "Toggle Shuffle",
+            searchTitle: "Toggle Shuffle",
             symbol: "shuffle",
             run: { [weak self] in
                 guard let self else { return }
@@ -916,6 +991,7 @@ final class AppModel {
         actions.append(PaletteAction(
             id: "playback.toggleRepeat",
             title: "Toggle Repeat",
+            searchTitle: "Toggle Repeat",
             symbol: "repeat",
             run: { [weak self] in
                 guard let self else { return }
@@ -937,6 +1013,7 @@ final class AppModel {
         actions.append(PaletteAction(
             id: "queue.clear",
             title: "Clear Queue",
+            searchTitle: "Clear Queue",
             symbol: "trash",
             run: { [weak self] in
                 // #282: wipe the queue but keep the currently playing track
@@ -951,6 +1028,7 @@ final class AppModel {
             actions.append(PaletteAction(
                 id: "download.current",
                 title: "Download Current",
+                searchTitle: "Download Current",
                 symbol: "arrow.down.circle",
                 run: { [weak self] in
                     guard self?.status.currentTrack != nil else { return }
@@ -1280,9 +1358,11 @@ final class AppModel {
         searchTask = nil
         searchPageResults = [:]
         searchPageQuery = ""
+        searchPageActiveQuery = ""
         activeSearchScope = .all
         searchPageTotal = 0
         searchPageLoaded = 0
+        searchPageExhausted = false
         isLoadingFullSearch = false
 
         currentTrackPeople = []
@@ -1354,9 +1434,11 @@ final class AppModel {
         searchTask = nil
         searchPageResults = [:]
         searchPageQuery = ""
+        searchPageActiveQuery = ""
         activeSearchScope = .all
         searchPageTotal = 0
         searchPageLoaded = 0
+        searchPageExhausted = false
         isLoadingFullSearch = false
 
         currentTrackPeople = []
@@ -3037,8 +3119,12 @@ final class AppModel {
     /// `core.playlistTracks(playlistId:)` for up to 500 entries — same cap as
     /// `loadPlaylistTracks(playlist:)`. Errors surface through the usual
     /// auth / reachability / error-banner path.
-    func loadPlaylistTracks(playlistId: String) async {
-        if let cached = playlistTracks[playlistId] {
+    ///
+    /// Pass `forceRefresh: true` to bypass the cache and re-fetch from the
+    /// server — required after a mutation (e.g. drop-to-add) that changed the
+    /// track list but couldn't reconstruct full `Track` rows locally.
+    func loadPlaylistTracks(playlistId: String, forceRefresh: Bool = false) async {
+        if !forceRefresh, let cached = playlistTracks[playlistId] {
             currentPlaylistTracks = cached
             return
         }
@@ -3225,9 +3311,21 @@ final class AppModel {
     /// `PlaylistDetailView` and any future "Add to playlist" affordance. See
     /// #236. Updates the in-memory caches optimistically and fires the core
     /// call in a detached task.
+    ///
+    /// We only know the bare track ids here, not full `Track` records, so the
+    /// visible list can't be appended to optimistically. Instead, on a
+    /// successful add we invalidate `playlistTracks[playlistId]` and — when
+    /// that playlist is the one currently on screen — re-fetch it so the new
+    /// rows actually appear. Without this the drop "succeeds" but the list
+    /// keeps showing the pre-drop tracks (the cache was never refreshed).
     func addToPlaylist(playlistId: String, trackIds: [String]) {
         guard !trackIds.isEmpty else { return }
         let ids = trackIds
+        // Is this the playlist currently on screen? `currentPlaylistTracks` is
+        // populated from `playlistTracks[playlistId]` whenever a playlist
+        // loads, so matching id sequences means the detail view is showing it
+        // and needs a re-fetch once the add lands.
+        let isShowingThisPlaylist = playlistTracks[playlistId]?.map(\.id) == currentPlaylistTracks.map(\.id)
         // Optimistically bump the count BEFORE the FFI call so the drop
         // visually lands without waiting for the round-trip. We don't know
         // the full `Track` records for ids that aren't already resident, so
@@ -3252,7 +3350,16 @@ final class AppModel {
                 try await Task.detached(priority: .userInitiated) { [core] in
                     try core.addToPlaylist(playlistId: playlistRef, itemIds: ids, position: nil)
                 }.value
-                self?.serverReachability.noteSuccess()
+                guard let self else { return }
+                self.serverReachability.noteSuccess()
+                // The add persisted but we only had bare ids, so the cached
+                // rows are now stale (missing the new tracks). Invalidate the
+                // cache and, if this playlist is on screen, re-fetch so the
+                // dropped tracks actually appear in the list.
+                self.playlistTracks[playlistRef] = nil
+                if isShowingThisPlaylist {
+                    await self.loadPlaylistTracks(playlistId: playlistRef, forceRefresh: true)
+                }
             } catch {
                 guard let self else { return }
                 if self.handleAuthError(error) { return }
@@ -3416,6 +3523,15 @@ final class AppModel {
             errorMessage = "Nothing to seed a mix from yet — play a track first."
             return
         }
+        playInstantMix(seedId: seedId)
+    }
+
+    /// Start a radio station seeded from a pinned-station subject (#253). The
+    /// Home "Pinned Stations" row routes artist / mood / mix tiles here; the
+    /// stored id is a real Jellyfin item id (or a mood/mix seed), which
+    /// `core.instantMix` accepts polymorphically. Genre and playlist tiles
+    /// take their own routes (`browseGenre` / `navigate(to:.playlist)`).
+    func startStationRadio(seedId: String) {
         playInstantMix(seedId: seedId)
     }
 
@@ -3754,18 +3870,24 @@ final class AppModel {
     func runFullSearch(query: String, scope: SearchScope) async {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         activeSearchScope = scope
-        searchPageQuery = trimmed
+        // Record the normalized query that drives the results, but do NOT
+        // touch `searchPageQuery` — that's the live binding for the text
+        // field, and writing a trimmed value back into it would delete a
+        // space the user just typed mid-edit. The view owns the field text.
+        searchPageActiveQuery = trimmed
 
         guard !trimmed.isEmpty else {
             searchPageResults = [:]
             searchPageTotal = 0
             searchPageLoaded = 0
+            searchPageExhausted = false
             isLoadingFullSearch = false
             return
         }
 
         isLoadingFullSearch = true
         defer { isLoadingFullSearch = false }
+        searchPageExhausted = false
         do {
             let pageSize = searchPagePageSize
             let results = try await Task.detached(priority: .userInitiated) { [core] in
@@ -3774,6 +3896,13 @@ final class AppModel {
             searchPageResults = Self.bucketSearchResults(results)
             searchPageTotal = results.totalRecordCount
             searchPageLoaded = results.artists.count + results.albums.count + results.tracks.count
+            // A first page that already returns fewer raw items than it
+            // asked for means the server has nothing more — mark exhausted
+            // so the per-section "Load more" can't promise a phantom page.
+            let firstPageRaw = results.artists.count + results.albums.count + results.tracks.count
+            if firstPageRaw < Int(pageSize) || searchPageLoaded >= Int(searchPageTotal) {
+                searchPageExhausted = true
+            }
             serverReachability.noteSuccess()
         } catch {
             if handleAuthError(error) { return }
@@ -3791,12 +3920,14 @@ final class AppModel {
     /// with per-id dedupe so flaky ordering on Jellyfin's side doesn't
     /// double a row. No-op when the buckets already cover `searchPageTotal`.
     func loadMoreFullSearch() async {
-        guard !isLoadingFullSearch, !searchPageQuery.isEmpty else { return }
-        guard searchPageLoaded < Int(searchPageTotal) else { return }
+        // Page off the normalized query that produced the current results,
+        // not the live field text (which the user may still be editing).
+        guard !isLoadingFullSearch, !searchPageActiveQuery.isEmpty else { return }
+        guard searchPageHasMore else { return }
         isLoadingFullSearch = true
         defer { isLoadingFullSearch = false }
         let offset = UInt32(searchPageLoaded)
-        let query = searchPageQuery
+        let query = searchPageActiveQuery
         do {
             let pageSize = searchPagePageSize
             let page = try await Task.detached(priority: .userInitiated) { [core] in
@@ -3805,17 +3936,29 @@ final class AppModel {
 
             var merged = searchPageResults
             let incoming = Self.bucketSearchResults(page)
+            var addedNewItems = false
             for (key, newItems) in incoming {
                 var existing = merged[key] ?? []
                 var seen = Set(existing.map(\.id))
                 for item in newItems where seen.insert(item.id).inserted {
                     existing.append(item)
+                    addedNewItems = true
                 }
                 merged[key] = existing
             }
             searchPageResults = merged
             searchPageTotal = page.totalRecordCount
-            searchPageLoaded += page.artists.count + page.albums.count + page.tracks.count
+            let pageRaw = page.artists.count + page.albums.count + page.tracks.count
+            searchPageLoaded += pageRaw
+            // Exhaustion guard: `searchPageLoaded < searchPageTotal` alone
+            // can never settle because `searchPageTotal` may count types we
+            // don't page (or be deduped server-side). Treat the search as
+            // done the moment a page returns no new deduplicated items, a
+            // short raw page, or we've caught up to the total. This is what
+            // keeps "Load more" from becoming a perpetual no-op.
+            if !addedNewItems || pageRaw < Int(pageSize) || searchPageLoaded >= Int(searchPageTotal) {
+                searchPageExhausted = true
+            }
             serverReachability.noteSuccess()
         } catch {
             if handleAuthError(error) { return }
@@ -3836,9 +3979,11 @@ final class AppModel {
         buckets[SearchScope.artists.storageKey] = results.artists.map(SearchItem.artist)
         buckets[SearchScope.albums.storageKey] = results.albums.map(SearchItem.album)
         buckets[SearchScope.tracks.storageKey] = results.tracks.map(SearchItem.track)
-        // Playlists aren't surfaced by the current `core.search` endpoint.
-        // Leave the bucket absent; the view renders an empty scope state
-        // for the user when the Playlists chip is active.
+        // Playlists aren't surfaced by the current `core.search` endpoint,
+        // so this bucket stays empty and the Playlists scope is hidden in
+        // the UI behind `supportsPlaylistSearch`. When core gains playlist
+        // search, populate this from the response (e.g.
+        // `results.playlists.map(SearchItem.playlist)`) and flip the flag.
         buckets[SearchScope.playlists.storageKey] = []
         // Genres: harvest distinct names from every album and artist in
         // the response. Uses case-insensitive de-dupe so "Rock" vs "rock"
@@ -3922,7 +4067,7 @@ final class AppModel {
     private var imageURLCache: [String: URL?] = [:]
 
     func imageURL(for itemID: String, tag: String?, maxWidth: UInt32 = 400) -> URL? {
-        let key = "\(itemID)|\(tag ?? "")|\(maxWidth)"
+        let key = Self.imageURLCacheKey(itemID: itemID, tag: tag, maxWidth: maxWidth)
         if let cached = imageURLCache[key] { return cached }
         let result: URL?
         if let s = try? core.imageUrl(itemId: itemID, tag: tag, maxWidth: maxWidth) {
@@ -3932,6 +4077,62 @@ final class AppModel {
         }
         imageURLCache[key] = result
         return result
+    }
+
+    /// The `imageURLCache` key for a given (itemID, tag, maxWidth) tuple.
+    /// Kept in one place so `imageURL` and `resolveImageURLs` can't drift.
+    /// `nonisolated` so the off-main `resolveImageURLs` batch can build keys
+    /// inside its `Task.detached` without hopping back to the MainActor.
+    nonisolated private static func imageURLCacheKey(
+        itemID: String, tag: String?, maxWidth: UInt32
+    ) -> String {
+        "\(itemID)|\(tag ?? "")|\(maxWidth)"
+    }
+
+    /// Resolve a batch of image URLs **off the main thread** and return them
+    /// as an `[itemID: URL?]` map, caching each result so a subsequent
+    /// `imageURL(for:)` for the same tuple is a pure cache hit.
+    ///
+    /// Eager carousels (e.g. the artist Discography, which can hold up to
+    /// ~200 album tiles) would otherwise call the synchronous `imageURL`
+    /// inside each tile body on first render — taking the Rust `Inner` mutex
+    /// on the MainActor once per tile, serialized against every background
+    /// load (gap pattern #2). Resolving the whole batch in a single
+    /// `Task.detached` hop keeps every mutex acquisition off the main thread;
+    /// callers then hand each tile its pre-resolved URL so the per-cell sync
+    /// FFI never runs. Already-cached tuples are served from the cache and
+    /// never re-cross the FFI boundary.
+    func resolveImageURLs(
+        for items: [(id: String, tag: String?)],
+        maxWidth: UInt32 = 400
+    ) async -> [String: URL?] {
+        var resolved: [String: URL?] = [:]
+        var pending: [(id: String, tag: String?)] = []
+        var seen = Set<String>()
+        for item in items where seen.insert(item.id).inserted {
+            let key = Self.imageURLCacheKey(itemID: item.id, tag: item.tag, maxWidth: maxWidth)
+            if let cached = imageURLCache[key] {
+                resolved[item.id] = cached
+            } else {
+                pending.append(item)
+            }
+        }
+        guard !pending.isEmpty else { return resolved }
+
+        let computed = await Task.detached(priority: .userInitiated) { [core] in
+            pending.map { item -> (String, String, URL?) in
+                let key = Self.imageURLCacheKey(itemID: item.id, tag: item.tag, maxWidth: maxWidth)
+                let url = (try? core.imageUrl(itemId: item.id, tag: item.tag, maxWidth: maxWidth))
+                    .flatMap(URL.init(string:))
+                return (item.id, key, url)
+            }
+        }.value
+
+        for (id, key, url) in computed {
+            imageURLCache[key] = url
+            resolved[id] = url
+        }
+        return resolved
     }
 
     // MARK: - Ambient palette (#271)
@@ -3986,6 +4187,10 @@ final class AppModel {
     // MARK: - Playback
 
     func play(tracks: [Track], startIndex: Int = 0) {
+        // Starting a fresh queue disarms any leftover "Stop after current
+        // track" one-shot — "Resets to off the next time you start
+        // playback" (#116).
+        AppModel.resetStopAfterCurrent()
         do {
             _ = try core.setQueue(tracks: tracks, startIndex: UInt32(startIndex))
             guard let first = tracks[safe: startIndex] else { return }
@@ -4479,12 +4684,17 @@ final class AppModel {
         isFavorite(artist: artist)
     }
 
-    /// Insert a handful of the artist's top tracks immediately after the
-    /// currently-playing track. Uses the `core.playNext` primitive wired
-    /// in for #282. Falls back silently when there are no top tracks to load.
+    /// Insert the artist's full catalog immediately after the currently-playing
+    /// track. Loads the same track set as `playAll(artist:)` / `shuffle(artist:)`
+    /// (via `loadTracks(forArtist:)`, the 500-track soft cap) so "Play Next"
+    /// queues the whole artist — matching `playNext(album:)` — rather than just
+    /// the top-tracks teaser. Uses the `core.playNext` primitive wired in for
+    /// #282; falls back to `play` when nothing is currently playing so the menu
+    /// item never queues into an empty player. Silent no-op when the artist has
+    /// no loadable tracks.
     func playNextArtist(artist: Artist) {
         Task {
-            let tracks = await loadArtistTopTracks(artistId: artist.id)
+            let tracks = await loadTracks(forArtist: artist.id)
             guard !tracks.isEmpty else { return }
             if status.currentTrack == nil {
                 play(tracks: tracks, startIndex: 0)
@@ -4687,8 +4897,14 @@ final class AppModel {
 
     /// Present a save panel and write the playlist to disk as an extended-M3U
     /// (`.m3u8`) file. Fetches the playlist's tracks via `playlist_tracks` FFI,
-    /// then delegates the string-building to `PlaylistExport.m3u8`. Stream URLs
-    /// are written without auth tokens so the file is safe to share (#76 / #237).
+    /// then delegates the string-building to `PlaylistExport.m3u8`.
+    ///
+    /// Stream URLs embed the server `api_key` so the exported file is actually
+    /// playable in an external player — a bare `/universal` path requires the
+    /// `Authorization` header and 401s for a generic M3U player (#76 / #237).
+    /// Because that bakes a credential into the file, the save panel warns the
+    /// user before they write it. If the token can't be resolved, the export
+    /// falls back to auth-free (prompt-on-play) URLs.
     func exportPlaylist(playlist: Playlist) {
         Task {
             // Fetch tracks before opening the panel so we know the export
@@ -4698,18 +4914,50 @@ final class AppModel {
                 errorMessage = "No tracks to export for \"\(playlist.name)\"."
                 return
             }
+            // Resolve the server token off the main actor (single FFI call,
+            // not per-track) so the M3U entries authenticate on their own.
+            let apiKey = await resolveExportApiKey(sampleTrackId: tracks.first?.id)
             let content = PlaylistExport.m3u8(
                 playlistName: playlist.name,
                 tracks: tracks,
-                serverURL: serverURL
+                serverURL: serverURL,
+                apiKey: apiKey
             )
             writeExport(
                 content,
                 suggestedName: "\(playlist.name).m3u8",
                 fileExtension: "m3u8",
-                panelTitle: "Export Playlist as .m3u8"
+                panelTitle: "Export Playlist as .m3u8",
+                warning: apiKey == nil
+                    ? nil
+                    : "This .m3u8 embeds your server access key so the tracks play in another app. Anyone you share the file with can stream your library with it — treat it like a password."
             )
         }
+    }
+
+    /// Extract the Jellyfin `api_key` the app authenticates with, for embedding
+    /// in an exported `.m3u8` so its entries are playable standalone. There's
+    /// no dedicated token FFI, so we read it out of `core.streamUrl(...)` —
+    /// which builds the same authenticated URL the audio engine streams from —
+    /// and pull the `api_key` query item. Runs off the main actor (the FFI
+    /// takes the Rust `Inner` mutex) and returns `nil` if the URL can't be
+    /// built or carries no key, in which case the caller emits auth-free URLs.
+    private func resolveExportApiKey(sampleTrackId: String?) async -> String? {
+        guard let sampleTrackId else { return nil }
+        let urlString: String?
+        do {
+            urlString = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.streamUrl(trackId: sampleTrackId, mediaSourceId: nil, playSessionId: nil)
+            }.value
+        } catch {
+            return nil
+        }
+        guard let urlString,
+              let components = URLComponents(string: urlString),
+              let key = components.queryItems?.first(where: { $0.name == "api_key" })?.value,
+              !key.isEmpty
+        else { return nil }
+        return key
     }
 
     /// Present a save panel and write the playlist to disk as a JSON manifest
@@ -4747,17 +4995,25 @@ final class AppModel {
     /// Shared `NSSavePanel` IO for the playlist export formats. Presents the
     /// panel on the main actor and writes `content` to the chosen URL, routing
     /// any failure to `errorMessage`. A user cancel is a silent no-op.
+    ///
+    /// `warning`, when non-nil, is shown in the panel's message area before the
+    /// user commits — used by the M3U export to disclose that the file embeds a
+    /// server credential.
     private func writeExport(
         _ content: String,
         suggestedName: String,
         fileExtension: String,
-        panelTitle: String
+        panelTitle: String,
+        warning: String? = nil
     ) {
         let panel = NSSavePanel()
         panel.title = panelTitle
         panel.nameFieldStringValue = suggestedName
         panel.allowedContentTypes = [.init(filenameExtension: fileExtension) ?? .plainText]
         panel.canCreateDirectories = true
+        if let warning {
+            panel.message = warning
+        }
 
         let response = panel.runModal()
         guard response == .OK, let url = panel.url else { return }
@@ -4848,7 +5104,7 @@ final class AppModel {
         guard !trimmed.isEmpty else { return }
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: trimmed, itemIds: [], position: nil)
+                try core.createPlaylist(name: trimmed, itemIds: [])
             }.value
             // The core returns only the id; build a minimal `Playlist`
             // record client-side rather than refetching. An `imageTag` of
@@ -4928,7 +5184,7 @@ final class AppModel {
         let copyName = "\(source.name) Copy"
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: copyName, itemIds: trackIds, position: nil)
+                try core.createPlaylist(name: copyName, itemIds: trackIds)
             }.value
             // Core's `create_playlist` can accept seed items directly; the
             // `itemIds` path above covers the common case. We still build a
@@ -4995,6 +5251,21 @@ final class AppModel {
     func applyPlaylistDrop(playlistId: String, trackId: String, destinationIndex: Int) {
         guard let tracks = playlistTracks[playlistId] else { return }
         guard let sourceIndex = tracks.firstIndex(where: { $0.id == trackId }) else { return }
+        moveTrackInPlaylist(playlistId: playlistId, from: sourceIndex, to: destinationIndex)
+    }
+
+    /// Index-addressed variant of `applyPlaylistDrop`. The drag payload carries
+    /// the source row's index (see `PlaylistReorderPayload`), which is the only
+    /// thing that disambiguates a duplicated track: when the same track id
+    /// appears more than once in a playlist, resolving by id alone always moves
+    /// the first copy. Routing by index moves the exact copy the user grabbed.
+    ///
+    /// The index is validated against the *current* cached order before the
+    /// move, so a stale index from a list that mutated mid-drag is dropped
+    /// rather than moving the wrong row.
+    func applyPlaylistDrop(playlistId: String, sourceIndex: Int, destinationIndex: Int) {
+        guard let tracks = playlistTracks[playlistId] else { return }
+        guard sourceIndex >= 0, sourceIndex < tracks.count else { return }
         moveTrackInPlaylist(playlistId: playlistId, from: sourceIndex, to: destinationIndex)
     }
 
@@ -5769,9 +6040,61 @@ final class AppModel {
     /// track. A no-op when the queue holds nothing further (end of queue), in
     /// which case the engine simply has no item to splice ahead. Single source
     /// of truth shared by the normal advance and stall recovery (#931).
+    ///
+    /// Gated on the user's "Gapless playback" preference (#116): when off, the
+    /// engine is never handed a queued-ahead item, so each track ends cleanly
+    /// before `handleTrackEnded` rebuilds the next via `play(track:)` — the
+    /// gap-prone path becomes the *intended* behaviour rather than a fallback.
     private func armNextTrackPreload() {
+        guard AppModel.gaplessEnabled else { return }
         guard let next = nextTrackForPreload else { return }
         audio.preloadNextTrack(next)
+    }
+
+    // MARK: - Playback behaviour preferences (#116)
+
+    /// UserDefaults key for the "Gapless playback" toggle in the Playback
+    /// pane. Kept in sync with `PreferencesPlayback`'s `@AppStorage`.
+    private static let gaplessEnabledKey = "playback.gaplessEnabled"
+
+    /// UserDefaults key for the "Stop after current track" toggle in the
+    /// Playback pane. Kept in sync with `PreferencesPlayback`'s `@AppStorage`.
+    private static let stopAfterCurrentKey = "playback.stopAfterCurrent"
+
+    /// Resolve the persisted gapless flag, defaulting to `true` when the key
+    /// has never been written. `UserDefaults.bool(forKey:)` returns `false`
+    /// for a missing key, which would silently invert this feature's
+    /// "default on" contract (the toggle ships on), so probe for the object
+    /// first — same pattern as `autoplayWhenQueueEndsDefault`.
+    static var gaplessEnabled: Bool {
+        guard UserDefaults.standard.object(forKey: gaplessEnabledKey) != nil else {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: gaplessEnabledKey)
+    }
+
+    /// Read **and clear** the "Stop after current track" one-shot. Returns
+    /// `true` exactly once per arming: `handleTrackEnded` calls this, and a
+    /// `true` result both halts the advance and disarms the toggle so the
+    /// next end-of-track transition behaves normally. Defaults to `false`
+    /// for an unset key (the toggle ships off), which `bool(forKey:)` already
+    /// returns, so no object-probe is needed here.
+    static func consumeStopAfterCurrent() -> Bool {
+        let armed = UserDefaults.standard.bool(forKey: stopAfterCurrentKey)
+        if armed {
+            UserDefaults.standard.set(false, forKey: stopAfterCurrentKey)
+        }
+        return armed
+    }
+
+    /// Disarm "Stop after current track" when a fresh playback session
+    /// begins. Honours the toggle's documented contract — "Resets to off the
+    /// next time you start playback" — so an arming left over from a previous
+    /// session can never silently stop the user one track into a new queue.
+    private static func resetStopAfterCurrent() {
+        if UserDefaults.standard.bool(forKey: stopAfterCurrentKey) {
+            UserDefaults.standard.set(false, forKey: stopAfterCurrentKey)
+        }
     }
 
     #if DEBUG
@@ -5860,6 +6183,14 @@ final class AppModel {
     }
 
     private func handleTrackEnded() {
+        // "Stop after current track" (#116): when armed, halt at this
+        // track's end instead of advancing, and disarm the one-shot so the
+        // queue resumes normally afterwards. Checked before `skipNext()` so
+        // the playhead never moves past the track the user wanted to stop on.
+        if AppModel.consumeStopAfterCurrent() {
+            stop()
+            return
+        }
         // Advance to the next track in the queue if there is one. Arm the
         // gapless pre-load for the track *after* this new one so the next
         // end-of-track transition is seamless — without this the freshly
@@ -5880,7 +6211,15 @@ final class AppModel {
         // so it never short-circuits an explicit album-end — `skipNext`
         // walks those first and only returns nil when there's genuinely
         // nothing left.
-        guard autoplayWhenQueueEnds, let seed = status.currentTrack else { return }
+        guard autoplayWhenQueueEnds, let seed = status.currentTrack else {
+            // Playback is genuinely over and we're not autoplaying. Tear the
+            // session down so `reportPlaybackStopped` + `stopHeartbeat` run —
+            // otherwise the player keeps a stale `currentTrack` and the server
+            // shows a frozen "Now Playing" until the next user action (the
+            // companion to the core heartbeat Ended-state guard).
+            audio.stop()
+            return
+        }
         playInstantMix(seedId: seed.id)
     }
 
@@ -6175,35 +6514,52 @@ final class AppModel {
     /// contract as SwiftUI `List.onMove`, so the inspector can wire this up
     /// directly. See #80.
     ///
-    /// Today this only reorders the in-app overlay because the core has no
-    /// `reorder_queue` primitive. When that lands (TODO(core-#282)), this
-    /// should also push the new order down to `core.setQueue` so the
-    /// engine's view of "what plays next" matches the inspector.
+    /// Reorders the in-app overlay, then rebuilds and pushes the flat queue to
+    /// `core.setQueue` via `syncCoreQueueAfterReorder()` so the engine's view
+    /// of "what plays next" matches the inspector (#565).
     func moveUpNext(from source: IndexSet, to destination: Int) {
         upNextUserAdded.move(fromOffsets: source, toOffset: destination)
-        // Sync the reordered user-added list to the Rust core (#565).
-        // Rebuild a flat track array — current track at index 0, then the
-        // reordered Up Next overlay, then the auto-queue tail — and hand it
-        // back to `core.setQueue` with startIndex 0 so the engine keeps
-        // playing the current track while honouring the new order for
-        // everything that follows. The `try?` silences the throw so a core
-        // hiccup (e.g. session not ready) doesn't crash the UI.
+        syncCoreQueueAfterReorder()
+    }
+
+    /// Rebuild the flat core queue from the current inspector state and push
+    /// it down to `core.setQueue` so the engine's "what plays next" matches
+    /// the inspector's Up Next order (#565). Layout: current track at index 0,
+    /// then the (possibly reordered / shuffled / pruned) user-added overlay,
+    /// then the auto-queue tail. `startIndex: 0` keeps the current track
+    /// playing while honouring the new order for everything that follows.
+    ///
+    /// Shared by `moveUpNext`, `shuffleUpNext`, and `removeFromUpNext` so all
+    /// three actually re-sequence playback rather than only mutating the Swift
+    /// overlay. Errors surface on `errorMessage` (auth failures route through
+    /// `handleAuthError`) instead of being swallowed by `try?`, so a failed
+    /// sync is visible rather than silently leaving the engine on the old
+    /// order.
+    private func syncCoreQueueAfterReorder() {
         var allTracks: [Track] = []
         if let current = status.currentTrack { allTracks.append(current) }
         allTracks.append(contentsOf: upNextUserAdded.map(\.track))
         allTracks.append(contentsOf: upNextAutoQueue.map(\.track))
         guard !allTracks.isEmpty else { return }
-        try? core.setQueue(tracks: allTracks, startIndex: 0)
+        do {
+            _ = try core.setQueue(tracks: allTracks, startIndex: 0)
+        } catch {
+            if handleAuthError(error) { return }
+            errorMessage = LyrebirdErrorPresenter.message(for: error, context: .playback)
+        }
     }
 
     /// Remove one entry from the user-added "Up Next" list by its stable
     /// per-item `queueId`. Uses `queueId` rather than `track.id` so users
     /// can queue the same track twice and still remove a single instance.
     /// See #80.
+    ///
+    /// After pruning the overlay we rebuild and push the core queue so the
+    /// removed track actually drops out of playback — previously this mutated
+    /// only the Swift overlay and the engine still played the removed track.
     func removeFromUpNext(id: UUID) {
         upNextUserAdded.removeAll { $0.id == id }
-        // TODO(core-#282): drop the corresponding entry in the core queue
-        // once we have an addressable `remove_from_queue` primitive.
+        syncCoreQueueAfterReorder()
     }
 
     // MARK: - Queue actions (BATCH-07b, #284)
@@ -6273,7 +6629,7 @@ final class AppModel {
         guard !ids.isEmpty else { return }
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: trimmed, itemIds: ids, position: nil)
+                try core.createPlaylist(name: trimmed, itemIds: ids)
             }.value
             // Some older Jellyfin builds ignore the initial `ItemIds` on
             // `create_playlist` and return an empty playlist. Follow up
@@ -6306,9 +6662,44 @@ final class AppModel {
     func shuffleUpNext() {
         guard upNextUserAdded.count > 1 else { return }
         upNextUserAdded.shuffle()
-        // TODO(core-#282): when `reorder_queue` / `shuffle_queue` exists,
-        // push the new order down so the engine plays in the shuffled
-        // order rather than its original load order.
+        // Push the shuffled order down so the engine plays in the new order
+        // rather than its original load order — same rebuild contract as
+        // `moveUpNext`.
+        syncCoreQueueAfterReorder()
+    }
+
+    /// Jump playback to a specific queue entry (the Queue Inspector's
+    /// double-click on an Up Next / "Playing From" row). Rebuilds the flat
+    /// track list the inspector shows — current track, then the user-added
+    /// overlay, then the auto-queue tail — locates `entry` by its stable
+    /// per-instance `queueId`, and replays the whole list starting at that
+    /// index via `play(tracks:startIndex:)`. Routing through `play(...)`
+    /// means the core queue is re-seated and the engine auto-advances from
+    /// the jumped track onward, exactly like picking a track from a track
+    /// list. Matching by `queueId` (not `track.id`) means double-clicking the
+    /// second of two identical tracks jumps to that instance, not the first.
+    ///
+    /// No-ops if the entry isn't found in the current queue (e.g. it was
+    /// removed between render and tap).
+    func jumpToQueueEntry(_ entry: Queue) {
+        guard let plan = queueJumpPlan(for: entry.id) else { return }
+        play(tracks: plan.tracks, startIndex: plan.startIndex)
+    }
+
+    /// Pure helper for `jumpToQueueEntry`: flattens the inspector's three
+    /// sections into the play order (current track, then user-added overlay,
+    /// then auto-queue tail) and resolves `queueId` to a `(tracks,
+    /// startIndex)` pair for `play(tracks:startIndex:)`. Factored out so the
+    /// index arithmetic — which has to account for the current track
+    /// occupying slot 0 — is unit-testable without the playback FFI. Returns
+    /// `nil` when the id isn't present in any section.
+    func queueJumpPlan(for queueId: UUID) -> (tracks: [Track], startIndex: Int)? {
+        var entries: [Queue] = []
+        if let current = status.currentTrack { entries.append(Queue(track: current)) }
+        entries.append(contentsOf: upNextUserAdded)
+        entries.append(contentsOf: upNextAutoQueue)
+        guard let index = entries.firstIndex(where: { $0.id == queueId }) else { return nil }
+        return (entries.map(\.track), index)
     }
 
     /// Navigate to the source that started the current auto queue. Wired
@@ -6609,6 +7000,20 @@ enum SearchScope: String, Hashable, CaseIterable, Sendable {
     /// in one place.
     var sectionHeader: String {
         label
+    }
+
+    /// Whether this scope's rows come from the server's paged `search`
+    /// response (so a "Load more" can fetch a follow-up page), or are
+    /// derived / not-yet-paged locally (so "Load more" can only ever
+    /// reveal more of the already-buffered bucket). Genres are harvested
+    /// client-side from album/artist `genres`; playlists aren't returned
+    /// by `core.search` at all. Both must ignore the global server
+    /// has-more signal, otherwise their button would be perpetual.
+    var isServerPaged: Bool {
+        switch self {
+        case .artists, .albums, .tracks, .all: return true
+        case .genres, .playlists: return false
+        }
     }
 }
 

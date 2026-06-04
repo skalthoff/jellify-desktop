@@ -1,29 +1,48 @@
 import SwiftUI
 @preconcurrency import LyrebirdCore
 
-/// Audio container formats the filter offers. Matching is done against the
-/// track's (lower/upper-mixed) `container` string, normalised to upper case.
-/// `ALAC` is shipped by Jellyfin in an `m4a`/`mp4` container, so its match set
-/// covers the common container spellings as well as the codec name itself.
+/// Audio formats the filter offers. Matching is done against the track's
+/// (case-insensitive) `container` string only — the loaded `Track` payload
+/// carries no codec field, so matching is *container-level*, not codec-level.
+///
+/// FLAC and MP3 each map to a dedicated container, so those are exact. ALAC
+/// and AAC, however, both ship inside the same `m4a`/`mp4` container, and the
+/// container alone can't tell them apart. Rather than claim a codec-level
+/// distinction we can't honour (the prior code mapped M4A/MP4 to ALAC, which
+/// silently kept lossy AAC files too), both ALAC and AAC match the shared
+/// `m4a`/`mp4` containers. Selecting either therefore keeps every m4a/mp4
+/// track; tightening this to true codec granularity needs a codec/profile
+/// signal on the `Track` model (see #819-adjacent work).
 enum TrackFormat: String, CaseIterable, Identifiable, Hashable {
 	case flac = "FLAC"
 	case alac = "ALAC"
+	case aac = "AAC"
 	case mp3 = "MP3"
 
 	var id: String { rawValue }
 
-	var label: String { rawValue }
+	var label: String {
+		switch self {
+		// Make the shared-container caveat visible in the UI so a user who
+		// selects ALAC isn't surprised that AAC m4a/mp4 files come along.
+		case .alac: return "ALAC (m4a)"
+		case .aac: return "AAC (m4a)"
+		default: return rawValue
+		}
+	}
 
-	/// Upper-cased container tokens that count as this format.
+	/// Upper-cased container tokens that count as this format. M4A/MP4 is
+	/// shared by ALAC and AAC because the container is the only signal we have.
 	private var containerTokens: Set<String> {
 		switch self {
 		case .flac: return ["FLAC"]
-		case .alac: return ["ALAC", "M4A", "MP4"]
+		case .alac, .aac: return ["M4A", "MP4", "M4B", "ALAC", "AAC"]
 		case .mp3: return ["MP3", "MPEG"]
 		}
 	}
 
-	/// Whether a track's `container` string matches this format.
+	/// Whether a track's `container` string matches this format. Container-level
+	/// only — see the type doc for why ALAC/AAC can't be told apart here.
 	func matches(container raw: String?) -> Bool {
 		guard let token = raw?.trimmingCharacters(in: .whitespaces).uppercased(),
 			!token.isEmpty
@@ -72,7 +91,6 @@ struct LibraryFilter: Equatable {
 	/// Stored separately from the slider's full range so a filter that spans
 	/// the whole catalogue reads as "inactive".
 	var yearRange: ClosedRange<Int>?
-	var onlyDownloaded = false
 	var onlyFavorited = false
 	/// Selected formats. Empty = no format constraint.
 	var formats: Set<TrackFormat> = []
@@ -82,11 +100,18 @@ struct LibraryFilter: Equatable {
 	/// Number of active filter groups — drives the pink dot / count badge on
 	/// the filter icon. A group counts once regardless of how many options
 	/// inside it are selected.
+	///
+	/// `onlyDownloaded` is deliberately excluded: no `passesFilter` overload
+	/// can honor it until a download-state query exists, and the toggle is
+	/// itself UI-gated off (`showDownloaded: model.supportsDownloads`, false
+	/// today). Counting it would mark the filter "active" — lighting the dot
+	/// badge and triggering the no-results path — while filtering nothing.
+	/// Fold it back in here the moment a `model.isDownloaded(...)` lands and
+	/// the `passesFilter` overloads consult it. See audit L724.
 	var activeGroupCount: Int {
 		var n = 0
 		if !genres.isEmpty { n += 1 }
 		if yearRange != nil { n += 1 }
-		if onlyDownloaded { n += 1 }
 		if onlyFavorited { n += 1 }
 		if !formats.isEmpty { n += 1 }
 		if !durations.isEmpty { n += 1 }
@@ -94,6 +119,28 @@ struct LibraryFilter: Equatable {
 	}
 
 	var isActive: Bool { activeGroupCount > 0 }
+
+	// MARK: - Per-tab applicability
+
+	/// Which filter dimensions the given `LibraryTab` actually consults in its
+	/// `passesFilter` predicate. The popover renders only the matching groups
+	/// so a control can never appear active on a tab that ignores it (#214
+	/// follow-up). Mirrors `LibraryView.passesFilter(_:)`:
+	/// - genre → albums, artists
+	/// - year → albums, tracks
+	/// - format / duration → tracks only
+	/// - favorited → every tab (always rendered)
+	static func appliesGenre(on tab: LibraryTab) -> Bool {
+		tab == .albums || tab == .artists
+	}
+
+	static func appliesYear(on tab: LibraryTab) -> Bool {
+		tab == .albums || tab == .tracks
+	}
+
+	static func appliesTrackFields(on tab: LibraryTab) -> Bool {
+		tab == .tracks
+	}
 }
 
 /// 280pt popover anchored to the Library filter icon. Edits a working copy of
@@ -109,10 +156,11 @@ struct LibraryFilterPopover: View {
 	/// Release-year bounds discovered across the loaded library. Drives the
 	/// year slider's track. `nil` when no item carries a year.
 	let yearBounds: ClosedRange<Int>?
-	/// Whether the "Only downloaded" toggle should be shown. Gated on the
-	/// download engine (`AppModel.supportsDownloads`, #819) so the control
-	/// doesn't appear dead while downloads are unwired.
-	let showDownloaded: Bool
+	/// The Library tab the popover is filtering. Only the dimensions the
+	/// active tab's `passesFilter` actually consults are rendered, so a
+	/// Format/Duration/Year group never appears "active" on a tab that
+	/// ignores it (#214 follow-up). See `appliesYear` / `appliesTrackFields`.
+	let tab: LibraryTab
 	/// Dismiss handler — the host owns the `isPresented` binding.
 	let onClose: () -> Void
 
@@ -127,13 +175,13 @@ struct LibraryFilterPopover: View {
 		filter: Binding<LibraryFilter>,
 		availableGenres: [String],
 		yearBounds: ClosedRange<Int>?,
-		showDownloaded: Bool,
+		tab: LibraryTab,
 		onClose: @escaping () -> Void
 	) {
 		self._filter = filter
 		self.availableGenres = availableGenres
 		self.yearBounds = yearBounds
-		self.showDownloaded = showDownloaded
+		self.tab = tab
 		self.onClose = onClose
 		let initial = filter.wrappedValue
 		self._draft = State(initialValue: initial)
@@ -147,12 +195,13 @@ struct LibraryFilterPopover: View {
 		VStack(spacing: 0) {
 			ScrollView {
 				VStack(alignment: .leading, spacing: 18) {
-					if !availableGenres.isEmpty { genreGroup }
-					if yearBounds != nil { yearGroup }
-					if showDownloaded { downloadedGroup }
+					if appliesGenre, !availableGenres.isEmpty { genreGroup }
+					if appliesYear, yearBounds != nil { yearGroup }
 					favoritedGroup
-					formatGroup
-					durationGroup
+					if appliesTrackFields {
+						formatGroup
+						durationGroup
+					}
 				}
 				.padding(16)
 			}
@@ -163,6 +212,12 @@ struct LibraryFilterPopover: View {
 		.frame(maxHeight: 460)
 		.background(Theme.bgAlt)
 	}
+
+	// MARK: - Tab applicability
+
+	private var appliesGenre: Bool { LibraryFilter.appliesGenre(on: tab) }
+	private var appliesYear: Bool { LibraryFilter.appliesYear(on: tab) }
+	private var appliesTrackFields: Bool { LibraryFilter.appliesTrackFields(on: tab) }
 
 	// MARK: - Groups
 
@@ -206,10 +261,6 @@ struct LibraryFilterPopover: View {
 				)
 			}
 		}
-	}
-
-	private var downloadedGroup: some View {
-		toggleRow("Only downloaded", isOn: $draft.onlyDownloaded)
 	}
 
 	private var favoritedGroup: some View {
@@ -369,6 +420,11 @@ struct RangeSlider: View {
 	private let thumbSize: CGFloat = 16
 	private let trackHeight: CGFloat = 4
 
+	/// Name for the container coordinate space the drag is measured in, so
+	/// `value.location.x` reads against the track instead of the thumb's own
+	/// (offset) coordinate space.
+	private let coordinateSpace = "rangeSlider"
+
 	var body: some View {
 		GeometryReader { geo in
 			let span = max(bounds.upperBound - bounds.lowerBound, 1)
@@ -390,18 +446,25 @@ struct RangeSlider: View {
 
 				thumb
 					.offset(x: lowX)
-					.gesture(drag(usable: usable, span: span, isLow: true))
+					.gesture(drag(usable: usable, isLow: true))
 					.accessibilityLabel("Minimum year")
 					.accessibilityValue("\(Int(low))")
+					.accessibilityAdjustableAction { direction in
+						adjust(isLow: true, direction: direction)
+					}
 
 				thumb
 					.offset(x: highX)
-					.gesture(drag(usable: usable, span: span, isLow: false))
+					.gesture(drag(usable: usable, isLow: false))
 					.accessibilityLabel("Maximum year")
 					.accessibilityValue("\(Int(high))")
+					.accessibilityAdjustableAction { direction in
+						adjust(isLow: false, direction: direction)
+					}
 			}
 			.frame(height: thumbSize)
 			.frame(maxHeight: .infinity)
+			.coordinateSpace(name: coordinateSpace)
 		}
 		.frame(height: 24)
 	}
@@ -413,17 +476,57 @@ struct RangeSlider: View {
 			.shadow(color: .black.opacity(0.3), radius: 2, y: 1)
 	}
 
-	private func drag(usable: CGFloat, span: Double, isLow: Bool) -> some Gesture {
-		DragGesture()
+	private func drag(usable: CGFloat, isLow: Bool) -> some Gesture {
+		// Measured in the ZStack's coordinate space (see `coordinateSpace`), so
+		// `value.location.x` is the cursor's position along the track, not an
+		// offset relative to the dragged thumb.
+		DragGesture(coordinateSpace: .named(coordinateSpace))
 			.onChanged { value in
-				let fraction = max(0, min(1, value.location.x / usable))
-				let raw = bounds.lowerBound + Double(fraction) * span
-				let clamped = max(bounds.lowerBound, min(bounds.upperBound, raw)).rounded()
+				let clamped = Self.value(
+					forCursorX: value.location.x,
+					usable: usable,
+					thumbSize: thumbSize,
+					bounds: bounds)
 				if isLow {
 					low = min(clamped, high)
 				} else {
 					high = max(clamped, low)
 				}
 			}
+	}
+
+	/// Convert a cursor x-position (in the track's coordinate space) to a
+	/// rounded value in `bounds`. The thumb is `thumbSize` wide and drawn
+	/// leading-aligned, so its centre sits half a thumb in from the track
+	/// origin; subtracting `thumbSize / 2` maps the cursor to the thumb-centre
+	/// travel that `usable` (= width − thumbSize) describes. Factored out so the
+	/// drag math is unit-testable (it was the source of the year-slider snapping
+	/// bug, #214). `internal` rather than `private` for `@testable` access.
+	static func value(
+		forCursorX cursorX: CGFloat,
+		usable: CGFloat,
+		thumbSize: CGFloat,
+		bounds: ClosedRange<Double>
+	) -> Double {
+		let span = max(bounds.upperBound - bounds.lowerBound, 1)
+		let centred = cursorX - thumbSize / 2
+		let fraction = max(0, min(1, centred / max(usable, 1)))
+		let raw = bounds.lowerBound + Double(fraction) * span
+		return max(bounds.lowerBound, min(bounds.upperBound, raw)).rounded()
+	}
+
+	/// VoiceOver / keyboard adjustable action: nudge the given thumb by one
+	/// year per increment, clamped to the bounds and to the other thumb so the
+	/// low thumb can't cross above the high (or vice versa). Keeps the control
+	/// operable without a pointer drag (#214 a11y follow-up).
+	private func adjust(isLow: Bool, direction: AccessibilityAdjustmentDirection) {
+		let delta: Double = direction == .increment ? 1 : -1
+		if isLow {
+			let next = (low + delta).rounded()
+			low = max(bounds.lowerBound, min(next, high))
+		} else {
+			let next = (high + delta).rounded()
+			high = min(bounds.upperBound, max(next, low))
+		}
 	}
 }

@@ -97,6 +97,42 @@
         }
       }
     },
+    "banner.server_unreachable.generic" : {
+      "comment" : "ServerUnreachableBanner message when the configured server is failing to answer and no host is available to name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't reach your server."
+          }
+        }
+      }
+    },
+    "banner.server_unreachable.named %@" : {
+      "comment" : "ServerUnreachableBanner message naming the configured host. %@ is the user's server host (or host:port) and is interpolated verbatim as user data.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't reach %@. Trying again\u2026"
+          }
+        }
+      }
+    },
+    "banner.server_unreachable.retry.a11y" : {
+      "comment" : "VoiceOver label for the Retry button on the server-unreachable banner.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retry server connection"
+          }
+        }
+      }
+    },
     "breadcrumb.album.fallback" : {
       "comment" : "Breadcrumb segment when the current album hasn't resolved its name yet.",
       "extractionState" : "manual",
@@ -369,6 +405,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Audio playback error."
+          }
+        }
+      }
+    },
+    "error.certificate" : {
+      "comment" : "Banner copy for LyrebirdError.SelfSignedCertificate — the server's TLS certificate couldn't be verified (e.g. self-signed). The user may need to trust the server.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The server's certificate couldn't be verified. You may need to trust this server."
           }
         }
       }
@@ -669,6 +717,258 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Password"
+          }
+        }
+      }
+    },
+    "onboarding.back" : {
+      "comment" : "Back button on the onboarding connect step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back"
+          }
+        }
+      }
+    },
+    "onboarding.welcome.title" : {
+      "comment" : "Hero headline on the first onboarding screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welcome to Lyrebird"
+          }
+        }
+      }
+    },
+    "onboarding.welcome.subtitle" : {
+      "comment" : "Tagline under the welcome headline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your music, your server, your rules."
+          }
+        }
+      }
+    },
+    "onboarding.welcome.get_started" : {
+      "comment" : "Primary CTA on the welcome screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Get started"
+          }
+        }
+      }
+    },
+    "onboarding.welcome.existing_account" : {
+      "comment" : "Secondary link on the welcome screen for returning users.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I already have an account →"
+          }
+        }
+      }
+    },
+    "onboarding.welcome.existing_account.a11y" : {
+      "comment" : "Accessibility label for the returning-user link on the welcome screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I already have an account"
+          }
+        }
+      }
+    },
+    "onboarding.connect.title" : {
+      "comment" : "Heading on the onboarding connect-server step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connect your server"
+          }
+        }
+      }
+    },
+    "onboarding.connect.subtitle" : {
+      "comment" : "Helper copy under the connect-server heading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your Jellyfin URL is the address you use to reach it from a browser."
+          }
+        }
+      }
+    },
+    "onboarding.connect.continue" : {
+      "comment" : "Primary submit button on the connect step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue"
+          }
+        }
+      }
+    },
+    "onboarding.connect.connecting" : {
+      "comment" : "Submit button label while a sign-in request is in flight.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecting…"
+          }
+        }
+      }
+    },
+    "onboarding.connect.skip_offline" : {
+      "comment" : "Link that skips sign-in and lets the user explore offline.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skip, explore offline →"
+          }
+        }
+      }
+    },
+    "onboarding.sync.title" : {
+      "comment" : "Heading on the first-sync step that shows library loading progress.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading your library"
+          }
+        }
+      }
+    },
+    "onboarding.sync.phase.artists" : {
+      "comment" : "Progress line while artists are loading on the first-sync step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading artists…"
+          }
+        }
+      }
+    },
+    "onboarding.sync.phase.albums" : {
+      "comment" : "Progress line while albums are loading on the first-sync step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading albums…"
+          }
+        }
+      }
+    },
+    "onboarding.sync.phase.tracks" : {
+      "comment" : "Progress line while tracks are loading on the first-sync step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Loading tracks…"
+          }
+        }
+      }
+    },
+    "onboarding.sync.phase.artwork" : {
+      "comment" : "Progress line while artwork is loading on the first-sync step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fetching artwork…"
+          }
+        }
+      }
+    },
+    "onboarding.sync.counter" : {
+      "comment" : "Library totals counter on the first-sync step. %1$@ is the track count, %2$@ the artist count, %3$@ the album count, each pre-formatted with grouping separators.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ tracks · %2$@ artists · %3$@ albums"
+          }
+        }
+      }
+    },
+    "onboarding.sync.continue" : {
+      "comment" : "CTA that leaves onboarding for the Home screen once the library has loaded.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continue to Home"
+          }
+        }
+      }
+    },
+    "onboarding.sync.syncing" : {
+      "comment" : "Disabled CTA label shown while the library is still loading.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Syncing…"
+          }
+        }
+      }
+    },
+    "onboarding.sync.error" : {
+      "comment" : "Status line on the first-sync step when the library failed to load; offers a retry.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t load your library."
+          }
+        }
+      }
+    },
+    "onboarding.sync.retry" : {
+      "comment" : "Button that re-attempts the library load after a failure on the first-sync step.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try again"
           }
         }
       }
@@ -1069,6 +1369,42 @@
         }
       }
     },
+    "sidebar.server.connected %lld" : {
+      "comment" : "Sidebar footer status line when the server is reachable; %lld is the total album count.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Connected · %lld album"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Connected · %lld albums"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sidebar.server.disconnected" : {
+      "comment" : "Sidebar footer status line when there is no session or the server is unreachable.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disconnected"
+          }
+        }
+      }
+    },
     "sidebar.stats.favorites" : {
       "comment" : "Sidebar stats row: Favorites.",
       "extractionState" : "manual",
@@ -1137,6 +1473,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Go to track"
+          }
+        }
+      }
+    },
+    "stream.error.skipping %@" : {
+      "comment" : "StreamErrorToast body copy; %@ is the failed track name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” couldn’t play. Skipping."
           }
         }
       }
@@ -2050,6 +2398,126 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Play and pause with Space"
+          }
+        }
+      }
+    },
+    "core_failure.body" : {
+      "comment" : "Explanation on the core-init failure recovery screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lyrebird’s local data couldn’t be opened. This is usually fixable: reset the local data to start fresh, or export a diagnostics bundle to share with a bug report."
+          }
+        }
+      }
+    },
+    "core_failure.export" : {
+      "comment" : "Button on the failure screen that writes a sanitized diagnostics bundle.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Export Diagnostics…"
+          }
+        }
+      }
+    },
+    "core_failure.export.done" : {
+      "comment" : "Confirmation after a diagnostics bundle was written from the failure screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnostics exported."
+          }
+        }
+      }
+    },
+    "core_failure.export.failed" : {
+      "comment" : "Shown when exporting diagnostics failed; %@ is the error.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t export diagnostics: %@"
+          }
+        }
+      }
+    },
+    "core_failure.quit" : {
+      "comment" : "Button that quits the app from the failure screen.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quit"
+          }
+        }
+      }
+    },
+    "core_failure.reset" : {
+      "comment" : "Button that moves the corrupt local data aside so the next launch starts clean.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reset Local Data"
+          }
+        }
+      }
+    },
+    "core_failure.reset.done" : {
+      "comment" : "Confirmation after the local data was moved aside; %@ is the backup path.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Local data was moved to:\n%@\nPlease quit and reopen Lyrebird."
+          }
+        }
+      }
+    },
+    "core_failure.reset.failed" : {
+      "comment" : "Shown when resetting the local data failed; %@ is the error.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t reset local data: %@"
+          }
+        }
+      }
+    },
+    "core_failure.reset.nothing" : {
+      "comment" : "Shown when there was no local data directory to reset.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No local data was found to reset. Try exporting diagnostics instead."
+          }
+        }
+      }
+    },
+    "core_failure.title" : {
+      "comment" : "Title of the recovery screen shown when the core fails to start.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lyrebird couldn’t start"
           }
         }
       }

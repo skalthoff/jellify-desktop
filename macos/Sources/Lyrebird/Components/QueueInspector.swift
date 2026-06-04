@@ -54,42 +54,21 @@ struct QueueInspector: View {
     @State private var dragCancelMonitor: Any?
     @State private var dragEscapeMonitor: Any?
 
-    /// Transient toast shown when the user double-clicks an auto-queue row.
-    /// The underlying `seek_to_queue_index` primitive (#282) does not exist
-    /// yet; rather than silently doing nothing we surface a brief message so
-    /// the interaction feels acknowledged. Auto-dismisses after 3 s.
-    @State private var showJumpToast = false
-    /// Work item backing the 3 s auto-dismiss. Held so a second double-click
-    /// within the window resets the timer instead of racing two dismissals.
-    @State private var jumpToastDismissWork: DispatchWorkItem?
-
     var body: some View {
-        ZStack(alignment: .bottom) {
-            VStack(spacing: 0) {
-                header
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        actionRow
-                        nowPlayingCard
-                        lyricsSnippet
-                        upNextSection
-                        playingFromSection
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 16)
+        VStack(spacing: 0) {
+            header
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    actionRow
+                    nowPlayingCard
+                    lyricsSnippet
+                    upNextSection
+                    playingFromSection
                 }
-            }
-            .frame(maxHeight: .infinity)
-            .background(Theme.bgAlt)
-
-            if showJumpToast {
-                JumpToTrackToast(onDismiss: dismissJumpToast)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 16)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showJumpToast)
         .frame(maxHeight: .infinity)
         .background(Theme.bgAlt)
         // Clear-queue confirmation dialog (#284). Count interpolated into
@@ -466,40 +445,44 @@ struct QueueInspector: View {
     /// `List.onMove` semantics are preserved through
     /// `AppModel.moveUpNext(from:to:)` so the model continues to see the
     /// same `IndexSet → Int` contract it had before.
+    ///
+    /// Rendered as a `LazyVStack` directly in the inspector's outer
+    /// `ScrollView` (#79). It used to nest its own `ScrollView` clamped to 8
+    /// rows / 352pt, which trapped two-finger scroll inside the Up Next
+    /// region for longer queues and hid items 9+ behind a competing inner
+    /// scrollbar. Letting the page scroll keeps the whole list reachable, and
+    /// `LazyVStack` still defers off-screen row construction.
     @ViewBuilder
     private var upNextList: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
-                dropIndicator(at: 0)
-                ForEach(Array(model.upNextUserAdded.enumerated()), id: \.element.id) { index, entry in
-                    QueueInspectorRow(
-                        entry: entry,
-                        removable: true,
-                        onRemove: { model.removeFromUpNext(id: entry.id) },
-                        onMoveUp: { moveEntry(entry, by: -1) },
-                        onMoveDown: { moveEntry(entry, by: 1) }
-                    )
-                    .focused($focusedQueueId, equals: entry.id)
-                    .opacity(draggingId == entry.id ? 0.4 : 1.0)
-                    .onDrag {
-                        draggingId = entry.id
-                        return NSItemProvider(object: entry.id.uuidString as NSString)
-                    }
-                    .onDrop(
-                        of: [.text],
-                        delegate: QueueRowDropDelegate(
-                            targetIndex: index,
-                            draggingId: $draggingId,
-                            dropTargetIndex: $dropTargetIndex,
-                            model: model
-                        )
-                    )
-
-                    dropIndicator(at: index + 1)
+        LazyVStack(spacing: 0) {
+            dropIndicator(at: 0)
+            ForEach(Array(model.upNextUserAdded.enumerated()), id: \.element.id) { index, entry in
+                QueueInspectorRow(
+                    entry: entry,
+                    removable: true,
+                    onRemove: { model.removeFromUpNext(id: entry.id) },
+                    onMoveUp: { moveEntry(entry, by: -1) },
+                    onMoveDown: { moveEntry(entry, by: 1) }
+                )
+                .focused($focusedQueueId, equals: entry.id)
+                .opacity(draggingId == entry.id ? 0.4 : 1.0)
+                .onDrag {
+                    draggingId = entry.id
+                    return NSItemProvider(object: entry.id.uuidString as NSString)
                 }
+                .onDrop(
+                    of: [.text],
+                    delegate: QueueRowDropDelegate(
+                        targetIndex: index,
+                        draggingId: $draggingId,
+                        dropTargetIndex: $dropTargetIndex,
+                        model: model
+                    )
+                )
+
+                dropIndicator(at: index + 1)
             }
         }
-        .frame(height: boundedListHeight(for: model.upNextUserAdded.count))
     }
 
     /// 2pt accent-tinted line rendered between rows while a drag is in
@@ -529,10 +512,12 @@ struct QueueInspector: View {
                 if model.upNextAutoQueue.isEmpty {
                     emptyRow("Nothing else queued from this source.")
                 } else {
-                    // Simple `ForEach` here — no drag-reorder on the auto
-                    // tail (it's the source's natural order; reordering
-                    // would be #282's next step, post-core primitive).
-                    VStack(spacing: 0) {
+                    // `LazyVStack` (not a plain `VStack`) so a large source
+                    // context — a full album/playlist tail — doesn't
+                    // instantiate every row up front; off-screen rows
+                    // materialize as the outer page scrolls. No drag-reorder
+                    // here: the auto tail is the source's natural order.
+                    LazyVStack(spacing: 0) {
                         ForEach(model.upNextAutoQueue) { entry in
                             QueueInspectorRow(
                                 entry: entry,
@@ -575,30 +560,13 @@ struct QueueInspector: View {
         model.moveUpNext(from: IndexSet(integer: idx), to: offset)
     }
 
-    /// Jump playback to an auto-queue entry. The underlying
-    /// `seek_to_queue_index` primitive (TODO(core-#282)) does not exist yet.
-    /// Rather than silently doing nothing, we surface a transient toast so
-    /// the user knows the gesture was recognized and that the feature is
-    /// coming. When #282 lands, replace the toast call with the real seek.
+    /// Jump playback to an auto-queue entry. Routes through
+    /// `AppModel.jumpToQueueEntry(_:)`, which rebuilds the flat track list
+    /// (current → user-added → auto tail), locates this entry, and replays
+    /// from its index so the engine actually repositions and auto-advances
+    /// from there. See #282.
     private func jumpTo(entry: Queue) {
-        // TODO(core-#282): replace with `try core.seek_to_queue_index(...)`.
-        showJumpToastMessage()
-    }
-
-    /// Show the "Jump to track coming soon" toast and arm a 3 s auto-dismiss.
-    /// A second double-click within the window resets the timer cleanly.
-    private func showJumpToastMessage() {
-        jumpToastDismissWork?.cancel()
-        withAnimation { showJumpToast = true }
-        let work = DispatchWorkItem { dismissJumpToast() }
-        jumpToastDismissWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
-    }
-
-    private func dismissJumpToast() {
-        jumpToastDismissWork?.cancel()
-        jumpToastDismissWork = nil
-        withAnimation { showJumpToast = false }
+        model.jumpToQueueEntry(entry)
     }
 
     // MARK: - Helpers
@@ -628,15 +596,6 @@ struct QueueInspector: View {
         let m = total / 60
         let s = total % 60
         return String(format: "%d:%02d", m, s)
-    }
-
-    /// Cap the reorder list height so a 200-track user queue can't push
-    /// the rest of the inspector off-screen. Each row is ~44pt tall; we
-    /// ceiling at 8 rows, past which the list scrolls internally.
-    private func boundedListHeight(for rows: Int) -> CGFloat {
-        let rowHeight: CGFloat = 44
-        let visible = min(max(rows, 1), 8)
-        return CGFloat(visible) * rowHeight
     }
 }
 
@@ -710,7 +669,18 @@ private struct QueueInspectorRow: View {
         .focusable(removable)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(entry.track.name) by \(entry.track.artistName)")
-        .accessibilityAddTraits(removable ? .isButton : [])
+        // Expose Remove as a VoiceOver / Full Keyboard Access rotor action so
+        // it's reachable without hovering — the visible X button is gated on
+        // mouse hover, which keyboard and assistive-tech users can't trigger
+        // (#588). The `.isButton` trait is deliberately *not* added: the row
+        // has no single primary activation (its actions are reorder via
+        // Opt+↑/↓ and this Remove action), so advertising a button trait
+        // would promise a tap-to-activate that doesn't exist.
+        .accessibilityActions {
+            if removable {
+                Button("Remove") { onRemove() }
+            }
+        }
         // Opt+↑ / Opt+↓ reorders the focused row. Only match when the
         // Option modifier is held so plain arrow keys fall through to
         // the surrounding list's focus traversal.
@@ -852,59 +822,5 @@ private struct SaveQueueSheet: View {
     private var totalCount: Int {
         let currentCount = model.status.currentTrack == nil ? 0 : 1
         return currentCount + model.upNextUserAdded.count + model.upNextAutoQueue.count
-    }
-}
-
-// MARK: - Jump-to-track toast
-
-/// Transient informational toast shown when the user double-clicks an
-/// auto-queue row. The seek-to-index primitive (#282) isn't wired yet;
-/// this prevents the gesture from feeling broken by giving explicit
-/// feedback that it was recognized. Dismisses automatically after 3 s
-/// or via the close button.
-private struct JumpToTrackToast: View {
-    let onDismiss: () -> Void
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.ink2)
-                .accessibilityHidden(true)
-
-            Text("Jump to track coming soon")
-                .font(Theme.font(12, weight: .semibold))
-                .foregroundStyle(Theme.ink)
-                .lineLimit(1)
-
-            Spacer(minLength: 8)
-
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.ink3)
-                    .frame(width: 18, height: 18)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss")
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface)
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(Theme.ink2)
-                .frame(width: 3)
-        }
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Theme.border, lineWidth: 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .shadow(color: Color.black.opacity(0.25), radius: 8, y: 3)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("Jump to track coming soon")
-        .accessibilityAddTraits(.isStaticText)
     }
 }

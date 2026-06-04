@@ -112,7 +112,19 @@ struct EmptyStateView: View {
         }
         .padding(.vertical, 56)
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
+        // When CTAs are present the subtree contains interactive buttons, so
+        // we must `.contain` (not `.combine`) — `.combine` flattens the
+        // buttons into a single static element, stripping their `.isButton`
+        // trait and tap action so VoiceOver can't reach or activate them.
+        // With no CTA the subtree is text-only, so `.combine` reads the
+        // headline + body as one element, which is the nicer announcement.
+        .accessibilityElement(children: hasCTA ? .contain : .combine)
+    }
+
+    /// Whether the view renders at least one interactive CTA button. Drives
+    /// the accessibility-container strategy (see `body`).
+    private var hasCTA: Bool {
+        primaryCTA != nil || secondaryCTA != nil
     }
 }
 
@@ -157,6 +169,21 @@ extension EmptyStateView {
             symbol: "arrow.down.circle",
             headline: "Nothing offline yet",
             body: "Downloaded tracks will appear here and stay playable without a network connection."
+        )
+    }
+
+    /// Library "no matches" state shown when an active filter excludes every
+    /// loaded item — distinct from the first-run "no library" state, which
+    /// stays gated on the raw count. The primary CTA clears the filter so the
+    /// user isn't stranded on a blank content area. See audit L494.
+    static func noFilterMatches(
+        onClearFilter: @escaping () -> Void
+    ) -> EmptyStateView {
+        EmptyStateView(
+            symbol: "line.3.horizontal.decrease.circle",
+            headline: "No matches",
+            body: "No items in your library match the current filter.",
+            primaryCTA: ("Clear Filter", onClearFilter)
         )
     }
 

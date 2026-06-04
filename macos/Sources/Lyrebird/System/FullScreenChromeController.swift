@@ -169,9 +169,15 @@ struct FullScreenChromeObserver: NSViewRepresentable {
                 NotificationCenter.default.removeObserver(observer)
                 exitObserver = nil
             }
-            // Defensive: if we're torn down mid-full-screen, restore default
-            // presentation so the app never gets stuck with a hidden menu bar.
-            if NSApp.presentationOptions != [] {
+            // `NSApp.presentationOptions` is *app-global*: a single value shared
+            // across every window. Only clear it when *this* window is the one
+            // currently in full-screen — i.e. we're being torn down mid-full-
+            // screen and must not strand a hidden menu bar. If this window is
+            // windowed, the full-screen override (if any) belongs to a
+            // different window's full-screen space; blindly resetting it here
+            // would yank that other window's auto-hide chrome out from under it.
+            if window?.styleMask.contains(.fullScreen) == true,
+               NSApp.presentationOptions != [] {
                 NSApp.presentationOptions = []
             }
             window = nil
