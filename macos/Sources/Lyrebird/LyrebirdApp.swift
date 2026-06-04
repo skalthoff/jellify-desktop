@@ -453,6 +453,16 @@ struct LyrebirdCommands: Commands {
             }
             .keyboardShortcut("?", modifiers: .command)
 
+            // Re-open the first-run feature tour (coach marks) on demand
+            // (#113). Disabled while signed out — the tour points at the main
+            // shell's affordances, which only exist once the user is in.
+            // `MainShell` observes `model.isFeatureTourPresented` and mounts
+            // the overlay.
+            Button("menu.help.show_tour") {
+                model.presentFeatureTour()
+            }
+            .disabled(model.session == nil)
+
             Divider()
 
             // Export Diagnostic Bundle… (#455). Writes a sanitized .zip of
@@ -589,6 +599,14 @@ struct RootView: View {
             }
         }
         .background(Theme.bg)
+        // Full-screen chrome handling (#20). Mounted as an invisible
+        // background bridge so it reaches the host `NSWindow` and auto-hides
+        // the unified toolbar + menu bar on enter / restores the
+        // hidden-title-bar layout on exit — neither of which has a `Scene`
+        // hook. All decision logic lives in the testable `FullScreenChrome`
+        // reducer; this only installs the AppKit observers. See
+        // `FullScreenChromeController`.
+        .background(FullScreenChromeObserver())
         // Login <-> main shell swap (and restore-loading <-> either) is
         // instant under Reduce Motion.
         .animation(reduceMotion ? nil : .default, value: model.session != nil)

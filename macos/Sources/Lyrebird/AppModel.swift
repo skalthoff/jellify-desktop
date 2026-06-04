@@ -29,7 +29,7 @@ final class AppModel {
     /// Active root tab. Drill destinations (album / artist / playlist /
     /// nowPlaying) live on `navPath` instead so back navigation is handled
     /// by `NavigationStack` natively. See #1 / #4.
-    enum Screen: Hashable { case home, discover, library, favorites, search, settings }
+    enum Screen: Hashable { case home, discover, radio, library, favorites, search, settings }
     var screen: Screen = .library
 
     /// Typed value-type for `NavigationStack` destinations. Root tabs and
@@ -39,6 +39,7 @@ final class AppModel {
     enum Route: Hashable {
         case home
         case discover
+        case radio
         case library
         case favorites
         case search
@@ -699,6 +700,29 @@ final class AppModel {
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
+    /// Drill the **main** window to a detail `Route` from the detached Mini
+    /// Player, raising the full window first so the navigation is visible.
+    ///
+    /// The Mini Player floats in its own borderless window (optionally
+    /// always-on-top), so a bare `navigate(to:)` would push onto the main
+    /// window's `NavigationStack` while that window stays buried behind
+    /// everything else — the user would tap album art and see nothing move.
+    /// Activating the app raises the main `WindowGroup` window back to the
+    /// foreground the same way `returnToFullWindow` does, *then* we drill.
+    /// Unlike `returnToFullWindow` this intentionally leaves
+    /// `isMiniPlayerVisible` untouched: clicking through to a detail page is
+    /// not a request to dismiss the mini player, so an always-on-top widget
+    /// keeps floating over the now-foregrounded detail view (the Apple Music /
+    /// Spotify mini-widget contract).
+    ///
+    /// Routing through one seam (rather than letting `MiniPlayerView` poke
+    /// `navPath` + `NSApp` itself) keeps the activate-then-navigate ordering in
+    /// a single testable place and matches `openLyrics` / `navigate(to:)`.
+    func openInMainWindowFromMiniPlayer(_ route: Route) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        navigate(to: route)
+    }
+
     // MARK: - Command Palette (⌘K)
 
     /// Whether the command-palette overlay is currently visible. Toggled by
@@ -724,6 +748,22 @@ final class AppModel {
     /// re-searching. `nil` until the first mix is generated this session.
     /// See #327.
     var instantMixSeedLabel: String?
+
+    /// Whether the first-run feature tour (coach marks) overlay is presented.
+    /// `MainShell` also auto-shows the tour on first launch via its own
+    /// `@AppStorage` flag; this flag is the *explicit re-open* channel for the
+    /// Help ▸ "Show Tour" command, so a returning user can replay it without
+    /// resetting the persisted seen flag. Driven out of `AppModel` (like
+    /// `isCommandPaletteOpen`) so the menu command doesn't need a SwiftUI
+    /// environment round-trip. See #113 and `FeatureTour` / `FeatureTourOverlay`.
+    var isFeatureTourPresented: Bool = false
+
+    /// Re-open the feature tour on demand. Wired to the Help ▸ "Show Tour"
+    /// menu command; `MainShell` renders `FeatureTourOverlay` whenever this is
+    /// set and clears it on dismiss. See #113.
+    func presentFeatureTour() {
+        isFeatureTourPresented = true
+    }
 
     /// A single verb entry in the command palette's action list. See
     /// `paletteActions` for the live roster and `executePaletteAction(id:)`
