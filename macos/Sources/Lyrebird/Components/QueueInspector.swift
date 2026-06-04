@@ -405,7 +405,13 @@ struct QueueInspector: View {
                     .foregroundStyle(Theme.ink3)
                     .monospacedDigit()
             }
+            .accessibilityHidden(true)
         }
+        // Speak the progress as one spelled-out element rather than two
+        // ambiguous "three oh five" timecode labels. See #349.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Playback position")
+        .accessibilityValue(scrubberAccessibilityValue)
     }
 
     // MARK: - Inline lyrics snippet (#91)
@@ -591,11 +597,16 @@ struct QueueInspector: View {
     }
 
     private func format(_ seconds: Double) -> String {
-        let safe = seconds.isFinite ? max(0, seconds) : 0
-        let total = Int(safe)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%d:%02d", m, s)
+        DurationFormatter.colon(seconds)
+    }
+
+    /// Spelled-out position/duration for VoiceOver — "1 minute 23 seconds of
+    /// 4 minutes 10 seconds". Mirrors the PlayerBar scrubber's spoken value so
+    /// the read-only inspector progress reads the same way. See #349.
+    private var scrubberAccessibilityValue: String {
+        let pos = DurationFormatter.spokenAccessibility(model.status.positionSeconds)
+        let total = DurationFormatter.spokenAccessibility(model.status.durationSeconds)
+        return "\(pos) of \(total)"
     }
 }
 

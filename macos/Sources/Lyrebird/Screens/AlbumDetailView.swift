@@ -876,9 +876,7 @@ struct AlbumDetailView: View {
             let m = (totalSeconds % 3600) / 60
             return "\(h)h \(m)m"
         } else {
-            let m = totalSeconds / 60
-            let s = totalSeconds % 60
-            return String(format: "%d:%02d", m, s)
+            return DurationFormatter.colon(wholeSeconds: totalSeconds)
         }
     }
 

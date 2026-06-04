@@ -429,7 +429,8 @@ struct NowPlayingView: View {
 
                 aboutSection(
                     label: "Runtime",
-                    value: formatRuntime(track.durationSeconds)
+                    value: formatRuntime(track.durationSeconds),
+                    accessibilityValue: DurationFormatter.spokenAccessibility(track.durationSeconds)
                 )
 
                 if track.playCount > 0 {
@@ -474,8 +475,16 @@ struct NowPlayingView: View {
         }
     }
 
+    /// `accessibilityValue` overrides the spoken form of `value` when the
+    /// on-screen text would be ambiguous to VoiceOver (e.g. a `3:05` runtime
+    /// reads as "three oh five"; the Runtime row passes the spelled-out
+    /// "3 minutes 5 seconds" instead). See #349.
     @ViewBuilder
-    private func aboutSection(label: String, value: String) -> some View {
+    private func aboutSection(
+        label: String,
+        value: String,
+        accessibilityValue: String? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label.uppercased())
                 .font(Theme.font(10, weight: .bold))
@@ -487,14 +496,11 @@ struct NowPlayingView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(value)")
+        .accessibilityLabel("\(label): \(accessibilityValue ?? value)")
     }
 
     private func formatRuntime(_ seconds: Double) -> String {
-        let total = Int(seconds.rounded())
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%d:%02d", m, s)
+        DurationFormatter.colon(seconds)
     }
 
     private func formatPlayCount(_ count: UInt32) -> String {

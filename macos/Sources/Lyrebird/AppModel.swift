@@ -6672,10 +6672,12 @@ extension Track {
         Double(runtimeTicks) / 10_000_000.0
     }
     var durationFormatted: String {
-        let total = Int(durationSeconds)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%d:%02d", m, s)
+        DurationFormatter.colon(durationSeconds)
+    }
+    /// Spelled-out duration ("3 minutes 5 seconds") for VoiceOver
+    /// `accessibilityValue` on track-duration labels. See #349.
+    var durationAccessibilityValue: String {
+        DurationFormatter.spokenAccessibility(durationSeconds)
     }
 }
 
