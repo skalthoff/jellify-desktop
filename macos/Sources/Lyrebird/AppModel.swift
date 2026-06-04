@@ -306,21 +306,6 @@ final class AppModel {
     var searchResults: SearchResults?
     var searchQuery: String = ""
 
-    /// Instant-search payload rendered by `SearchInstantDropdown` while the
-    /// user is typing in the toolbar / search field. Distinct from
-    /// `searchResults` (which backs the full Search screen) so a live
-    /// dropdown and the committed "see all results" surface don't trample
-    /// each other. Always safe to read — empty until a non-empty query
-    /// arrives. See #85 / #241 / #243.
-    var instantSearchResults: InstantSearchResults = .empty
-
-    /// In-flight debounced instant-search task. Published so re-entrant
-    /// callers (each keystroke invokes `runInstantSearch`) can cancel the
-    /// previous pass before kicking off a new one. Storing the handle as
-    /// state rather than a local makes the cancel-previous pattern trivial
-    /// regardless of which view / keystroke triggered the original fetch.
-    var searchTask: Task<Void, Never>?
-
     // MARK: - Full search page (#86 / #242 / #244 / #245 / #246)
     //
     // State specific to `SearchView`'s full-page surface. Kept distinct from
@@ -596,8 +581,8 @@ final class AppModel {
     /// In-flight debounced VoiceOver track-change announcement (#342).
     /// Stored so a rapid next / next / next collapses to a single
     /// announcement: each call cancels the previous pending task before the
-    /// 300ms window elapses, so only the final track is spoken. Mirrors the
-    /// cancel-previous idiom used by `searchTask`.
+    /// 300ms window elapses, so only the final track is spoken (the
+    /// cancel-previous debounce idiom).
     private var trackAnnounceTask: Task<Void, Never>?
 
     // MARK: - Loading / errors
@@ -1353,9 +1338,6 @@ final class AppModel {
         searchResults = nil
         searchQuery = ""
 
-        instantSearchResults = .empty
-        searchTask?.cancel()
-        searchTask = nil
         searchPageResults = [:]
         searchPageQuery = ""
         searchPageActiveQuery = ""
@@ -1429,9 +1411,6 @@ final class AppModel {
         searchResults = nil
         searchQuery = ""
 
-        instantSearchResults = .empty
-        searchTask?.cancel()
-        searchTask = nil
         searchPageResults = [:]
         searchPageQuery = ""
         searchPageActiveQuery = ""
@@ -3734,117 +3713,6 @@ final class AppModel {
     }
 
 
-    /// Debounced instant search for the dropdown shown under the toolbar
-    /// search field. Cancels any previous in-flight pass, waits 250ms for
-    /// more keystrokes, then hits `core.search`. On success we rank a
-    /// single "top result" by exact-title > prefix > contains (ties broken
-    /// by play count when available, then alpha) and split the rest into
-    /// typed sections for the dropdown to render.
-    ///
-    /// Empty / whitespace-only queries short-circuit to `.empty` and
-    /// cancel any pending fetch so the dropdown clears instantly.
-    ///
-    /// Spec: #85 (instant dropdown), #241 (debounced fetch), #243 (hero
-    /// top result). Deliberately uses the existing `core.search` endpoint
-    /// — a leaner `/Search/Hints` path is tracked separately; swapping
-    /// here is a one-line change when that lands.
-    func runInstantSearch(query: String) {
-        // Cancel whatever was in flight — the user either typed another
-        // character or cleared the field. Either way, the old result is
-        // stale.
-        searchTask?.cancel()
-
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            instantSearchResults = .empty
-            searchTask = nil
-            return
-        }
-
-        searchTask = Task { [weak self, core] in
-            // 250ms debounce — if another keystroke fires the task is
-            // cancelled before we ever hit the network.
-            do {
-                try await Task.sleep(nanoseconds: 250_000_000)
-            } catch {
-                return
-            }
-            if Task.isCancelled { return }
-
-            // Instant dropdown is tuned for speed, not completeness —
-            // 20 items is enough to populate every section without
-            // hauling the whole "see all" page down on each keystroke.
-            let results: SearchResults
-            do {
-                results = try await Task.detached(priority: .userInitiated) {
-                    try core.search(query: trimmed, offset: 0, limit: 20)
-                }.value
-            } catch {
-                // Instant search failures are cosmetic — the full Search
-                // screen still surfaces the "real" error on submit. Swallow
-                // here so a flaky network doesn't keep firing error banners
-                // for every keystroke.
-                return
-            }
-            if Task.isCancelled { return }
-
-            guard let self else { return }
-            await MainActor.run {
-                let top = Self.pickTopResult(query: trimmed, results: results)
-                self.instantSearchResults = InstantSearchResults(
-                    topResult: top,
-                    artists: results.artists,
-                    albums: results.albums,
-                    tracks: results.tracks,
-                    // Playlists and genres are not yet surfaced by
-                    // `core.search` (today it returns Audio / MusicAlbum /
-                    // MusicArtist only). TODO(core): expand the search
-                    // endpoint to include Playlist + MusicGenre so the
-                    // instant dropdown can render those sections.
-                    playlists: [],
-                    genres: []
-                )
-            }
-        }
-    }
-
-    /// Pick the single "top result" for the hero card.
-    ///
-    /// Ranking, strongest → weakest: exact case-insensitive title match,
-    /// then prefix match, then substring match. Ties are broken by play
-    /// count (only tracks carry one today) and finally by alphabetical
-    /// order so the choice is deterministic across keystrokes.
-    nonisolated static func pickTopResult(query: String, results: SearchResults) -> SearchItem? {
-        let q = query.lowercased()
-        var candidates: [SearchItem] = []
-        candidates.reserveCapacity(results.artists.count + results.albums.count + results.tracks.count)
-        candidates.append(contentsOf: results.artists.map(SearchItem.artist))
-        candidates.append(contentsOf: results.albums.map(SearchItem.album))
-        candidates.append(contentsOf: results.tracks.map(SearchItem.track))
-        guard !candidates.isEmpty else { return nil }
-
-        // Lower sort key wins. `(rank, -playCount, name)` so we can call
-        // `.min(by:)` without an ad-hoc comparator per tier.
-        func rank(for name: String) -> Int {
-            let lower = name.lowercased()
-            if lower == q { return 0 }
-            if lower.hasPrefix(q) { return 1 }
-            if lower.contains(q) { return 2 }
-            return 3
-        }
-
-        return candidates.min { a, b in
-            let ra = rank(for: a.title)
-            let rb = rank(for: b.title)
-            if ra != rb { return ra < rb }
-            // Play count — only tracks carry one. Treat non-tracks as 0.
-            let pa = a.playCount
-            let pb = b.playCount
-            if pa != pb { return pa > pb }
-            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
-        }
-    }
-
     /// Drive the full Search page (`SearchView`). Issues a combined-type
     /// search against Jellyfin, buckets results into `searchPageResults`
     /// by scope key, and stores the active scope so the view's scope chips
@@ -4378,6 +4246,12 @@ final class AppModel {
             favoriteById[itemId] = state.isFavorite
             favoriteChangeToken &+= 1
             serverReachability.noteSuccess()
+            // If the app UI just favorited the currently-playing track, sync
+            // Control Center's like indicator — only the remote-command path
+            // self-refreshes otherwise (#460).
+            if status.currentTrack?.id == itemId {
+                mediaSession.refreshTransportState()
+            }
         } catch {
             Log.tracks.error("setFavorite failed item=\(itemId, privacy: .public) error=\(error.localizedDescription, privacy: .public)")
             if handleAuthError(error) { return }
@@ -6230,8 +6104,8 @@ final class AppModel {
     /// (#342). Hooked from `MainShell` on changes to
     /// `status.currentTrack?.id`.
     ///
-    /// Debounced by 300ms via the `searchTask` cancel-previous idiom: a
-    /// rapid next / next / next cancels each pending announcement before
+    /// Debounced by 300ms via the cancel-previous idiom: a rapid
+    /// next / next / next cancels each pending announcement before
     /// its window elapses, so only the final track is spoken. The
     /// announcement itself is `.high`-priority and non-interrupting (see
     /// `AccessibilityAnnouncer`), so it never yanks VO out of the user's
@@ -6816,11 +6690,10 @@ extension Array {
     }
 }
 
-/// Client-side genre record used by `InstantSearchResults` and the search
-/// dropdown's genre row. Jellyfin returns genres as bare strings on
-/// `Album`/`Artist` today, so an `id` is derived from the name until a
-/// proper `MusicGenre` item shape lands in core (see `GenreContextMenu`'s
-/// TODO for #823).
+/// Client-side genre record used by the full search page and the instant-mix
+/// seed picker. Jellyfin returns genres as bare strings on `Album`/`Artist`
+/// today, so an `id` is derived from the name until a proper `MusicGenre`
+/// item shape lands in core (see `GenreContextMenu`'s TODO for #823).
 struct Genre: Hashable, Identifiable, Sendable {
     let id: String
     let name: String
@@ -6844,13 +6717,13 @@ struct Genre: Hashable, Identifiable, Sendable {
     }
 }
 
-/// Heterogeneous "thing" returned by the instant-search dropdown. Wraps the
-/// four core record types plus `Genre` so the dropdown's `onPickItem`
-/// callback can carry enough context for routing without per-type
-/// callbacks.
+/// Heterogeneous search "thing". Wraps the four core record types plus
+/// `Genre` so a single callback can carry enough context for routing
+/// (navigate vs. play) without per-type callbacks. Used by the full search
+/// page (`SearchView`) and the instant-mix seed picker (`InstantMixSheet`).
 ///
-/// `title` / `playCount` are derived so the ranking algorithm in
-/// `AppModel.pickTopResult` can stay generic.
+/// `title` / `playCount` are derived so any generic ranking / comparison
+/// over a mixed candidate list stays type-agnostic.
 enum SearchItem: Hashable, Sendable {
     case artist(Artist)
     case album(Album)
@@ -6896,39 +6769,6 @@ enum SearchItem: Hashable, Sendable {
     var playCount: UInt32 {
         if case .track(let t) = self { return t.playCount }
         return 0
-    }
-}
-
-/// Aggregate payload for the instant-search dropdown. Split into typed
-/// sections so the dropdown can render each without re-partitioning, and
-/// carries a pre-ranked `topResult` so the hero card doesn't need to
-/// re-run the ranker on every view update. See `AppModel.runInstantSearch`.
-struct InstantSearchResults: Sendable {
-    let topResult: SearchItem?
-    let artists: [Artist]
-    let albums: [Album]
-    let tracks: [Track]
-    let playlists: [Playlist]
-    let genres: [Genre]
-
-    static let empty = InstantSearchResults(
-        topResult: nil,
-        artists: [],
-        albums: [],
-        tracks: [],
-        playlists: [],
-        genres: []
-    )
-
-    /// True when every section is empty — the dropdown uses this to
-    /// decide between rendering results vs. a minimal "no matches" state.
-    var isEmpty: Bool {
-        topResult == nil
-            && artists.isEmpty
-            && albums.isEmpty
-            && tracks.isEmpty
-            && playlists.isEmpty
-            && genres.isEmpty
     }
 }
 
@@ -7017,11 +6857,10 @@ enum SearchScope: String, Hashable, CaseIterable, Sendable {
     }
 }
 
-// NOTE: `SearchItem` is defined above (next to `InstantSearchResults`) with
-// `case genre(Genre)`. The full-page search surface below uses that same
-// type — the duplicate `case genre(String)` variant originally added here
-// was collapsed into the canonical enum when #535 (instant dropdown, which
-// introduced `Genre`) landed alongside this PR.
+// NOTE: `SearchItem` is defined above with `case genre(Genre)`. The
+// full-page search surface below uses that same type — the duplicate
+// `case genre(String)` variant originally added here was collapsed into the
+// canonical enum when #535 (which introduced `Genre`) landed alongside this PR.
 
 // MARK: - MediaSessionDelegate
 
@@ -7061,11 +6900,16 @@ extension AppModel: MediaSessionDelegate {
         // the first place.
         core.setShuffle(on: on)
         refreshStatus()
+        // Mirror the new mode out to Control Center / AVRCP. The remote-command
+        // callbacks self-refresh, but this method is also driven by the command
+        // palette and the Queue Inspector header, which are not (#460).
+        mediaSession.refreshTransportState()
     }
 
     func mediaSessionSetRepeatMode(_ mode: RepeatMode) {
         core.setRepeatMode(mode: mode)
         refreshStatus()
+        mediaSession.refreshTransportState()
     }
 
     func mediaSessionToggleFavorite() -> Bool? {
@@ -7106,6 +6950,14 @@ extension AppModel: MediaSessionDelegate {
             }
         }
         return target
+    }
+
+    func mediaSessionCurrentTrackIsFavorite() -> Bool {
+        guard let track = status.currentTrack else { return false }
+        // Snapshot-aware read: cache (toggled-this-session) → server snapshot
+        // → legacy mirror. The core doesn't update the playing track's
+        // `isFavorite` on a toggle, so this is fresher than the raw snapshot.
+        return isFavorite(track: track)
     }
 
     func mediaSessionArtworkURL(for track: Track, maxWidth: UInt32) -> URL? {
