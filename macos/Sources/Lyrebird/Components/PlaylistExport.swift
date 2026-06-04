@@ -9,7 +9,10 @@ import Foundation
 ///
 /// Two export formats plus a sharable deep link:
 ///   - **M3U** (`#EXTM3U` + `#EXTINF`) — the de-facto playlist interchange
-///     format every desktop player understands.
+///     format every desktop player understands. Entries use the static-
+///     download stream form with an embedded `api_key` so the file is actually
+///     playable in an external player (a bare `/universal` path 401s); see
+///     `streamURL` for the credential caveat.
 ///   - **JSON** — a stable, machine-readable manifest of the playlist for
 ///     re-import / backup / scripting.
 ///   - **Deep link** — the Jellyfin web `details` route, with any embedded
@@ -22,14 +25,70 @@ enum PlaylistExport {
 
     // MARK: - Stream URL
 
-    /// The auth-free universal-stream path for a track, e.g.
-    /// `https://server.example.com/Audio/<id>/universal`. No query parameters
-    /// and no `api_key`, so the resulting M3U is safe to share even though it
-    /// references the origin server. Servers that allow unauthenticated
-    /// download (common on LAN setups) can play it directly; others will
-    /// prompt for auth, which is the correct behaviour for a shared file.
-    static func streamURL(forTrackId trackId: String, base: String) -> String {
-        "\(base)/Audio/\(trackId)/universal"
+    /// Default file extension for the static-download stream URL when a track's
+    /// source container is unknown. `Static=true` returns the original bytes
+    /// regardless of the extension, so this is only a content-type hint for the
+    /// receiving player; `mp3` is the safest universally-recognised default.
+    private static let defaultStreamExtension = "mp3"
+
+    /// Characters left un-escaped when percent-encoding the `api_key` query
+    /// value. `.urlQueryAllowed` permits the query *delimiters* (`&`, `=`, `+`,
+    /// `?`, `;`) which would corrupt the query string if a token contained
+    /// them — real Jellyfin tokens are hex, but we encode defensively so a
+    /// future token format can't split the URL.
+    private static let apiKeyAllowed: CharacterSet = {
+        var set = CharacterSet.urlQueryAllowed
+        set.remove(charactersIn: "&=+?;")
+        return set
+    }()
+
+    /// A playable stream URL for a track.
+    ///
+    /// **Contract (#237).** An exported `.m3u8` is only useful if its entries
+    /// actually play in the external player it's handed to. A bare
+    /// `/Audio/<id>/universal` path is *not* playable: that route requires the
+    /// `Authorization` header (it rejects a query-string `api_key`), which no
+    /// generic M3U player sends, so every entry 401s. We therefore emit the
+    /// static-download form
+    /// `\(base)/Audio/<id>/stream.<ext>?api_key=<token>&Static=true`, which
+    /// authenticates off the query string and streams the original file — the
+    /// shape a desktop player (VLC, etc.) can fetch from a URL alone.
+    ///
+    /// This means the exported file embeds a credential. Callers must surface
+    /// that to the user (see `AppModel.exportPlaylist`'s save-panel warning).
+    /// When `apiKey` is `nil`/empty we fall back to the bare universal path so
+    /// the file is still well-formed; such a file references the origin server
+    /// but will prompt for auth in the player.
+    ///
+    /// `container` is the track's source container (e.g. `flac`, `mp3`); it
+    /// only shapes the URL's extension hint.
+    static func streamURL(
+        forTrackId trackId: String,
+        base: String,
+        apiKey: String? = nil,
+        container: String? = nil
+    ) -> String {
+        guard let apiKey, !apiKey.isEmpty else {
+            // No token to embed — keep the file well-formed with the bare path.
+            return "\(base)/Audio/\(trackId)/universal"
+        }
+        let ext = streamExtension(for: container)
+        let encodedKey = apiKey.addingPercentEncoding(
+            withAllowedCharacters: Self.apiKeyAllowed
+        ) ?? apiKey
+        return "\(base)/Audio/\(trackId)/stream.\(ext)?api_key=\(encodedKey)&Static=true"
+    }
+
+    /// Normalize a source container into a lower-cased, dot-free extension for
+    /// the stream URL, falling back to `defaultStreamExtension` when the
+    /// container is missing or blank.
+    private static func streamExtension(for container: String?) -> String {
+        guard let container else { return defaultStreamExtension }
+        let trimmed = container
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "."))
+            .lowercased()
+        return trimmed.isEmpty ? defaultStreamExtension : trimmed
     }
 
     // MARK: - M3U
@@ -44,7 +103,16 @@ enum PlaylistExport {
     ///
     /// The document always ends with a trailing newline so appending to it /
     /// concatenating files behaves.
-    static func m3u8(playlistName: String, tracks: [Track], serverURL: String) -> String {
+    ///
+    /// `apiKey` is embedded in each entry's stream URL so the file is playable
+    /// in an external player (see `streamURL` for the contract + the embedded-
+    /// credential caveat). Pass `nil` to emit auth-free (prompt-on-play) URLs.
+    static func m3u8(
+        playlistName: String,
+        tracks: [Track],
+        serverURL: String,
+        apiKey: String? = nil
+    ) -> String {
         let base = normalizedBase(serverURL)
         var lines: [String] = ["#EXTM3U"]
         // A comment header naming the playlist — ignored by players, but makes
@@ -54,7 +122,14 @@ enum PlaylistExport {
             let seconds = track.runtimeTicks > 0 ? Int(track.runtimeTicks / 10_000_000) : -1
             let title = displayTitle(for: track)
             lines.append("#EXTINF:\(seconds),\(sanitizedLine(title))")
-            lines.append(streamURL(forTrackId: track.id, base: base))
+            lines.append(
+                streamURL(
+                    forTrackId: track.id,
+                    base: base,
+                    apiKey: apiKey,
+                    container: track.container
+                )
+            )
         }
         return lines.joined(separator: "\n") + "\n"
     }

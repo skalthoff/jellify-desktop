@@ -134,6 +134,93 @@ final class PlaylistExportTests: XCTestCase {
         XCTAssertEqual(out, "#EXTM3U\n#PLAYLIST:Empty\n")
     }
 
+    // MARK: - M3U: playable (authenticated) stream URLs
+
+    /// With an `apiKey`, entries must use the static-download `/stream` form
+    /// with the key embedded so an external player can fetch them from the URL
+    /// alone. A bare `/universal` path requires the Authorization header and
+    /// 401s for a generic M3U player, which is the bug this fixes (#237).
+    func testM3UWithApiKeyEmitsPlayableStreamURL() {
+        let out = PlaylistExport.m3u8(
+            playlistName: "Mix",
+            tracks: [makeTrack(id: "abc", name: "Song")],
+            serverURL: "https://music.example.com",
+            apiKey: "TOKEN123"
+        )
+        XCTAssertTrue(out.contains("https://music.example.com/Audio/abc/stream.mp3?api_key=TOKEN123&Static=true"))
+        // The non-playable bare universal path must NOT be emitted when a key
+        // is available.
+        XCTAssertFalse(out.contains("/Audio/abc/universal"))
+    }
+
+    /// The stream URL extension follows the track's source container so the
+    /// receiving player gets a correct content-type hint.
+    func testM3UStreamExtensionFollowsTrackContainer() {
+        let track = Track(
+            id: "x", name: "T", albumId: nil, albumName: nil,
+            artistName: "A", artistId: nil, indexNumber: nil, discNumber: nil,
+            year: nil, runtimeTicks: 0, isFavorite: false, playCount: 0,
+            container: "FLAC", bitrate: nil, imageTag: nil,
+            playlistItemId: nil, userData: nil
+        )
+        let out = PlaylistExport.m3u8(
+            playlistName: "Mix", tracks: [track],
+            serverURL: "https://m.example.com", apiKey: "K"
+        )
+        // Container is lower-cased into the extension hint.
+        XCTAssertTrue(out.contains("/Audio/x/stream.flac?api_key=K&Static=true"))
+    }
+
+    /// An unknown container falls back to a `.mp3` extension hint.
+    func testM3UStreamExtensionDefaultsToMP3WhenContainerUnknown() {
+        let out = PlaylistExport.m3u8(
+            playlistName: "Mix",
+            tracks: [makeTrack(id: "y", name: "T")],  // fixture has container: nil
+            serverURL: "https://m.example.com",
+            apiKey: "K"
+        )
+        XCTAssertTrue(out.contains("/Audio/y/stream.mp3?api_key=K&Static=true"))
+    }
+
+    /// A token with URL-significant characters is percent-encoded so the query
+    /// string stays well-formed.
+    func testM3UApiKeyIsPercentEncoded() {
+        let out = PlaylistExport.m3u8(
+            playlistName: "Mix",
+            tracks: [makeTrack(id: "z", name: "T")],
+            serverURL: "https://m.example.com",
+            apiKey: "a b&c"
+        )
+        XCTAssertTrue(out.contains("api_key=a%20b%26c"))
+        XCTAssertFalse(out.contains("api_key=a b&c"))
+    }
+
+    /// Backward-compatible: with no `apiKey` (the default), entries stay on the
+    /// auth-free bare universal path — a well-formed file that prompts for auth
+    /// in the player rather than embedding a credential.
+    func testM3UWithoutApiKeyKeepsAuthFreeUniversalPath() {
+        let out = PlaylistExport.m3u8(
+            playlistName: "Mix",
+            tracks: [makeTrack(id: "abc", name: "Song")],
+            serverURL: "https://music.example.com"
+        )
+        XCTAssertTrue(out.contains("https://music.example.com/Audio/abc/universal"))
+        XCTAssertFalse(out.lowercased().contains("api_key"))
+    }
+
+    /// An empty `apiKey` is treated as "no key" — the bare path, not a
+    /// dangling `?api_key=&Static=true`.
+    func testM3UEmptyApiKeyFallsBackToUniversalPath() {
+        let out = PlaylistExport.m3u8(
+            playlistName: "Mix",
+            tracks: [makeTrack(id: "abc", name: "Song")],
+            serverURL: "https://music.example.com",
+            apiKey: ""
+        )
+        XCTAssertTrue(out.contains("/Audio/abc/universal"))
+        XCTAssertFalse(out.contains("api_key="))
+    }
+
     // MARK: - JSON
 
     func testJSONRoundTripsThroughManifest() throws {
