@@ -137,16 +137,38 @@ struct Sidebar: View {
 
             // Server footer
             HStack(spacing: 10) {
-                Circle().fill(Theme.teal).frame(width: 8, height: 8)
-                    .shadow(color: Theme.teal.opacity(0.7), radius: 4)
+                // Status dot + status line reflect *actual* reachability, not
+                // a hard-coded "Connected". A live session whose server has
+                // gone dark (5xx / refused / timeout, per `ServerReachability`)
+                // or a torn-down session reads as disconnected with a muted
+                // dot, so the footer can't claim a healthy link during an
+                // outage. The album count uses `albumsTotal` (the real library
+                // size) rather than `albums.count` (only the pages loaded so
+                // far). See `SidebarServerStatus`.
+                let status = SidebarServerStatus.decide(
+                    hasSession: model.session != nil,
+                    isReachable: model.serverReachability.isServerReachable
+                )
+                let connected = status == .connected
+                Circle()
+                    .fill(connected ? Theme.teal : Theme.ink3)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: connected ? Theme.teal.opacity(0.7) : .clear, radius: 4)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(model.session?.server.name ?? "—")
                         .font(Theme.font(11, weight: .bold))
                         .foregroundStyle(Theme.ink)
                         .lineLimit(1)
-                    Text("Connected · \(model.albums.count) albums")
-                        .font(Theme.font(10, weight: .medium))
-                        .foregroundStyle(Theme.ink3)
+                    Group {
+                        if connected {
+                            Text("sidebar.server.connected \(Int(model.albumsTotal))")
+                        } else {
+                            Text("sidebar.server.disconnected")
+                        }
+                    }
+                    .font(Theme.font(10, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
                 }
                 Spacer()
                 Button { model.logout() } label: {
@@ -423,28 +445,48 @@ struct Sidebar: View {
     /// the Library with a tab pre-selected.
     @ViewBuilder
     private var favoritesRow: some View {
+        // Favorites is its own root tab (`.favorites`), so it's "active" under
+        // the same rule every `navItem` uses: the tab is selected and we're at
+        // the tab root (no drill pushed). Without this the row was the only nav
+        // entry that gave no selected-state feedback — no accent, no selection
+        // background/bar, and no `.isSelected` VoiceOver trait. Mirrors
+        // `navItem`'s active treatment so the two read identically.
+        let active = model.screen == .favorites && model.navPath.isEmpty
         Button {
             model.selectTab(.favorites)
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "heart")
-                    .foregroundStyle(Theme.ink2)
+                    .foregroundStyle(active ? a11yTheme.accent : Theme.ink2)
                     .frame(width: 18)
                     .accessibilityHidden(true)
                 Text("sidebar.stats.favorites")
-                    .font(Theme.font(13, weight: .semibold))
-                    .foregroundStyle(Theme.ink2)
+                    .font(Theme.font(13, weight: active ? .bold : .semibold))
+                    .foregroundStyle(active ? Theme.ink : Theme.ink2)
                     .lineLimit(labelLineLimit)
                 Spacer()
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(active ? Theme.surface2 : .clear)
+            )
+            .overlay(alignment: .leading) {
+                if active {
+                    Rectangle()
+                        .fill(Theme.accent)
+                        .frame(width: 3)
+                        .clipShape(RoundedRectangle(cornerRadius: 1))
+                        .padding(.vertical, 6)
+                }
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("sidebar.stats.favorites")
-        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(active ? [.isSelected, .isButton] : .isButton)
     }
 
     @ViewBuilder
@@ -547,6 +589,16 @@ private struct SidebarInlineEditField: View {
 
     @FocusState private var isFocused: Bool
 
+    /// Set the instant `onSubmit` (Return) fires so the focus-loss that Return
+    /// triggers can't run the blur branch as a *second* commit. Without this,
+    /// pressing Return launched `commitSidebarPlaylistEdit()` and then the
+    /// resign-first-responder flipped `isFocused` to `false` synchronously —
+    /// before that first (async) commit Task had cleared
+    /// `sidebarEditingPlaylistId` — so the `onChange` branch saw a still-live
+    /// edit session and committed again. For a new playlist that meant two
+    /// `createPlaylist` round-trips and two server rows. See #71 / #75 / #590.
+    @State private var committed = false
+
     var body: some View {
         @Bindable var model = model
         TextField("Playlist name", text: $model.sidebarEditingDraft)
@@ -565,6 +617,7 @@ private struct SidebarInlineEditField: View {
                 DispatchQueue.main.async { isFocused = true }
             }
             .onSubmit {
+                committed = true
                 Task { await model.commitSidebarPlaylistEdit() }
             }
             .onExitCommand {
@@ -572,10 +625,12 @@ private struct SidebarInlineEditField: View {
             }
             .onChange(of: isFocused) { _, focused in
                 // #590: Only act on a genuine user-driven focus loss.
-                // If `sidebarEditingPlaylistId` was already cleared (by
-                // Escape, commit, or a concurrent model update), skip the
-                // commit/cancel path so we don't double-act.
+                // Skip when Return already committed this edit (the resulting
+                // focus loss must not commit a second time), and when
+                // `sidebarEditingPlaylistId` was already cleared by Escape,
+                // commit, or a concurrent model update.
                 guard !focused else { return }
+                guard !committed else { return }
                 guard model.sidebarEditingPlaylistId != nil else { return }
                 let trimmed = model.sidebarEditingDraft
                     .trimmingCharacters(in: .whitespacesAndNewlines)

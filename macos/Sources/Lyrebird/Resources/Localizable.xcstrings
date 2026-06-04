@@ -1333,6 +1333,42 @@
         }
       }
     },
+    "sidebar.server.connected %lld" : {
+      "comment" : "Sidebar footer status line when the server is reachable; %lld is the total album count.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Connected · %lld album"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Connected · %lld albums"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "sidebar.server.disconnected" : {
+      "comment" : "Sidebar footer status line when there is no session or the server is unreachable.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disconnected"
+          }
+        }
+      }
+    },
     "sidebar.stats.favorites" : {
       "comment" : "Sidebar stats row: Favorites.",
       "extractionState" : "manual",
@@ -1401,6 +1437,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Go to track"
+          }
+        }
+      }
+    },
+    "stream.error.skipping %@" : {
+      "comment" : "StreamErrorToast body copy; %@ is the failed track name.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“%@” couldn’t play. Skipping."
           }
         }
       }
