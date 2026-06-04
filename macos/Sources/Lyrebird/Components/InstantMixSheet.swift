@@ -236,10 +236,9 @@ struct InstantMixSheet: View {
 
 // MARK: - Seed row
 
-/// One selectable seed candidate. A compact artwork + title/subtitle row that
-/// mirrors `SearchInstantDropdown`'s track row, plus a trailing checkmark when
-/// it's the chosen seed. Genres render with an SF Symbol since they carry no
-/// artwork.
+/// One selectable seed candidate. A compact artwork + title/subtitle row,
+/// plus a trailing checkmark when it's the chosen seed. Genres render with an
+/// SF Symbol since they carry no artwork.
 private struct SeedRow: View {
     @Environment(AppModel.self) private var model
     let item: SearchItem

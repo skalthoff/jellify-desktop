@@ -38,6 +38,13 @@ public protocol MediaSessionDelegate: AnyObject {
     /// Return `nil` if no track is active (command should be treated as
     /// no-op). See issue #35.
     func mediaSessionToggleFavorite() -> Bool?
+    /// Authoritative favorite flag for the currently-playing track, used to
+    /// drive `likeCommand.isActive` on a transport refresh. The delegate
+    /// reconciles its local cache against the server snapshot, so this is
+    /// fresher than `currentStatus.currentTrack?.isFavorite` (which the core
+    /// does not mutate on a favorite toggle). Returns `false` when no track
+    /// is active. See issue #460.
+    func mediaSessionCurrentTrackIsFavorite() -> Bool
     /// Build the artwork URL for a track. Returns `nil` when the track has no
     /// image tag or when the auth context isn't ready. `MediaSession` uses
     /// this rather than holding a reference to `LyrebirdCore` so the session
@@ -157,9 +164,13 @@ public final class MediaSession {
 
         // Keep the previous artwork in place until the new one decodes —
         // clearing it first shows a blank square mid-transition (see #30).
-        if let cached = artworkCache.object(forKey: track.id as NSString) {
+        // Only carry the previous art over when the new track actually has an
+        // image to fetch; a no-art track starts blank so the prior track's
+        // cover never lingers under it (#162).
+        if let cached = artworkCache.object(forKey: Self.artworkCacheKey(for: track)) {
             info[MPMediaItemPropertyArtwork] = cached
-        } else if let lastArt = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] {
+        } else if track.imageTag != nil,
+                  let lastArt = MPNowPlayingInfoCenter.default().nowPlayingInfo?[MPMediaItemPropertyArtwork] {
             info[MPMediaItemPropertyArtwork] = lastArt
         }
 
@@ -212,6 +223,16 @@ public final class MediaSession {
             info.removeValue(forKey: MPNowPlayingInfoPropertyPlaybackQueueCount)
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        refreshRemoteCommandEnablement()
+    }
+
+    /// Re-sync the remote-command surface (Control Center / AVRCP) to the
+    /// delegate's current `PlayerStatus`. Call this after an app-UI-driven
+    /// change to shuffle, repeat, or the favorite flag so Control Center's
+    /// indicators reflect state that didn't originate from a remote command
+    /// (#460). `trackChanged` / `queueChanged` / the remote-command callbacks
+    /// already refresh on their own; this is the hook for everything else.
+    public func refreshTransportState() {
         refreshRemoteCommandEnablement()
     }
 
@@ -405,7 +426,15 @@ public final class MediaSession {
                 return .noActionableNowPlayingItem
             }
             let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 15
-            let target = delegate.currentStatus.positionSeconds + interval
+            // Clamp to the track duration so a skip near the end seeks to the
+            // end instead of past it (the engine seeks with zero tolerance,
+            // so an out-of-range target would otherwise land at an undefined
+            // position). A zero/unknown duration falls back to no clamp.
+            let target = Self.skipForwardTarget(
+                position: delegate.currentStatus.positionSeconds,
+                interval: interval,
+                duration: delegate.currentStatus.durationSeconds
+            )
             delegate.mediaSessionSeek(toSeconds: target)
             self.updateElapsedAndRate(
                 elapsed: target,
@@ -457,6 +486,18 @@ public final class MediaSession {
         }
     }
 
+    /// Compute the clamped seek target for a +interval skip. The result is
+    /// capped at `duration` so a skip near the end lands on the end rather
+    /// than past it; a zero/unknown duration disables the cap so a stream
+    /// with no reported length still skips forward. Pulled out as a pure
+    /// helper so the clamp is unit-testable without a live remote command
+    /// (#408). `internal` for `@testable` access only.
+    static func skipForwardTarget(position: Double, interval: Double, duration: Double) -> Double {
+        let raw = position + interval
+        guard duration > 0 else { return raw }
+        return min(raw, duration)
+    }
+
     private func refreshRemoteCommandEnablement() {
         guard let delegate else { return }
         let status = delegate.currentStatus
@@ -484,9 +525,12 @@ public final class MediaSession {
         cc.changeRepeatModeCommand.currentRepeatType = Self.repeatType(from: status.repeatMode)
 
         // Like: enabled only while a track is playing, with `isActive`
-        // reflecting the current favorite flag.
+        // reflecting the current favorite flag. Read through the delegate
+        // rather than `status.currentTrack?.isFavorite`: the core doesn't
+        // mutate the playing track's snapshot on a favorite toggle, so the
+        // delegate's reconciled cache is the authoritative source (#460).
         cc.likeCommand.isEnabled = hasTrack
-        cc.likeCommand.isActive = status.currentTrack?.isFavorite ?? false
+        cc.likeCommand.isActive = hasTrack ? delegate.mediaSessionCurrentTrackIsFavorite() : false
 
         // Skip forward/backward follow track presence — no point enabling
         // them when there's nothing playing (issue #33).
@@ -502,9 +546,11 @@ public final class MediaSession {
     private func loadArtwork(for track: Track, expectedTrackID: String) async {
         guard let delegate else { return }
 
-        // Cached hit from a prior play of the same track — publish
-        // immediately without a network hop.
-        if let cached = artworkCache.object(forKey: track.id as NSString) {
+        // Cached hit from a prior play of the same album cover — publish
+        // immediately without a network hop. Keyed by album-art identity so
+        // every track on the same album reuses the first fetch (#160).
+        let cacheKey = Self.artworkCacheKey(for: track)
+        if let cached = artworkCache.object(forKey: cacheKey) {
             guard currentTrackID == expectedTrackID else { return }
             publishArtwork(cached)
             return
@@ -513,8 +559,12 @@ public final class MediaSession {
         guard track.imageTag != nil,
               let url = delegate.mediaSessionArtworkURL(for: track, maxWidth: 600)
         else {
-            // No artwork available. Leave whatever was previously displayed
-            // in place rather than clearing — matches Apple Music behaviour.
+            // No artwork available for the new track. If it's still the
+            // current track, clear any placeholder art that `trackChanged`
+            // carried over so a no-art track doesn't keep showing the prior
+            // cover (#162).
+            guard currentTrackID == expectedTrackID else { return }
+            clearArtwork()
             return
         }
 
@@ -535,7 +585,7 @@ public final class MediaSession {
             let artwork = MPMediaItemArtwork(boundsSize: image.size) { requestedSize in
                 Self.resize(image, to: requestedSize)
             }
-            artworkCache.setObject(artwork, forKey: track.id as NSString)
+            artworkCache.setObject(artwork, forKey: cacheKey)
             publishArtwork(artwork)
         } catch is CancellationError {
             // Track changed during the fetch — silent no-op.
@@ -549,6 +599,28 @@ public final class MediaSession {
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPMediaItemPropertyArtwork] = artwork
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    /// Drop the artwork entry from the now-playing info so a track with no
+    /// resolvable cover doesn't inherit the previous track's placeholder
+    /// (#162). No-op when nothing is published yet.
+    private func clearArtwork() {
+        guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo,
+              info[MPMediaItemPropertyArtwork] != nil
+        else { return }
+        info.removeValue(forKey: MPMediaItemPropertyArtwork)
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    /// Stable cache key for a track's cover art. Cover art is album-level on
+    /// Jellyfin, so key by `albumId` (falling back to the track id for
+    /// single tracks) plus the image tag — that way every track on the same
+    /// album shares one cache entry and one network fetch instead of
+    /// re-downloading the identical cover per track (#160). Including the tag
+    /// invalidates the entry if the album art changes server-side.
+    /// `internal` for `@testable` access only.
+    static func artworkCacheKey(for track: Track) -> NSString {
+        "\(track.albumId ?? track.id)|\(track.imageTag ?? "")" as NSString
     }
 
     /// Produce a resized copy of `image` at `size` points. Used by the
