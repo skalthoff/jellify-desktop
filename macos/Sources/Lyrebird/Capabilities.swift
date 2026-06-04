@@ -42,4 +42,14 @@ extension AppModel {
     /// `supportsMarkPlayed` / `supportsArtistPlayShuffle` for the same
     /// pattern.
     var supportsGenreActions: Bool { true }
+
+    /// Playlist search results. The current `core.search` endpoint does
+    /// not return playlists, so `bucketSearchResults` leaves that bucket
+    /// empty. Gating the Playlists scope chip + section behind this flag
+    /// keeps the full-search page from exposing a permanently-empty scope
+    /// whose section can only ever say "No playlists matched this query."
+    /// Flip to `true` — and populate the bucket in `bucketSearchResults`
+    /// — once the core surfaces playlists through `search`. Same pattern
+    /// as `supportsGenreActions`.
+    var supportsPlaylistSearch: Bool { false }
 }
