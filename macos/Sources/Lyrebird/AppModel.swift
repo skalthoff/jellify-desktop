@@ -4830,8 +4830,14 @@ final class AppModel {
 
     /// Present a save panel and write the playlist to disk as an extended-M3U
     /// (`.m3u8`) file. Fetches the playlist's tracks via `playlist_tracks` FFI,
-    /// then delegates the string-building to `PlaylistExport.m3u8`. Stream URLs
-    /// are written without auth tokens so the file is safe to share (#76 / #237).
+    /// then delegates the string-building to `PlaylistExport.m3u8`.
+    ///
+    /// Stream URLs embed the server `api_key` so the exported file is actually
+    /// playable in an external player — a bare `/universal` path requires the
+    /// `Authorization` header and 401s for a generic M3U player (#76 / #237).
+    /// Because that bakes a credential into the file, the save panel warns the
+    /// user before they write it. If the token can't be resolved, the export
+    /// falls back to auth-free (prompt-on-play) URLs.
     func exportPlaylist(playlist: Playlist) {
         Task {
             // Fetch tracks before opening the panel so we know the export
@@ -4841,18 +4847,50 @@ final class AppModel {
                 errorMessage = "No tracks to export for \"\(playlist.name)\"."
                 return
             }
+            // Resolve the server token off the main actor (single FFI call,
+            // not per-track) so the M3U entries authenticate on their own.
+            let apiKey = await resolveExportApiKey(sampleTrackId: tracks.first?.id)
             let content = PlaylistExport.m3u8(
                 playlistName: playlist.name,
                 tracks: tracks,
-                serverURL: serverURL
+                serverURL: serverURL,
+                apiKey: apiKey
             )
             writeExport(
                 content,
                 suggestedName: "\(playlist.name).m3u8",
                 fileExtension: "m3u8",
-                panelTitle: "Export Playlist as .m3u8"
+                panelTitle: "Export Playlist as .m3u8",
+                warning: apiKey == nil
+                    ? nil
+                    : "This .m3u8 embeds your server access key so the tracks play in another app. Anyone you share the file with can stream your library with it — treat it like a password."
             )
         }
+    }
+
+    /// Extract the Jellyfin `api_key` the app authenticates with, for embedding
+    /// in an exported `.m3u8` so its entries are playable standalone. There's
+    /// no dedicated token FFI, so we read it out of `core.streamUrl(...)` —
+    /// which builds the same authenticated URL the audio engine streams from —
+    /// and pull the `api_key` query item. Runs off the main actor (the FFI
+    /// takes the Rust `Inner` mutex) and returns `nil` if the URL can't be
+    /// built or carries no key, in which case the caller emits auth-free URLs.
+    private func resolveExportApiKey(sampleTrackId: String?) async -> String? {
+        guard let sampleTrackId else { return nil }
+        let urlString: String?
+        do {
+            urlString = try await Task.detached(priority: .userInitiated) { [core] in
+                try core.streamUrl(trackId: sampleTrackId, mediaSourceId: nil, playSessionId: nil)
+            }.value
+        } catch {
+            return nil
+        }
+        guard let urlString,
+              let components = URLComponents(string: urlString),
+              let key = components.queryItems?.first(where: { $0.name == "api_key" })?.value,
+              !key.isEmpty
+        else { return nil }
+        return key
     }
 
     /// Present a save panel and write the playlist to disk as a JSON manifest
@@ -4890,17 +4928,25 @@ final class AppModel {
     /// Shared `NSSavePanel` IO for the playlist export formats. Presents the
     /// panel on the main actor and writes `content` to the chosen URL, routing
     /// any failure to `errorMessage`. A user cancel is a silent no-op.
+    ///
+    /// `warning`, when non-nil, is shown in the panel's message area before the
+    /// user commits — used by the M3U export to disclose that the file embeds a
+    /// server credential.
     private func writeExport(
         _ content: String,
         suggestedName: String,
         fileExtension: String,
-        panelTitle: String
+        panelTitle: String,
+        warning: String? = nil
     ) {
         let panel = NSSavePanel()
         panel.title = panelTitle
         panel.nameFieldStringValue = suggestedName
         panel.allowedContentTypes = [.init(filenameExtension: fileExtension) ?? .plainText]
         panel.canCreateDirectories = true
+        if let warning {
+            panel.message = warning
+        }
 
         let response = panel.runModal()
         guard response == .OK, let url = panel.url else { return }
@@ -5138,6 +5184,21 @@ final class AppModel {
     func applyPlaylistDrop(playlistId: String, trackId: String, destinationIndex: Int) {
         guard let tracks = playlistTracks[playlistId] else { return }
         guard let sourceIndex = tracks.firstIndex(where: { $0.id == trackId }) else { return }
+        moveTrackInPlaylist(playlistId: playlistId, from: sourceIndex, to: destinationIndex)
+    }
+
+    /// Index-addressed variant of `applyPlaylistDrop`. The drag payload carries
+    /// the source row's index (see `PlaylistReorderPayload`), which is the only
+    /// thing that disambiguates a duplicated track: when the same track id
+    /// appears more than once in a playlist, resolving by id alone always moves
+    /// the first copy. Routing by index moves the exact copy the user grabbed.
+    ///
+    /// The index is validated against the *current* cached order before the
+    /// move, so a stale index from a list that mutated mid-drag is dropped
+    /// rather than moving the wrong row.
+    func applyPlaylistDrop(playlistId: String, sourceIndex: Int, destinationIndex: Int) {
+        guard let tracks = playlistTracks[playlistId] else { return }
+        guard sourceIndex >= 0, sourceIndex < tracks.count else { return }
         moveTrackInPlaylist(playlistId: playlistId, from: sourceIndex, to: destinationIndex)
     }
 

@@ -140,7 +140,55 @@ final class FullScreenChromeTests: XCTestCase {
         )
     }
 
+    /// `detach()` must not blindly reset the *app-global*
+    /// `NSApp.presentationOptions` to `[]`: that's a single value shared across
+    /// every window, so clobbering it on one window's teardown would yank a
+    /// *different* window's full-screen auto-hide chrome out from under it. The
+    /// reset must be gated on *this* window actually being in full-screen
+    /// (`styleMask.contains(.fullScreen)`) — only then do we own the override
+    /// and must clear it to avoid stranding a hidden menu bar. Asserted against
+    /// source because realizing a live full-screen `NSWindow` needs a
+    /// window-server connection a headless run lacks.
+    func testDetachGatesGlobalPresentationResetOnOwnFullScreenState() throws {
+        let source = try Self.readSource("Sources/Lyrebird/System/FullScreenChromeController.swift")
+        // The reset must be guarded by this window's own full-screen state.
+        XCTAssertTrue(
+            source.contains("window?.styleMask.contains(.fullScreen) == true"),
+            "detach() must gate the global presentation-options reset on this window being full-screen"
+        )
+        // And it must only ever clear to empty inside that guarded block, never
+        // unconditionally at function scope.
+        let detachBody = try Self.slice(
+            source,
+            from: "func detach() {",
+            to: "window = nil"
+        )
+        if let resetRange = detachBody.range(of: "NSApp.presentationOptions = []") {
+            let beforeReset = detachBody[detachBody.startIndex..<resetRange.lowerBound]
+            XCTAssertTrue(
+                beforeReset.contains("styleMask.contains(.fullScreen)"),
+                "the presentationOptions reset must sit behind the full-screen guard"
+            )
+        } else {
+            XCTFail("detach() should still clear presentationOptions when this window owns full-screen")
+        }
+    }
+
     // MARK: - Helpers
+
+    /// Return the substring of `source` between the first occurrence of `from`
+    /// and the next occurrence of `to` (exclusive of `to`). Traps the test with
+    /// a clear failure if either marker is missing.
+    private static func slice(_ source: String, from: String, to: String) throws -> Substring {
+        guard let start = source.range(of: from) else {
+            throw XCTSkip("marker '\(from)' not found")
+        }
+        let rest = source[start.upperBound...]
+        guard let end = rest.range(of: to) else {
+            throw XCTSkip("marker '\(to)' not found after '\(from)'")
+        }
+        return rest[rest.startIndex..<end.lowerBound]
+    }
 
     /// Resolve a repo-relative source path from this test file's location so
     /// the structural assertions don't depend on the CWD of the test runner.

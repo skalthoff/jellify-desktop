@@ -112,7 +112,19 @@ struct EmptyStateView: View {
         }
         .padding(.vertical, 56)
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
+        // When CTAs are present the subtree contains interactive buttons, so
+        // we must `.contain` (not `.combine`) — `.combine` flattens the
+        // buttons into a single static element, stripping their `.isButton`
+        // trait and tap action so VoiceOver can't reach or activate them.
+        // With no CTA the subtree is text-only, so `.combine` reads the
+        // headline + body as one element, which is the nicer announcement.
+        .accessibilityElement(children: hasCTA ? .contain : .combine)
+    }
+
+    /// Whether the view renders at least one interactive CTA button. Drives
+    /// the accessibility-container strategy (see `body`).
+    private var hasCTA: Bool {
+        primaryCTA != nil || secondaryCTA != nil
     }
 }
 

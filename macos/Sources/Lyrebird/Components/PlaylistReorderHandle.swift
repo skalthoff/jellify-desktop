@@ -102,10 +102,14 @@ private struct PlaylistReorderModifier: ViewModifier {
             }
             .onHover { isHovering = $0 }
             .onDrag {
-                // Payload is the track id. Consumers key off the registered
-                // UTI so drops from other drag sources are rejected.
+                // Payload encodes the source *index* alongside the track id as
+                // "<index>|<trackId>". The index is what disambiguates a
+                // duplicated track: a playlist can contain the same track id
+                // more than once, so resolving the moved row by id alone would
+                // always grab the first copy. Carrying the index lets the drop
+                // move the exact copy the user grabbed.
                 NSItemProvider(
-                    object: NSString(string: trackId)
+                    object: NSString(string: PlaylistReorderPayload.encode(index: index, trackId: trackId))
                 )
             }
             .onDrop(
@@ -117,6 +121,34 @@ private struct PlaylistReorderModifier: ViewModifier {
                     model: model
                 )
             )
+    }
+}
+
+/// Wire format for the drag payload: `"<sourceIndex>|<trackId>"`. The source
+/// index disambiguates duplicated tracks (same id appearing more than once in
+/// a playlist) so the dropped copy is moved by position, not re-derived from
+/// the id. The track id is retained for the legacy id-based fallback when a
+/// payload arrives without an index (e.g. a stale drag source).
+enum PlaylistReorderPayload {
+    /// Build the `"<index>|<trackId>"` wire string.
+    static func encode(index: Int, trackId: String) -> String {
+        "\(index)|\(trackId)"
+    }
+
+    /// Parse a payload string into its `(sourceIndex, trackId)` parts.
+    ///
+    /// Splits on the *first* `|` only, so a track id that itself contains a
+    /// pipe round-trips intact. Returns `sourceIndex == nil` when the leading
+    /// segment isn't an integer — the caller then falls back to resolving the
+    /// move by track id.
+    static func decode(_ payload: String) -> (sourceIndex: Int?, trackId: String) {
+        guard let sep = payload.firstIndex(of: "|") else {
+            // No separator: treat the whole string as a bare track id.
+            return (nil, payload)
+        }
+        let indexPart = String(payload[payload.startIndex..<sep])
+        let trackId = String(payload[payload.index(after: sep)...])
+        return (Int(indexPart), trackId)
     }
 }
 
@@ -157,13 +189,25 @@ private struct PlaylistReorderDropDelegate: DropDelegate {
         let destinationIndex = self.destinationIndex
         let model = self.model
         provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let trackId = object as? String else { return }
+            guard let payload = object as? String else { return }
+            let parsed = PlaylistReorderPayload.decode(payload)
             Task { @MainActor in
-                model.applyPlaylistDrop(
-                    playlistId: playlistId,
-                    trackId: trackId,
-                    destinationIndex: destinationIndex
-                )
+                if let sourceIndex = parsed.sourceIndex {
+                    // Preferred path: move the exact copy the user grabbed by
+                    // its source index, so duplicated tracks move independently.
+                    model.applyPlaylistDrop(
+                        playlistId: playlistId,
+                        sourceIndex: sourceIndex,
+                        destinationIndex: destinationIndex
+                    )
+                } else {
+                    // Legacy fallback: no index in the payload, resolve by id.
+                    model.applyPlaylistDrop(
+                        playlistId: playlistId,
+                        trackId: parsed.trackId,
+                        destinationIndex: destinationIndex
+                    )
+                }
             }
         }
         return true

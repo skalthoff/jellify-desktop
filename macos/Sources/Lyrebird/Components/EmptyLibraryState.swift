@@ -11,12 +11,6 @@ import AppKit
 struct EmptyLibraryState: View {
     let serverUrl: URL?
 
-    /// Resolved copy for the a11y-combine label. We pull the catalog values
-    /// once here so the composite `Text` uses the same phrasing the rest of
-    /// the view renders.
-    private var headline: String { String(localized: "empty.library.title", bundle: .main) }
-    private var subtitle: String { String(localized: "empty.library.subtitle", bundle: .main) }
-
     var body: some View {
         VStack(spacing: 18) {
             Image(systemName: "music.note.list")
@@ -67,8 +61,13 @@ struct EmptyLibraryState: View {
         }
         .padding(.vertical, 56)
         .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(headline). \(subtitle)")
+        // `.contain` (not `.combine`): the subtree holds the interactive
+        // "Open Jellyfin web" button, and `.combine` would flatten it into a
+        // single static element — stripping its `.isButton` trait and action
+        // so VoiceOver couldn't reach or activate it. With `.contain` the
+        // headline, subtitle, and button each stay individually focusable,
+        // and each already exposes its own localized label.
+        .accessibilityElement(children: .contain)
     }
 }
 
