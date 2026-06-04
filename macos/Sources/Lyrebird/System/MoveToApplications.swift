@@ -394,25 +394,31 @@ enum MoveToApplications {
         return running ? .differentRunning : .differentIdle
     }
 
-    /// Move `url` to the Trash via `NSWorkspace.recycle`, returning whether it
-    /// succeeded. Recoverable by design — the user can restore from the Trash if
-    /// the subsequent copy fails.
+    /// Move `url` to the Trash, returning whether it succeeded. Recoverable by
+    /// design — the user can restore from the Trash if the subsequent copy
+    /// fails.
+    ///
+    /// Uses the synchronous `FileManager.trashItem(at:resultingItemURL:)`
+    /// rather than the async `NSWorkspace.recycle(_:completionHandler:)`. This
+    /// is reached from `move(...)`, a synchronous `@MainActor` function invoked
+    /// after `alert.runModal()` returns — i.e. while the main run loop is
+    /// blocked. `NSWorkspace.recycle` delivers its completion handler on the
+    /// main thread, so blocking the main thread on a semaphore until that
+    /// handler fires deadlocks permanently (the handler can never run). The
+    /// `FileManager` variant returns on the calling thread and never hangs,
+    /// matching the original synchronous removal's non-blocking behaviour while
+    /// keeping the to-Trash recoverability.
     @MainActor
     private static func recycle(_ url: URL) -> Bool {
-        var recycleError: Error?
-        let semaphore = DispatchSemaphore(value: 0)
-        NSWorkspace.shared.recycle([url]) { _, error in
-            recycleError = error
-            semaphore.signal()
-        }
-        semaphore.wait()
-        if let recycleError {
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            return true
+        } catch {
             Log.app.error(
-                "MoveToApplications recycle failed: \(recycleError.localizedDescription, privacy: .public)"
+                "MoveToApplications recycle failed: \(error.localizedDescription, privacy: .public)"
             )
             return false
         }
-        return true
     }
 
     /// Ask the user before replacing a *different* app of the same name already
