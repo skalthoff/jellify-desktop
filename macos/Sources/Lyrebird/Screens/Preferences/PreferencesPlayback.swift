@@ -33,6 +33,8 @@ import SwiftUI
 ///
 /// Spec: `research/03-ux-patterns.md` Issue 68 and GitHub issues #260 / #116.
 struct PreferencesPlayback: View {
+    @Environment(AppModel.self) private var model
+
     @AppStorage("playback.streamingQuality") private var streamingQuality: PlaybackQuality = .automatic
     @AppStorage("playback.downloadQuality") private var downloadQuality: PlaybackQuality = .lossless
     @AppStorage("playback.preferredCodec") private var preferredCodec: PreferredAudioCodec = .automatic
@@ -47,10 +49,32 @@ struct PreferencesPlayback: View {
     @AppStorage("playback.preGainDb") private var preGainDb: Double = 0
     @AppStorage("playback.stopAfterCurrent") private var stopAfterCurrent: Bool = false
 
+    /// Normalization picker binding. Reads `@AppStorage` for instant UI, and
+    /// routes the change through `AppModel` so the live player re-reads the
+    /// current track's ReplayGain tags and re-applies the gain immediately
+    /// rather than only on the next track (#42). Pre-gain rides along so the
+    /// engine always sees a consistent (mode, pre-gain) pair.
     private var normalization: Binding<NormalizationMode> {
         Binding(
             get: { NormalizationMode(rawValue: normalizationRaw) ?? .off },
-            set: { normalizationRaw = $0.rawValue }
+            set: { newMode in
+                normalizationRaw = newMode.rawValue
+                model.setNormalization(mode: newMode, preGainDb: preGainDb)
+            }
+        )
+    }
+
+    /// Pre-gain slider binding. Writes `@AppStorage` for instant UI and pushes
+    /// the new pre-gain onto the engine via `AppModel`, alongside the current
+    /// normalization mode (#42).
+    private var preGain: Binding<Double> {
+        Binding(
+            get: { preGainDb },
+            set: { newValue in
+                preGainDb = newValue
+                let mode = NormalizationMode(rawValue: normalizationRaw) ?? .off
+                model.setNormalization(mode: mode, preGainDb: newValue)
+            }
         )
     }
 
@@ -145,7 +169,7 @@ struct PreferencesPlayback: View {
                     label: "Pre-gain",
                     help: preGainHelp
                 ) {
-                    PreGainSlider(db: $preGainDb)
+                    PreGainSlider(db: preGain)
                 }
             }
 
@@ -502,10 +526,8 @@ struct PreferenceRow<Control: View>: View {
     }
 }
 
-#Preview {
-    PreferencesPlayback()
-        .frame(width: 560, height: 520)
-        .padding(32)
-        .background(Theme.bg)
-        .preferredColorScheme(.dark)
-}
+// Note: real rendering requires an `AppModel` in the environment — the pane
+// reads `@Environment(AppModel.self)` to route normalization / pre-gain changes
+// onto the live engine (#42). The Settings scene injects it at runtime; a bare
+// `#Preview` would crash on the missing environment value, so it's intentionally
+// omitted here — matching `PreferencesAudio`.

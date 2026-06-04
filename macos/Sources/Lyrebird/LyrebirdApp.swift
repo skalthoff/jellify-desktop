@@ -110,6 +110,21 @@ struct LyrebirdApp: App {
         .defaultSize(width: 480, height: 560)
         .windowResizability(.contentSize)
 
+        // Dedicated About window (#25). A single-instance `Window` (not a
+        // `WindowGroup`) so the app-menu "About Lyrebird" item — rebound via
+        // `CommandGroup(replacing: .appInfo)` above — summons exactly one
+        // panel. `AboutView` reads version / credits from the shared
+        // `AboutInfo` and the connected-server host from the live `AppModel`,
+        // so it needs the model in its environment. `.contentSize` lets the
+        // fixed-width column size itself to its content.
+        Window("about.window.title", id: AboutView.windowID) {
+            AboutView()
+                .environment(model)
+                .preferredColorScheme(preferredColorScheme)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+
         // Status-bar "Now Playing" extra. A `MenuBarExtra` lives in the system
         // menu bar, so this transport surface stays reachable even when every
         // Lyrebird window is closed or the app is hidden. The `.window`
@@ -186,6 +201,19 @@ struct LyrebirdCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        // MARK: App menu — About Lyrebird (#25)
+        //
+        // Replace the stock AppKit about box with our branded About window.
+        // `replacing: .appInfo` keeps the item in its standard top-of-app-menu
+        // position; the button summons the single-instance `Window(id:)` scene
+        // declared below. The sibling `after: .appInfo` group (Check for
+        // Updates…) still anchors right beneath it.
+        CommandGroup(replacing: .appInfo) {
+            Button("menu.app.about") {
+                openWindow(id: AboutView.windowID)
+            }
+        }
+
         // MARK: App menu — Check for Updates… (Sparkle, #864)
         //
         // Standard Sparkle placement: just after the "About Lyrebird" item in

@@ -16,6 +16,12 @@ struct Sidebar: View {
     // accent-tinted glyphs clear 4.5:1 (#888). The 3pt active-tab indicator
     // rail is decorative and keeps the base token.
     @Environment(\.accessibleTheme) private var a11yTheme
+    // Dynamic Type size drives row reflow (#338): at the accessibility text
+    // sizes the nav / stat / playlist labels would otherwise elide to an
+    // unreadable single-line ellipsis, so we let them wrap to a second line.
+    // The line-limit decision is factored into the pure `DynamicTypeReflow`
+    // helper (shared with `PlayerBar`) so the threshold is unit-tested.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// The playlist row currently hovered by the pointer. Used to reveal
     /// the subtle trailing affordances (copying spinner slot); `nil` when
@@ -29,6 +35,28 @@ struct Sidebar: View {
     @AppStorage(LibraryDefaults.sidebarShowAlbumsKey) private var showAlbums = true
     @AppStorage(LibraryDefaults.sidebarShowArtistsKey) private var showArtists = true
     @AppStorage(LibraryDefaults.sidebarShowPlaylistsKey) private var showPlaylists = true
+
+    /// Max lines a nav / stat / playlist label may use at the current text
+    /// size (#338): `1` at body sizes (these are short nav nouns by design),
+    /// `2` once Dynamic Type reaches the accessibility range so a scaled-up
+    /// label wraps gracefully instead of eliding mid-word. `hasContextLabel`
+    /// is irrelevant to the sidebar, so we pass `false`.
+    private var labelLineLimit: Int {
+        DynamicTypeReflow.decide(
+            dynamicTypeSize: dynamicTypeSize,
+            hasContextLabel: false
+        ).sidebarLabelLineLimit
+    }
+    // #317: collapse state + manual drag-reorder for the Playlists section.
+    // `playlistsCollapsed` hides the rows behind the header's disclosure
+    // chevron; `playlistOrderRaw` is a CSV of playlist ids that the live list
+    // is sorted by (see `PlaylistSidebarOrder`). Both persist via @AppStorage.
+    @AppStorage(LibraryDefaults.sidebarPlaylistsCollapsedKey) private var playlistsCollapsed = false
+    @AppStorage(LibraryDefaults.sidebarPlaylistOrderKey) private var playlistOrderRaw = ""
+
+    // Disclosure-chevron rotation + row reveal honour Reduce Motion, matching
+    // the rest of the component library (e.g. AmbientWash, ArtistCard).
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         @Bindable var model = model
@@ -153,12 +181,41 @@ struct Sidebar: View {
     @ViewBuilder
     private var playlistsSection: some View {
         let editingNew = model.sidebarEditingPlaylistId == AppModel.sidebarNewPlaylistSentinel
+        // Sort the live playlists by the persisted manual order. New playlists
+        // append; deleted ones prune — see `PlaylistSidebarOrder`.
+        let orderedPlaylists = PlaylistSidebarOrder.order(
+            model.playlists,
+            by: PlaylistSidebarOrder.decode(playlistOrderRaw),
+            id: \.id
+        )
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
-                Text("PLAYLISTS")
-                    .font(Theme.font(10, weight: .bold))
-                    .foregroundStyle(Theme.ink3)
-                    .tracking(1.5)
+                // #317: header is a disclosure toggle. Clicking the chevron /
+                // label collapses the rows while keeping the header in place.
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                        playlistsCollapsed.toggle()
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(Theme.ink3)
+                            .rotationEffect(.degrees(playlistsCollapsed ? 0 : 90))
+                            .frame(width: 10)
+                        Text("PLAYLISTS")
+                            .font(Theme.font(10, weight: .bold))
+                            .foregroundStyle(Theme.ink3)
+                            .tracking(1.5)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Playlists")
+                .accessibilityValue(playlistsCollapsed ? "Collapsed" : "Expanded")
+                .accessibilityHint("Show or hide your playlists")
+                .accessibilityAddTraits(.isButton)
+
                 Spacer()
                 Button { model.beginNewPlaylist() } label: {
                     Image(systemName: "plus")
@@ -175,26 +232,56 @@ struct Sidebar: View {
             .padding(.top, 2)
             .padding(.bottom, 4)
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 1) {
+            if !playlistsCollapsed {
+                // A `List` (rather than a ScrollView+VStack) is what unlocks
+                // SwiftUI's native `.onMove` drag-reorder. It's styled down to
+                // match the rest of the sidebar: plain rows, no separators, a
+                // clear background so the sidebar material shows through.
+                List {
                     // In-progress new-playlist row, shown at the top so the
-                    // user sees where the new item will land.
+                    // user sees where the new item will land. Not movable.
                     if editingNew {
                         newPlaylistEditRow
+                            .listRowSidebarStyling()
+                            .moveDisabled(true)
                     }
-                    ForEach(model.playlists, id: \.id) { playlist in
+                    ForEach(orderedPlaylists, id: \.id) { playlist in
                         playlistRow(playlist)
+                            .listRowSidebarStyling()
+                    }
+                    .onMove { source, destination in
+                        moveSidebarPlaylists(
+                            displayed: orderedPlaylists,
+                            from: source,
+                            to: destination
+                        )
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, 0)
+                // Reasonable ceiling so a user with hundreds of playlists
+                // doesn't push the server footer off-screen. Scroll handles
+                // the overflow.
+                .frame(maxHeight: 280)
             }
-            // Reasonable ceiling so a user with hundreds of playlists
-            // doesn't push the server footer off-screen. Scroll handles
-            // the overflow.
-            .frame(maxHeight: 280)
         }
         // #585: Allow space-bar input in the inline rename / new-playlist
         // TextField even while the global Play/Pause ⎵ shortcut is active.
         .spaceKeyGuardForTextField()
+    }
+
+    /// Fold a `.onMove` from the Playlists list into the persisted order
+    /// (#317). `displayed` is the already-sorted list the user sees, so the
+    /// move offsets line up; we re-encode the whole arrangement to AppStorage.
+    /// Pure list math — no server round-trip (see `PlaylistSidebarOrder`).
+    private func moveSidebarPlaylists(displayed: [Playlist], from source: IndexSet, to destination: Int) {
+        let next = PlaylistSidebarOrder.applyingMove(
+            displayedIds: displayed.map(\.id),
+            source: source,
+            destination: destination
+        )
+        playlistOrderRaw = PlaylistSidebarOrder.encode(next)
     }
 
     // MARK: - Playlist row (display + inline edit)
@@ -225,7 +312,10 @@ struct Sidebar: View {
                 Text(playlist.name)
                     .font(Theme.font(12, weight: isActiveScreen ? .bold : .medium))
                     .foregroundStyle(isActiveScreen ? Theme.ink : Theme.ink2)
-                    .lineLimit(1)
+                    // #338: a long playlist name elides on one line at body
+                    // sizes but is allowed a second line at accessibility
+                    // sizes before tail-eliding, so it stays readable.
+                    .lineLimit(labelLineLimit)
                     .truncationMode(.tail)
             }
 
@@ -298,6 +388,9 @@ struct Sidebar: View {
                 Text(label)
                     .font(Theme.font(13, weight: active ? .bold : .semibold))
                     .foregroundStyle(active ? Theme.ink : Theme.ink2)
+                    // #338: wrap to a second line at accessibility sizes
+                    // instead of eliding; one line at body sizes by design.
+                    .lineLimit(labelLineLimit)
                 Spacer()
             }
             .padding(.horizontal, 10)
@@ -341,6 +434,7 @@ struct Sidebar: View {
                 Text("sidebar.stats.favorites")
                     .font(Theme.font(13, weight: .semibold))
                     .foregroundStyle(Theme.ink2)
+                    .lineLimit(labelLineLimit)
                 Spacer()
             }
             .padding(.horizontal, 10)
@@ -375,11 +469,18 @@ struct Sidebar: View {
                 Text(label)
                     .font(Theme.font(13, weight: .semibold))
                     .foregroundStyle(Theme.ink2)
-                Spacer()
+                    // #338: wrap rather than elide at accessibility sizes.
+                    .lineLimit(labelLineLimit)
+                Spacer(minLength: 8)
                 if let c = count {
                     Text("\(c)")
                         .font(Theme.font(10, weight: .bold))
                         .foregroundStyle(Theme.ink3)
+                        // The count is a short numeral; keep it on one line so
+                        // it never wraps under the label, even when the label
+                        // itself wraps to two lines.
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .padding(.horizontal, 10)
@@ -408,6 +509,22 @@ struct Sidebar: View {
             .padding(.horizontal, 18)
             .padding(.top, 20)
             .padding(.bottom, 6)
+    }
+}
+
+// MARK: - #317: List-row chrome reset for the reorderable Playlists list
+
+private extension View {
+    /// Strip a `List` row's default insets / background / separator so a
+    /// playlist row drawn inside the reorderable `List` renders identically to
+    /// the previous ScrollView+VStack layout. The row already paints its own
+    /// 1pt vertical spacing and rounded hover/active background, so the List
+    /// must contribute nothing but the drag affordance.
+    func listRowSidebarStyling() -> some View {
+        self
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 1, trailing: 0))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 }
 

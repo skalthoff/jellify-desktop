@@ -146,33 +146,12 @@ struct PreferencesAbout: View {
 
     // MARK: - Bundle values
 
-    /// Marketing version (`CFBundleShortVersionString`). Falls back to a
-    /// dev-only placeholder when the bundle key is missing — e.g. when
-    /// running from Xcode against an unconfigured Info.plist.
-    private var versionText: String {
-        bundleString(for: "CFBundleShortVersionString") ?? "0.0.0 (dev)"
-    }
-
-    /// Build number (`CFBundleVersion`). Similar fallback reasoning.
-    private var buildText: String {
-        bundleString(for: "CFBundleVersion") ?? "—"
-    }
-
-    /// Copyright string (`NSHumanReadableCopyright`). When missing, render a
-    /// generic attribution for Skyler Althoff + Lyrebird contributors rather
-    /// than an empty row.
-    private var copyrightText: String {
-        bundleString(for: "NSHumanReadableCopyright")
-            ?? "Copyright © Skyler Althoff and Lyrebird contributors."
-    }
-
-    private func bundleString(for key: String) -> String? {
-        guard let value = Bundle.main.object(forInfoDictionaryKey: key) as? String,
-              !value.isEmpty else {
-            return nil
-        }
-        return value
-    }
+    /// Version / build / copyright all resolve through ``AboutInfo`` — the same
+    /// shared source the dedicated About window (#25) reads — so the Settings
+    /// pane and the app-menu About box can never advertise different values.
+    private var versionText: String { AboutInfo.version() }
+    private var buildText: String { AboutInfo.build() }
+    private var copyrightText: String { AboutInfo.copyright() }
 
     // MARK: - Actions
 

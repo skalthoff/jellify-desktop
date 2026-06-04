@@ -8,6 +8,13 @@ struct PlayerBar: View {
     // accent-tinted transport icons clear 4.5:1 (#888). Decorative accents
     // (e.g. the play-button fill) keep the base token.
     @Environment(\.accessibleTheme) private var a11yTheme
+    // Dynamic Type size drives layout reflow (#338): at the accessibility text
+    // sizes the three fixed-width regions (meta / transport / volume) can't
+    // share one row without clipping, so we stack them vertically and let the
+    // bar grow taller. The decision is factored into the pure
+    // `DynamicTypeReflow.decide` helper so the threshold is unit-tested without
+    // a live scene; this view only reads the size and branches on the result.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Local scrubber position used while the user is actively dragging the
     /// Slider. We don't bind the Slider straight to `status.positionSeconds`
@@ -19,27 +26,29 @@ struct PlayerBar: View {
     @State private var isScrubbing: Bool = false
 
     var body: some View {
-        HStack(spacing: 16) {
-            leftMeta
-                .frame(width: 280, alignment: .leading)
-                // Tab order: primary metadata → transport → volume.
-                // See #334. Higher priority ships focus here first.
-                .accessibilitySortPriority(60)
-            Spacer(minLength: 16)
-            centerTransport
-                .frame(maxWidth: 640)
-                .accessibilitySortPriority(50)
-            Spacer(minLength: 16)
-            rightControls
-                .frame(width: 220, alignment: .trailing)
-                .accessibilitySortPriority(40)
+        // Reflow decision for the current text size (#338). `hasContextLabel`
+        // tracks the "Playing from {source}" affordance so the resting
+        // (non-reflowed) min-height still matches the historical 78/96pt chrome
+        // and the bar doesn't twitch when the label toggles between tracks.
+        let reflow = DynamicTypeReflow.decide(
+            dynamicTypeSize: dynamicTypeSize,
+            hasContextLabel: model.currentContext != nil
+        )
+        Group {
+            if reflow.stackPlayerBar {
+                stackedLayout
+            } else {
+                horizontalLayout
+            }
         }
         .padding(.horizontal, 16)
-        // Bar grows a few points taller when a "Playing from {source}"
-        // label is present (#82). Keeping both heights hard-coded preserves
-        // the stable bar chrome so the whole app doesn't shift a pixel
-        // when the label appears or disappears between tracks.
-        .frame(height: model.currentContext == nil ? 78 : 96)
+        // Below the accessibility sizes this is the historical fixed
+        // 78/96pt height, but applied as a *minimum* rather than an exact
+        // frame so a one-notch glyph overflow can nudge the bar a couple of
+        // points taller instead of clipping. At the accessibility sizes the
+        // floor jumps so the vertically stacked regions seat without overlap;
+        // real content taller than the floor grows the bar downward. See #338.
+        .frame(minHeight: reflow.minBarHeight)
         // HUD-style translucent material for the unified transport bar so
         // the chrome matches Music.app's bottom panel and reads as "system
         // chrome" rather than app content. Brand wash on top keeps Lyrebird's
@@ -56,6 +65,52 @@ struct PlayerBar: View {
         // before the persistent chrome at the bottom. See #334.
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Playback controls")
+    }
+
+    /// The default single-row layout used at the body text sizes (#338). The
+    /// three regions ride fixed widths with flexible spacers between them, the
+    /// historical chrome. `accessibilitySortPriority` keeps the #334 tab order
+    /// (meta → transport → volume) regardless of layout axis.
+    @ViewBuilder
+    private var horizontalLayout: some View {
+        HStack(spacing: 16) {
+            leftMeta
+                .frame(width: 280, alignment: .leading)
+                // Tab order: primary metadata → transport → volume.
+                // See #334. Higher priority ships focus here first.
+                .accessibilitySortPriority(60)
+            Spacer(minLength: 16)
+            centerTransport
+                .frame(maxWidth: 640)
+                .accessibilitySortPriority(50)
+            Spacer(minLength: 16)
+            rightControls
+                .frame(width: 220, alignment: .trailing)
+                .accessibilitySortPriority(40)
+        }
+    }
+
+    /// Accessibility-size layout (#338): the same three regions stacked
+    /// vertically so the Dynamic-Type-scaled glyphs each get the full bar
+    /// width instead of being squeezed into a 280 / 220pt column where they'd
+    /// clip. The regions drop their fixed widths and fill the width; the bar's
+    /// `minHeight` (from `DynamicTypeReflow`) grows to seat all three rows.
+    /// Sort priorities are preserved so VoiceOver / Tab traversal order is
+    /// identical to the horizontal layout — only the visual axis changes.
+    @ViewBuilder
+    private var stackedLayout: some View {
+        VStack(spacing: 10) {
+            leftMeta
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilitySortPriority(60)
+            centerTransport
+                .frame(maxWidth: .infinity)
+                .accessibilitySortPriority(50)
+            rightControls
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .accessibilitySortPriority(40)
+        }
+        .padding(.vertical, 10)
     }
 
     @ViewBuilder

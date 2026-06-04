@@ -281,6 +281,16 @@ final class AppModel {
     /// section, so the two never drift. Hidden in the Home layout when
     /// empty — a fresh user with no favorited artists sees no shelf.
     var favoriteArtists: [Artist] = []
+    /// "Recently Discovered Artists" for the Home circle-card row (#252).
+    /// The album artists whose catalogue most recently landed on the
+    /// server, newest first — sorted server-side by `DateCreated`
+    /// descending via the `core.listRecentlyAddedArtists` FFI (the
+    /// `Artists/AlbumArtists` endpoint with a `DateCreated`-desc sort).
+    /// Distinct from `recentlyAdded`, which surfaces newly-added *albums*:
+    /// this row answers "whose music just showed up in my library?".
+    /// Reuses `ArtistCard`. Capped at a modest count for the carousel and
+    /// hidden when empty so a fresh / static library renders no shelf.
+    var recentlyDiscoveredArtists: [Artist] = []
     /// "Rediscover" — albums the user has never played, for the Home shelf
     /// of the same name (#57). Backed by an `/Items` query filtered to
     /// `IsUnplayed` and sorted `Random` so the row surfaces a fresh,
@@ -1116,6 +1126,11 @@ final class AppModel {
         // pane to mount. An empty/absent value means "follow system default".
         let savedDeviceUID = UserDefaults.standard.string(forKey: AudioOutputDevices.preferenceKey) ?? ""
         self.audio.outputDeviceUID = savedDeviceUID.isEmpty ? nil : savedDeviceUID
+        // Seed the engine with the persisted ReplayGain / pre-gain selection so
+        // the first track is normalized without waiting for the Preferences
+        // pane to mount (#42). `.off` (the default) leaves the level untouched.
+        self.audio.normalizationMode = AppModel.normalizationMode(forStoredValue: UserDefaults.standard.string(forKey: AppModel.normalizationKey))
+        self.audio.normalizationPreGainDb = UserDefaults.standard.double(forKey: AppModel.preGainKey)
         // Seed the scrobble-connected flag from the core's persisted token so
         // the Preferences pane shows the right state on first open.
         self.scrobbleConnected = core.isScrobbleConfigured()
@@ -1254,6 +1269,7 @@ final class AppModel {
         favoriteAlbumsAll = []
         favoriteAlbumsVisible = []
         favoriteArtists = []
+        recentlyDiscoveredArtists = []
         rediscover = []
         suggestions = []
         searchResults = nil
@@ -1327,6 +1343,7 @@ final class AppModel {
         favoriteAlbumsAll = []
         favoriteAlbumsVisible = []
         favoriteArtists = []
+        recentlyDiscoveredArtists = []
         rediscover = []
         suggestions = []
         searchResults = nil
@@ -1489,6 +1506,7 @@ final class AppModel {
         await refreshQuickPicks()
         await refreshFavoriteAlbums()
         await refreshFavoriteArtists()
+        await refreshRecentlyDiscoveredArtists()
         await refreshRediscover()
         await refreshSuggestions()
     }
@@ -2005,6 +2023,22 @@ final class AppModel {
     /// empty or errored result just leaves the shelf hidden.
     func refreshFavoriteArtists() async {
         self.favoriteArtists = await loadFavoriteArtists(limit: 100)
+    }
+
+    /// Refresh the "Recently Discovered Artists" carousel (#252). Calls the
+    /// `core.listRecentlyAddedArtists` FFI, which hits Jellyfin's
+    /// `Artists/AlbumArtists` endpoint sorted `DateCreated` descending, so
+    /// the row surfaces the album artists whose catalogue most recently
+    /// landed on the server. Runs off the MainActor per the gap-#2 pattern
+    /// so the Rust `Inner` mutex doesn't block the UI thread. Best-effort:
+    /// an empty or errored result just leaves the shelf hidden. We request a
+    /// few more than the view's display cap so the row stays full even if
+    /// the freshest entries dedupe against another shelf later.
+    func refreshRecentlyDiscoveredArtists() async {
+        let fetched = await Task.detached(priority: .userInitiated) { [core] in
+            (try? core.listRecentlyAddedArtists(offset: 0, limit: 24))?.items ?? []
+        }.value
+        self.recentlyDiscoveredArtists = fetched
     }
 
     /// Refresh the "You might like" discovery row (#145). Calls
@@ -5613,6 +5647,42 @@ final class AppModel {
                 }
             }
         }
+    }
+
+    /// `@AppStorage` key for the ReplayGain mode (`NormalizationMode` raw value).
+    /// Mirrors the literal used by `PreferencesPlayback`; kept here so the init
+    /// seed and the picker route never drift apart. See #42.
+    static let normalizationKey = "playback.normalization"
+
+    /// `@AppStorage` key for the user pre-gain in dB. See #42.
+    static let preGainKey = "playback.preGainDb"
+
+    /// Map the persisted `NormalizationMode` raw value onto the engine's
+    /// `ReplayGainMode`. Both enums share the same `off`/`track`/`album` tokens,
+    /// so the raw string round-trips; an unknown / absent value (e.g. a key
+    /// that was never written) falls back to `.off`, matching the picker's
+    /// default. Pure + static (and `nonisolated`, since it touches no
+    /// `@MainActor` state) so the test target — and the engine-seed path — can
+    /// exercise the mapping from any context without building an `AppModel`.
+    nonisolated static func normalizationMode(forStoredValue raw: String?) -> ReplayGainMode {
+        ReplayGainMode(rawValue: raw ?? "") ?? .off
+    }
+
+    /// Apply the chosen ReplayGain mode + pre-gain to the live engine (#42).
+    /// Persists both values and pushes them onto `AudioEngine`, which re-reads
+    /// the current item's loudness tags and re-applies (or clears) the gain on
+    /// the playing track immediately — the same eager-apply contract as
+    /// `setOutputDevice`. The Preferences picker routes through here so a change
+    /// takes effect on the current song, not just the next one.
+    ///
+    /// Pre-gain only matters while `mode != .off`; passing it through regardless
+    /// keeps the stored value and the engine in sync so flipping normalization
+    /// back on later already reflects the saved pre-gain.
+    func setNormalization(mode: NormalizationMode, preGainDb: Double) {
+        UserDefaults.standard.set(mode.rawValue, forKey: AppModel.normalizationKey)
+        UserDefaults.standard.set(preGainDb, forKey: AppModel.preGainKey)
+        audio.normalizationMode = AppModel.normalizationMode(forStoredValue: mode.rawValue)
+        audio.normalizationPreGainDb = preGainDb
     }
 
     /// Seek the current track by a relative offset (seconds). Negative rewinds,

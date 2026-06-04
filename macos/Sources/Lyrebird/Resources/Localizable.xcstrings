@@ -1,6 +1,18 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "about.window.title" : {
+      "comment" : "Window title for the dedicated About Lyrebird window (#25).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About Lyrebird"
+          }
+        }
+      }
+    },
     "app.name" : {
       "comment" : "Brand name shown in the sidebar header and splash screens.",
       "extractionState" : "manual",
@@ -657,6 +669,18 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Password"
+          }
+        }
+      }
+    },
+    "menu.app.about" : {
+      "comment" : "App menu \u201cAbout Lyrebird\u201d item that opens the dedicated About window (#25).",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "About Lyrebird"
           }
         }
       }
