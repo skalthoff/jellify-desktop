@@ -16,6 +16,12 @@ struct Sidebar: View {
     // accent-tinted glyphs clear 4.5:1 (#888). The 3pt active-tab indicator
     // rail is decorative and keeps the base token.
     @Environment(\.accessibleTheme) private var a11yTheme
+    // Dynamic Type size drives row reflow (#338): at the accessibility text
+    // sizes the nav / stat / playlist labels would otherwise elide to an
+    // unreadable single-line ellipsis, so we let them wrap to a second line.
+    // The line-limit decision is factored into the pure `DynamicTypeReflow`
+    // helper (shared with `PlayerBar`) so the threshold is unit-tested.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// The playlist row currently hovered by the pointer. Used to reveal
     /// the subtle trailing affordances (copying spinner slot); `nil` when
@@ -29,6 +35,18 @@ struct Sidebar: View {
     @AppStorage(LibraryDefaults.sidebarShowAlbumsKey) private var showAlbums = true
     @AppStorage(LibraryDefaults.sidebarShowArtistsKey) private var showArtists = true
     @AppStorage(LibraryDefaults.sidebarShowPlaylistsKey) private var showPlaylists = true
+
+    /// Max lines a nav / stat / playlist label may use at the current text
+    /// size (#338): `1` at body sizes (these are short nav nouns by design),
+    /// `2` once Dynamic Type reaches the accessibility range so a scaled-up
+    /// label wraps gracefully instead of eliding mid-word. `hasContextLabel`
+    /// is irrelevant to the sidebar, so we pass `false`.
+    private var labelLineLimit: Int {
+        DynamicTypeReflow.decide(
+            dynamicTypeSize: dynamicTypeSize,
+            hasContextLabel: false
+        ).sidebarLabelLineLimit
+    }
 
     var body: some View {
         @Bindable var model = model
@@ -225,7 +243,10 @@ struct Sidebar: View {
                 Text(playlist.name)
                     .font(Theme.font(12, weight: isActiveScreen ? .bold : .medium))
                     .foregroundStyle(isActiveScreen ? Theme.ink : Theme.ink2)
-                    .lineLimit(1)
+                    // #338: a long playlist name elides on one line at body
+                    // sizes but is allowed a second line at accessibility
+                    // sizes before tail-eliding, so it stays readable.
+                    .lineLimit(labelLineLimit)
                     .truncationMode(.tail)
             }
 
@@ -298,6 +319,9 @@ struct Sidebar: View {
                 Text(label)
                     .font(Theme.font(13, weight: active ? .bold : .semibold))
                     .foregroundStyle(active ? Theme.ink : Theme.ink2)
+                    // #338: wrap to a second line at accessibility sizes
+                    // instead of eliding; one line at body sizes by design.
+                    .lineLimit(labelLineLimit)
                 Spacer()
             }
             .padding(.horizontal, 10)
@@ -341,6 +365,7 @@ struct Sidebar: View {
                 Text("sidebar.stats.favorites")
                     .font(Theme.font(13, weight: .semibold))
                     .foregroundStyle(Theme.ink2)
+                    .lineLimit(labelLineLimit)
                 Spacer()
             }
             .padding(.horizontal, 10)
@@ -375,11 +400,18 @@ struct Sidebar: View {
                 Text(label)
                     .font(Theme.font(13, weight: .semibold))
                     .foregroundStyle(Theme.ink2)
-                Spacer()
+                    // #338: wrap rather than elide at accessibility sizes.
+                    .lineLimit(labelLineLimit)
+                Spacer(minLength: 8)
                 if let c = count {
                     Text("\(c)")
                         .font(Theme.font(10, weight: .bold))
                         .foregroundStyle(Theme.ink3)
+                        // The count is a short numeral; keep it on one line so
+                        // it never wraps under the label, even when the label
+                        // itself wraps to two lines.
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             .padding(.horizontal, 10)
