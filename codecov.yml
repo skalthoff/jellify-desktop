@@ -1,0 +1,23 @@
+# Coverage policy for lyrebird-desktop.
+#
+# Informational only: Codecov annotates each PR with the coverage delta and
+# flags regressions in its status check, but does NOT fail CI. This converts a
+# silently-sliding number into a visible review signal without making coverage
+# a hard merge gate. The coverage run itself is `.github/workflows/coverage.yml`
+# (cargo-llvm-cov over the workspace). The macOS/Swift suite is not yet wired
+# into Codecov, so these targets reflect the Rust core only.
+coverage:
+  status:
+    project:
+      default:
+        target: auto # compare against the parent commit
+        threshold: 1% # tolerate sub-1% drift without flagging
+        informational: true # annotate, never fail the check
+    patch:
+      default:
+        target: 80% # changed lines should carry tests
+        informational: true
+
+comment:
+  layout: "reach, diff, files"
+  require_changes: true # only comment when coverage actually moves
