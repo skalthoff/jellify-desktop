@@ -4,11 +4,11 @@ Thanks for your interest. This project is early — shapes and conventions are s
 
 ## Toolchain
 
-- **Rust**: 1.88 or newer.
-  - Floor: `core/` itself compiles on Rust 1.75 (the workspace MSRV), but
-    the Windows port's `uniffi-bindgen-cs` requires 1.88 — so any
-    contributor regenerating bindings (any platform) needs 1.88+ on
-    PATH.
+- **Rust**: 1.90 or newer.
+  - Floor: the workspace MSRV is 1.90 (`rust-version` in `Cargo.toml`,
+    matched by the root `rust-toolchain.toml` pin and the CI MSRV job).
+    The Windows port's `uniffi-bindgen-cs` needs 1.88, which 1.90 already
+    covers — so a single 1.90+ toolchain works for every platform.
   - Workspace pins `uniffi = "0.29"`. Regenerated bindings (Swift
     xcframework, C#) must be produced by a matching bindgen build:
     macOS uses the in-tree `uniffi-bindgen` binary; Windows uses

@@ -34,11 +34,13 @@ jobs:
       # cargo-audit 0.22.x parses RustSec's CVSS 4.0 advisory entries (e.g.
       # RUSTSEC-2026-0073). Its transitive deps need rustc >= 1.89, satisfied
       # now that the workspace MSRV and the root rust-toolchain.toml pin are
-      # 1.90. --locked keeps transitive resolution on cargo-audit's published
-      # Cargo.lock rather than pulling fresh majors. `cargo audit` fetches and
-      # parses the full advisory-db itself — no manual clone / CVSS-4.0 prune.
+      # 1.90. Constrain to ^0.22 so CI still picks up 0.22.x patches but a
+      # future 0.23 that raises cargo-audit's own build-MSRV can't silently
+      # break the install; --locked keeps transitive resolution on the
+      # published Cargo.lock. `cargo audit` then fetches and parses the full
+      # advisory-db itself — no manual clone / CVSS-4.0 prune.
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit --locked --version "^0.22"
       - name: Run cargo audit
         run: cargo audit
 

@@ -58,16 +58,16 @@ windows/
 - **PowerShell 7+** (`pwsh`). Required by the helper scripts under
   `tools/`. Windows PowerShell 5.1 is missing several cmdlets they rely
   on.
-- **Rust 1.88 or newer** with both MSVC targets installed:
+- **Rust 1.90 or newer** with both MSVC targets installed:
 
   ```pwsh
   rustup target add x86_64-pc-windows-msvc
   rustup target add aarch64-pc-windows-msvc
   ```
 
-  1.88 is the floor required by `uniffi-bindgen-cs` v0.10 (which tracks
-  upstream `uniffi 0.29.x`). The workspace's MSRV is 1.75 for the core
-  itself; the bindgen tool is the binding constraint on Windows.
+  The workspace MSRV is 1.90; `uniffi-bindgen-cs` v0.10 (which tracks
+  upstream `uniffi 0.29.x`) needs 1.88, so the 1.90 toolchain already
+  covers binding regeneration on Windows.
 
 - **uniffi-bindgen-cs**:
 
