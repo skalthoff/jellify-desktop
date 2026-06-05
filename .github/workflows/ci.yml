@@ -108,11 +108,11 @@ jobs:
       - run: cargo doc --workspace --all-features --no-deps
 
   msrv:
-    name: MSRV (Rust 1.86)
+    name: MSRV (Rust 1.90)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@1.86
+      - uses: dtolnay/rust-toolchain@1.90
       - uses: Swatinem/rust-cache@v2
         with:
           key: msrv
@@ -226,7 +226,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
-      # rust-toolchain.toml at the repo root pins to 1.86 and overrides the
+      # rust-toolchain.toml at the repo root pins to 1.90 and overrides the
       # action's `targets:` input — the action installs targets for the
       # *requested* (stable) toolchain, not the one rustup actually selects.
       # So we install Windows targets explicitly under the active toolchain.
