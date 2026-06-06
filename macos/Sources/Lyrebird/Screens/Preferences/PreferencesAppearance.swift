@@ -191,17 +191,16 @@ struct AppearancePane: View {
         )
     }
 
-    /// Theme-section helper text. While theme selection is gated off
-    /// (`!supportsThemeSelection`) the picker is a disabled preview, so the copy
-    /// says so plainly rather than implying the swatch is actionable. Once the
-    /// theme engine (#405) lands and the picker is live, the copy steers users
-    /// who have asked the system to convey meaning without relying on colour
-    /// alone (System Settings → Accessibility → Display → "Differentiate without
-    /// color") toward the Ocean preset, whose primary/accent pair stays
-    /// distinguishable for every colour-blind type.
+    /// Theme-section helper text. Steers users who have asked the system to
+    /// convey meaning without relying on colour alone (System Settings →
+    /// Accessibility → Display → "Differentiate without color") toward the
+    /// Ocean preset, whose primary/accent pair stays distinguishable for every
+    /// colour-blind type. If the kill-switch (`supportsThemeSelection`) is ever
+    /// toggled off, the fallback copy explains the picker is temporarily
+    /// disabled rather than implying the swatches are inert by design.
     private var themeHint: String {
         guard model.supportsThemeSelection else {
-            return "Theme colours are coming soon — the picker previews the palettes; the rest of the app still uses the Purple theme for now."
+            return "Theme selection is temporarily disabled — the picker previews the palettes but picks are not applied yet."
         }
         if ThemePreset.suggestedForAccessibility() == .ocean,
            (AppearanceTheme(rawValue: themeRaw) ?? .purple) != .ocean {
@@ -311,12 +310,11 @@ private struct AppearanceSection<Content: View>: View {
 /// Horizontal row of colored swatches. The active swatch draws a ring in
 /// `Theme.accent` and inks the label.
 ///
-/// When `isEnabled` is false the row is a disabled "coming soon" preview: the
-/// swatches still show the palettes (and the ring marks the persisted choice),
-/// but taps are inert and the row dims, so the picker never masquerades as a
-/// working selector while the theme engine (#405) that would consume the
-/// selection is still unwired. Once `isEnabled` flips true, tapping a swatch
-/// updates the binding.
+/// When `isEnabled` is false the row is a disabled preview: the swatches
+/// still show the palettes (and the ring marks the persisted choice), but taps
+/// are inert and the row dims. `supportsThemeSelection` acts as a kill-switch
+/// and is currently `true`; if it is ever toggled off, this disabled state
+/// prevents the picker from masquerading as a working selector.
 private struct ThemePicker: View {
     @Binding var selection: AppearanceTheme
     var isEnabled: Bool = true
@@ -338,11 +336,11 @@ private struct ThemePicker: View {
         // Surface the disabled state to assistive tech so VoiceOver announces
         // the picker as unavailable rather than reading the swatches as
         // tappable selectors.
-        .accessibilityValue(isEnabled ? "" : "Coming soon")
+        .accessibilityValue(isEnabled ? "" : "Temporarily disabled")
     }
 
     private var comingSoonBadge: some View {
-        Text("SOON")
+        Text("OFF")
             .font(Theme.font(9, weight: .bold))
             .tracking(1)
             .foregroundStyle(Theme.ink3)
