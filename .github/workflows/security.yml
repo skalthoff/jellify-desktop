@@ -31,29 +31,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      # rustsec/audit-check@v2 unconditionally installs the latest cargo-audit,
-      # and the 0.22.x line bumped transitive MSRVs (home 1.88, smol_str 1.89,
-      # time 1.88) past the workspace's pinned rustc 1.86. Pin to the last
-      # 0.21.x release and install with --locked so transitive resolution
-      # respects the published Cargo.lock instead of pulling fresh majors.
+      # cargo-audit 0.22.x parses RustSec's CVSS 4.0 advisory entries (e.g.
+      # RUSTSEC-2026-0073). Its transitive deps need rustc >= 1.89, satisfied
+      # now that the workspace MSRV and the root rust-toolchain.toml pin are
+      # 1.90. Constrain to ^0.22 so CI still picks up 0.22.x patches but a
+      # future 0.23 that raises cargo-audit's own build-MSRV can't silently
+      # break the install; --locked keeps transitive resolution on the
+      # published Cargo.lock. `cargo audit` then fetches and parses the full
+      # advisory-db itself — no manual clone / CVSS-4.0 prune.
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked --version 0.21.2
-      - name: Prefetch advisory-db and prune CVSS 4.0 entries we can't parse
-        # cargo-audit 0.21.x can't parse RustSec's new CVSS 4.0 advisory
-        # entries (e.g. RUSTSEC-2026-0073) — the DB load fails before any
-        # crate-level check runs. 0.22.x supports CVSS 4.0 but bumps
-        # transitive MSRVs (home 1.88, smol_str 1.89, time 1.88) past the
-        # workspace's pinned rustc 1.86. Workaround: clone the DB ourselves
-        # and remove the unparseable files. Each affected advisory is for a
-        # crate not in our dependency tree, so we're not losing coverage.
-        # Revisit when we bump the workspace MSRV past 1.88.
-        run: |
-          mkdir -p ~/.cargo
-          git clone --depth 1 https://github.com/RustSec/advisory-db.git ~/.cargo/advisory-db
-          grep -rl 'cvss = "CVSS:4\.0/' ~/.cargo/advisory-db/crates/ \
-            | xargs -r rm -f
+        run: cargo install cargo-audit --locked --version "^0.22"
       - name: Run cargo audit
-        run: cargo audit --no-fetch
+        run: cargo audit
 
   deny:
     name: cargo-deny (${{ matrix.checks }})

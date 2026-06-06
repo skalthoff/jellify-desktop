@@ -25,11 +25,10 @@ updates:
           - serde_*
     ignore:
       # The 0.22 line of glib-rs (gio, glib, glib-build-tools, glib-macros,
-      # glib-sys, gio-sys, gobject-sys) raises rust-version metadata to 1.92.
-      # Workspace MSRV is 1.86 (intentional pin — Rust 1.92 doesn't exist as
-      # a stable release). Cargo's MSRV-aware resolver rejects every workspace
-      # `cargo` invocation when these are bumped. Held to 0.20 in #751 (#750).
-      # Re-enable when the wider Rust-toolchain bump is on the table.
+      # glib-sys, gio-sys, gobject-sys) raises rust-version metadata to 1.92,
+      # above the workspace MSRV of 1.90. Cargo's MSRV-aware resolver rejects
+      # every workspace `cargo` invocation when these are bumped. Held to 0.20
+      # in #751 (#750). Re-enable when the workspace MSRV reaches >= 1.92.
       - dependency-name: gio
       - dependency-name: glib
       - dependency-name: glib-build-tools
@@ -37,9 +36,6 @@ updates:
       - dependency-name: glib-sys
       - dependency-name: gio-sys
       - dependency-name: gobject-sys
-      # wiremock 0.6.5 introduced unstable `let` expressions that don't
-      # compile under workspace MSRV (Rust 1.86). Held at 0.6.4 in #751.
-      - dependency-name: wiremock
 
   - package-ecosystem: github-actions
     directory: /
@@ -57,8 +53,8 @@ updates:
           - minor
     ignore:
       # dtolnay/rust-toolchain tags follow Rust release versions
-      # (`@1.86` → 1.86 stable). Dependabot can't reason about those —
-      # it tried to bump 1.86 → 1.92 → 1.100, both of which are not
+      # (`@1.90` → 1.90 stable). Dependabot can't reason about those —
+      # it tried to bump the pinned tag to tags like 1.100 that aren't
       # real Rust releases. The MSRV reference must stay pinned to the
       # workspace's `rust-version`, and other call sites use `@stable`,
       # so version bumps on this dependency are always wrong.

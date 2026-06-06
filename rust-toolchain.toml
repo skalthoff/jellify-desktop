@@ -1,8 +1,9 @@
 [toolchain]
-# Pinned to 1.86 to match the MSRV CI job in `.github/workflows/ci.yml`.
-# Anything older breaks `clap v4.6.1` which requires the `edition2024`
-# Cargo feature (stabilized in 1.85). Bump in lockstep with CI's MSRV
-# matrix when it moves.
-channel = "1.86"
+# Pinned to 1.90 to match the MSRV CI job in `.github/workflows/ci.yml`.
+# Floor drivers: `clap v4.6.1` needs the `edition2024` Cargo feature
+# (stabilized 1.85); wiremock >= 0.6.5 needs `let`-chains (stabilized 1.88);
+# cargo-audit 0.22.x's transitive deps (smol_str) need 1.89. Bump in
+# lockstep with CI's MSRV matrix when it moves.
+channel = "1.90"
 targets = ["aarch64-apple-darwin", "x86_64-apple-darwin"]
 components = ["rustfmt", "clippy"]
