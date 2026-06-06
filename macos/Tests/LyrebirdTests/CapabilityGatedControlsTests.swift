@@ -5,8 +5,9 @@ import LyrebirdCore
 
 /// Coverage for the capability flags that gate inert preference controls so
 /// they aren't presented as working settings while their backing work is
-/// unwired (audit fixes for the Appearance Theme picker and the General
-/// Language picker).
+/// unwired (e.g. the General Language picker). The Appearance Theme picker was
+/// such a control until #405 wired the engine — `testThemeSelectionWired` now
+/// pins that it consumes `appearance.theme`.
 ///
 /// `AppModel` is `@MainActor`, so the suite is main-actor isolated. We redirect
 /// the core's data dir to a throwaway temp dir via `XDG_DATA_HOME` so the tests
@@ -20,16 +21,34 @@ final class CapabilityGatedControlsTests: XCTestCase {
         setenv("XDG_DATA_HOME", dir, 1)
     }
 
-    /// Theme selection stays gated off until the theme engine (#405) actually
-    /// resolves `Theme.primary` / `Theme.accent` from the persisted preset.
-    /// Until then the Appearance Theme picker renders as a disabled "coming
-    /// soon" preview rather than a working selector.
-    func testThemeSelectionGatedOff() throws {
+    /// Theme selection is wired (#405): `Theme.currentPreset` resolves the
+    /// persisted `appearance.theme` preset so `Theme.primary` / `Theme.accent`
+    /// recolour with the user's choice, and the Appearance Theme picker is a
+    /// live selector (the flag stays only as a kill-switch).
+    func testThemeSelectionWired() throws {
         let model = try AppModel()
-        XCTAssertFalse(
+        XCTAssertTrue(
             model.supportsThemeSelection,
-            "Theme selection must stay gated until the theme engine consumes appearance.theme"
+            "Theme selection should be enabled now that Theme.currentPreset consumes appearance.theme"
         )
+
+        // The engine actually reads the persisted preset, not a fixed constant.
+        let defaults = UserDefaults.standard
+        let key = AppearanceKeys.theme
+        let original = defaults.string(forKey: key)
+        defer {
+            if let original { defaults.set(original, forKey: key) } else { defaults.removeObject(forKey: key) }
+        }
+
+        defaults.set(AppearanceTheme.ocean.rawValue, forKey: key)
+        XCTAssertEqual(Theme.currentPreset, .ocean, "Theme must resolve the persisted preset")
+        defaults.set(AppearanceTheme.forest.rawValue, forKey: key)
+        XCTAssertEqual(Theme.currentPreset, .forest)
+        defaults.set(AppearanceTheme.purple.rawValue, forKey: key)
+        XCTAssertEqual(Theme.currentPreset, .purple)
+        // An unknown / legacy on-disk value falls back to the shipping default.
+        defaults.set("sunset", forKey: key)
+        XCTAssertEqual(Theme.currentPreset, .purple, "legacy/unknown theme falls back to purple")
     }
 
     /// Language selection stays gated off until in-app localization (#345) is

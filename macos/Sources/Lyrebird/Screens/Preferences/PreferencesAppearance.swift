@@ -132,13 +132,13 @@ enum AppearanceKeys {
 
 /// Appearance pane — theme, mode, density, sidebar visibility.
 ///
-/// The color-scheme mode (via `LyrebirdApp.preferredColorScheme`), density
-/// (via the track-list density work), and sidebar visibility are wired
-/// end-to-end. The Theme picker is gated behind `AppModel.supportsThemeSelection`
-/// and rendered as a disabled "coming soon" preview: choosing a swatch would
-/// only persist `appearance.theme`, which no live surface reads yet — the
-/// theme engine that resolves `Theme.primary` / `Theme.accent` from the
-/// preset is #405. Source: `research/06-screen-specs.md` Issue 64.
+/// Theme (#405), color-scheme mode (via `LyrebirdApp.preferredColorScheme`),
+/// density (via the track-list density work), and sidebar visibility are all
+/// wired end-to-end. Picking a Theme swatch persists `appearance.theme`;
+/// `Theme.currentPreset` resolves `Theme.primary` / `Theme.accent` from it and
+/// `LyrebirdApp` re-keys each window's content `.id` so the switch recolours
+/// the UI live. The picker stays gated behind `AppModel.supportsThemeSelection`
+/// as a kill-switch. Source: `research/06-screen-specs.md` Issue 64.
 struct AppearancePane: View {
     @Environment(AppModel.self) private var model
 
