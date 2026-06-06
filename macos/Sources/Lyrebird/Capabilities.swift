@@ -89,12 +89,10 @@ extension AppModel {
     /// catalog ships real locales and the runtime override is wired.
     var supportsLanguageSelection: Bool { false }
 
-    /// Theme selection (#405). Gates the Appearance ▸ Theme picker. Choosing a
-    /// swatch persists `appearance.theme`, but no live surface reads it back —
-    /// `Theme.primary` / `Theme.accent` are still fixed brand constants, so the
-    /// selection can't recolour the UI yet (the theme engine wiring is #405).
-    /// Flag stays `false` so the picker renders as a disabled "coming soon"
-    /// preview rather than masquerading as a working selector; flips to `true`
-    /// once `Theme` resolves its accent/primary from the persisted preset.
-    var supportsThemeSelection: Bool { false }
+    /// Theme selection (#405). Gates the Appearance ▸ Theme picker. `Theme.primary`
+    /// / `Theme.accent` now resolve from the persisted `appearance.theme` preset
+    /// via `Theme.currentPreset`, and `LyrebirdApp` re-keys each window's content
+    /// `.id` on the selection so a switch recolours the UI live. Enabled; kept as
+    /// a kill-switch / regression fallback (same pattern as `supportsGenreActions`).
+    var supportsThemeSelection: Bool { true }
 }

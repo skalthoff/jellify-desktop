@@ -18,8 +18,11 @@ enum Theme {
     static let ink3 = adaptive(standard: ink3Standard, increased: ink3HighContrastRGBA)
 
     // Brand
-    static let primary = Color(hex: 0x887BFF)
-    static let accent = Color(hex: 0xCC2F71)
+    //
+    // `primary` / `accent` resolve live from the user's selected `ThemePreset`
+    // (#405) via `currentPreset`. The rest of the brand ramp is preset-agnostic.
+    static var primary: Color { currentPreset.primary }
+    static var accent: Color { currentPreset.accent }
     static let accentHot = Color(hex: 0xFF066F)
     static let teal = Color(hex: 0x57E9C9)
 
@@ -34,8 +37,8 @@ enum Theme {
     // Focus ring — issue #335. Uses `primary` (brand purple) at reduced
     // opacity for the normal ring; full `accentHot` for high-contrast mode.
     // `accentHot` (#FF066F) achieves ≈7.8:1 against `bgAlt` (#140B30).
-    static let focusRing: Color = primary.opacity(0.75)
-    static let focusRingHighContrast: Color = accentHot
+    static var focusRing: Color { primary.opacity(0.75) }
+    static var focusRingHighContrast: Color { accentHighContrast }
 
     // MARK: - High-contrast variants
     //
@@ -89,9 +92,13 @@ enum Theme {
     /// fails (~3:1) at small sizes; this opaque value reaches ≈7:1 on `bg`.
     static let ink3HighContrast = Color(rgba: ink3HighContrastRGBA)
 
-    /// High-contrast body accent. The standard `accent` (#CC2F71, ~3.4:1)
-    /// fails for body copy; `accentHot` (#FF066F) reaches ≈6.7:1 on `bg`.
-    static let accentHighContrast: Color = accentHot
+    /// High-contrast body accent. Purple's standard `accent` (#CC2F71, ~3.4:1)
+    /// fails for body copy, so it lifts to `accentHot` (#FF066F, ≈6.7:1 on
+    /// `bg`). Ocean/Forest ship deliberately light accents that already clear
+    /// the HC bar (verified in `ThemePresetTests`), so each keeps its own.
+    static var accentHighContrast: Color {
+        currentPreset == .purple ? accentHot : currentPreset.accent
+    }
 
     /// High-contrast border. The standard `border` is alpha .18 (~1.4:1,
     /// effectively invisible with Increase Contrast on); this opaque value
@@ -134,6 +141,20 @@ enum Theme {
             )
         }
         return Color(nsColor: nsColor)
+    }
+
+    /// The brand `ThemePreset` the user has selected, resolved live from the
+    /// persisted `appearance.theme` preference (#405). An absent or legacy
+    /// on-disk value (e.g. a dropped "sunset"/"peanut" string) decodes through
+    /// `AppearanceTheme(rawValue:) ?? .purple`, so this never yields anything
+    /// but a concrete, WCAG-verified preset. Read at colour-resolution time so
+    /// `primary` / `accent` recolour the moment a switch lands — `LyrebirdApp`
+    /// keys each window's content `.id` on the persisted value to force the
+    /// re-render that re-reads these tokens.
+    static var currentPreset: ThemePreset {
+        let raw = UserDefaults.standard.string(forKey: AppearanceKeys.theme)
+        let appearance = raw.flatMap(AppearanceTheme.init(rawValue:)) ?? .purple
+        return ThemePreset(appearanceTheme: appearance)
     }
 
     // Type
@@ -254,10 +275,9 @@ enum FontRegistration {
 /// `macos/docs/a11y/color-blindness/README.md` and is asserted by
 /// `ThemePresetTests`.
 ///
-/// This type carries only the colour data. Wiring it through every call site
-/// (so `Theme.primary` resolves per-preset) is the theme-engine work tracked
-/// in #405; until then the presets are consumed by the picker swatches and by
-/// `ThemePreset.suggestedForAccessibility()`.
+/// This type carries only the colour data. `Theme.primary` / `Theme.accent`
+/// resolve from the selected preset via `Theme.currentPreset` (#405); the
+/// presets also back the picker swatches and `suggestedForAccessibility()`.
 enum ThemePreset: String, CaseIterable, Identifiable {
     case purple
     case ocean

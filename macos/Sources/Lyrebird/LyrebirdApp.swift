@@ -29,6 +29,13 @@ struct LyrebirdApp: App {
     /// wash lands alongside the theme engine in #405.
     @AppStorage(AppearanceKeys.mode) private var modeRaw: String = AppearanceMode.dark.rawValue
 
+    /// Persisted brand-theme preset from the Appearance pane (#405). Read here
+    /// so a theme switch re-keys every window's content `.id` (`themeRaw`),
+    /// forcing the re-render that re-reads `Theme.primary` / `Theme.accent`
+    /// from the newly-selected `ThemePreset`. `Theme.currentPreset` resolves the
+    /// actual colours; this property exists only to drive that refresh.
+    @AppStorage(AppearanceKeys.theme) private var themeRaw: String = AppearanceTheme.purple.rawValue
+
     init() {
         FontRegistration.register()
         // Capture success or failure instead of crashing. A failed core init
@@ -75,6 +82,11 @@ struct LyrebirdApp: App {
         // `MainWindowScene` and the New Window command in `LyrebirdCommands`.
         WindowGroup("Lyrebird", id: MainWindowScene.id) {
             primaryWindowContent
+                // Re-key on the brand-theme preset so a Theme switch tears down
+                // and rebuilds the tree, re-reading `Theme.primary`/`accent`
+                // from the new preset (#405). RootView's `.task`s guard re-entry,
+                // so the rebuild is safe.
+                .id(themeRaw)
         }
         .defaultSize(width: 1280, height: 820)
         // Hide the system title bar so the sidebar runs edge-to-edge under the
@@ -116,6 +128,7 @@ struct LyrebirdApp: App {
                 MiniPlayerView()
                     .environment(model)
                     .preferredColorScheme(preferredColorScheme)
+                    .id(themeRaw)
             }
         }
         .windowResizability(.contentSize)
@@ -130,6 +143,7 @@ struct LyrebirdApp: App {
         Window("shortcuts.window.title", id: AppShortcuts.windowID) {
             KeyboardShortcutsView()
                 .preferredColorScheme(preferredColorScheme)
+                .id(themeRaw)
         }
         .defaultSize(width: 480, height: 560)
         .windowResizability(.contentSize)
@@ -142,6 +156,7 @@ struct LyrebirdApp: App {
                 AboutView()
                     .environment(model)
                     .preferredColorScheme(preferredColorScheme)
+                    .id(themeRaw)
             }
         }
         .windowResizability(.contentSize)
