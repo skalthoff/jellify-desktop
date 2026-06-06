@@ -818,13 +818,13 @@
       }
     },
     "login.placeholder.not_wired" : {
-      "comment" : "Placeholder banner when a menu action hasn't been wired to the core yet.",
+      "comment" : "Placeholder banner when a menu action is temporarily unavailable.",
       "extractionState" : "manual",
       "localizations" : {
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Creating playlists isn't wired yet \u2014 see #131."
+            "value" : "This action is not available yet."
           }
         }
       }
