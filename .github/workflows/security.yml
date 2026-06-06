@@ -82,6 +82,10 @@ jobs:
     permissions:
       security-events: write
       contents: read
+      # upload-sarif reads the workflow run via the Actions API to associate
+      # results with it; without this scope it fails "Resource not accessible
+      # by integration" on GET /actions/runs/{id}.
+      actions: read
     steps:
       - uses: actions/checkout@v6
         with:
