@@ -79,6 +79,8 @@ Use `gh issue create` with body that follows the bug.yml template structure. Req
 - `effort:S` | `effort:M` | `effort:L`
 - `source:auto-audit` (mandatory — provenance marker)
 
+**Escape `@` in prose.** Swift property wrappers / attributes (`@State`, `@Environment`, `@MainActor`, `@AppStorage`, `@Published`, `@escaping`, etc.) MUST be backticked (`` `@State` ``) in the issue body — bare `@State` becomes a GitHub `@username` mention. In the issue **title** (no backticks possible), drop the `@`: e.g. "dead State tick", not "dead @State tick".
+
 ## Output format to your dispatcher
 
 After your run, emit a one-block summary:

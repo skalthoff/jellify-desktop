@@ -77,6 +77,7 @@ You commit directly on your `fix/*` branch (sub-agent commits are squash-merged 
 - **Never** add `Co-Authored-By` lines.
 - **Never** mention Claude / AI / AI tooling in commit messages, PR descriptions, or comments.
 - Author commits as the user (skalthoff). The squash-merge resigns the merge commit with the user's GPG key.
+- **Escape `@` in prose.** Swift property wrappers and attributes (`@State`, `@Environment`, `@MainActor`, `@AppStorage`, `@Published`, `@escaping`, `@preconcurrency`, etc.) MUST be wrapped in backticks (`` `@State` ``) anywhere they appear in a PR/issue body or comment — bare `@State` is rendered by GitHub as a `@username` mention (broken link + phantom notification). In **titles** (which can't use backticks), drop the `@`: write "State" / "MainActor", not "@State".
 
 PR body must include:
 - One sentence on the *why* (not the *what*).
