@@ -5,19 +5,13 @@ import LyrebirdCore
 
 /// Offline downloads (#819) — Swift-side coverage.
 ///
-/// Two things matter most here and both are about *safety while the feature is
-/// gated off*:
-///   1. With `supportsDownloads == false` (today's shipping default) every
-///      AppModel download entry point is a no-op and the per-track state read
-///      is `nil`, so no UI affordance appears and no work is kicked off.
-///   2. The AudioEngine's offline branch never fires while
-///      `offlinePlaybackEnabled` is false — `resolveLocalAssetURL` returns nil
-///      with no FFI, so the streaming path is byte-for-byte unchanged.
-///
-/// The snapshot-read helpers and the context-menu toggle-direction logic are
-/// also exercised directly against the in-memory `downloadStateById` map (which
-/// is `internal`), so the read path the row views depend on is locked even
-/// while the engine flag is off.
+/// The feature is enabled (`supportsDownloads == true`). Tests cover:
+///   1. The capability flag is on and seeds `AudioEngine.offlinePlaybackEnabled`.
+///   2. The snapshot-read helpers (`downloadState`, `isDownloaded`, `isDownloading`)
+///      behave correctly against the in-memory `downloadStateById` map.
+///   3. The AudioEngine offline-path contracts: an undownloaded track always
+///      resolves to nil regardless of whether offline playback is enabled, so
+///      the streaming path is unchanged for tracks with no local copy.
 ///
 /// `AppModel` is `@MainActor`; the suite redirects the core's data dir to a
 /// throwaway temp dir via `XDG_DATA_HOME` so it never touches the real DB.
@@ -51,58 +45,37 @@ final class DownloadsTests: XCTestCase {
         )
     }
 
-    // MARK: - Gating (feature dormant)
+    // MARK: - Capability enabled
 
-    /// The downloads capability ships gated off, so the four AppModel entry
-    /// points stay inert. This is the contract the prompt mandates: a
-    /// dormant-but-correct feature.
-    func testDownloadsCapabilityGatedOff() throws {
+    /// The downloads capability is enabled. The flag being `true` unlocks the
+    /// download UI affordances and the AudioEngine offline branch.
+    func testDownloadsCapabilityEnabled() throws {
         let model = try AppModel()
-        XCTAssertFalse(
+        XCTAssertTrue(
             model.supportsDownloads,
-            "downloads must stay gated until the full flow is proven solid"
+            "downloads capability must be enabled"
         )
     }
 
-    /// With the feature gated off, the per-track state read returns nil for any
-    /// track — so `TrackRow.downloadBadge` renders nothing and the context menu
-    /// hides the Download action.
-    func testDownloadStateNilWhileGatedOff() throws {
+    /// With the feature enabled, the per-track state read returns nil only for
+    /// tracks that have no download record yet — not for all tracks. An empty
+    /// `downloadStateById` map returns nil, which is the correct initial state.
+    func testDownloadStateNilForUnknownTrack() throws {
         let model = try AppModel()
-        XCTAssertNil(model.downloadState(forTrackId: "anything"))
+        XCTAssertNil(model.downloadState(forTrackId: "unknown-id"))
         XCTAssertFalse(model.isDownloaded(makeTrack("x")))
         XCTAssertFalse(model.isDownloading(makeTrack("x")))
     }
 
-    /// `downloadTracks` / `toggleDownload` are no-ops while gated off: they must
-    /// not mutate the in-memory snapshot or kick a fetch. (If they ran, the
-    /// optimistic path would stamp a `.queued` badge into `downloadStateById`.)
-    func testDownloadEntryPointsAreNoOpsWhileGatedOff() async throws {
+    // MARK: - AudioEngine offline gate
+
+    /// The engine flag is seeded from `supportsDownloads` at init time, so it
+    /// is now `true` — enabling `resolveLocalAssetURL` to check for a local copy.
+    func testEngineOfflinePlaybackEnabled() throws {
         let model = try AppModel()
-        let track = makeTrack("gated")
-
-        await model.downloadTracks([track])
-        XCTAssertNil(model.downloadStateById[track.id], "downloadTracks must no-op while gated off")
-
-        model.toggleDownload(tracks: [track])
-        // toggleDownload dispatches into a Task; give the main actor a turn.
-        await Task.yield()
-        XCTAssertNil(model.downloadStateById[track.id], "toggleDownload must no-op while gated off")
-
-        await model.refreshDownloads()
-        XCTAssertTrue(model.downloads.isEmpty, "refreshDownloads must no-op while gated off")
-    }
-
-    // MARK: - AudioEngine offline gate (additive)
-
-    /// The engine flag is seeded from `supportsDownloads`, so it stays false in
-    /// the shipping build — guaranteeing `play(track:)` never queries the
-    /// download FFI and the streaming path is unchanged.
-    func testEngineOfflinePlaybackDisabledByDefault() throws {
-        let model = try AppModel()
-        XCTAssertFalse(
+        XCTAssertTrue(
             model.audio.offlinePlaybackEnabled,
-            "offline playback must mirror supportsDownloads (false today)"
+            "offline playback must mirror supportsDownloads (true)"
         )
     }
 
