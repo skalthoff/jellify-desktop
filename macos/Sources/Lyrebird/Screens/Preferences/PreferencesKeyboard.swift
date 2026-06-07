@@ -29,11 +29,21 @@ struct PreferencesKeyboard: View {
 	/// Confirmation gate for the destructive "Reset All".
 	@State private var confirmResetAll = false
 
+	/// Action ids the editor deliberately does not offer for remapping. Bare
+	/// Space (Play/Pause) is bound by an app-wide `NSEvent` monitor
+	/// (`PlayPauseSpaceMonitor`) rather than a menu key-equivalent — it must
+	/// stay ⎵ so it can fall through to focused text fields — so it can't be
+	/// re-bound through the override map. It still appears in the help window's
+	/// catalog; it's just not editable here.
+	static let nonEditableActionIds: Set<String> = ["playback.play_pause"]
+
 	/// Rows grouped by section, in catalog order, mirroring the help window so
-	/// the editor reads like the menus.
+	/// the editor reads like the menus (minus the non-editable actions above).
 	private var sections: [(section: AppShortcuts.Section, rows: [AppShortcuts.Shortcut])] {
 		AppShortcuts.Section.allCases.compactMap { section in
-			let rows = AppShortcuts.all.filter { $0.section == section }
+			let rows = AppShortcuts.all.filter {
+				$0.section == section && !Self.nonEditableActionIds.contains($0.id)
+			}
 			return rows.isEmpty ? nil : (section, rows)
 		}
 	}

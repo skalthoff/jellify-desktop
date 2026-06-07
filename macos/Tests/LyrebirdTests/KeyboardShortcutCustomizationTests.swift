@@ -73,6 +73,24 @@ final class KeyboardShortcutCustomizationTests: XCTestCase {
 		XCTAssertTrue(AppModel.decodeShortcutOverrides("[\"x\"]").isEmpty)
 	}
 
+	// MARK: - Non-editable actions
+
+	/// Bare-Space Play/Pause is bound by an `NSEvent` monitor, not a menu
+	/// key-equivalent, so the editor must not offer it for remapping — but it
+	/// stays in the catalog (the help window advertises ⎵). This pins the
+	/// exclusion so a future catalog edit can't silently surface an un-bindable
+	/// row.
+	func testPlayPauseStaysInCatalogButIsNotEditable() {
+		XCTAssertTrue(
+			AppShortcuts.all.contains { $0.id == "playback.play_pause" },
+			"play/pause must remain in the help-window catalog"
+		)
+		XCTAssertTrue(
+			PreferencesKeyboard.nonEditableActionIds.contains("playback.play_pause"),
+			"play/pause must be excluded from the remap editor"
+		)
+	}
+
 	// MARK: - Resolution
 
 	func testResolvedChordFallsBackToCatalogDefault() throws {
