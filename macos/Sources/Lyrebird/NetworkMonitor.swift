@@ -8,9 +8,10 @@ import Observation
 /// ceiling for streaming. Resolved from `NWPath` on each path update — the
 /// caller (typically `AppModel+Playback.resolvedStreamingBitrate`) maps this
 /// to a concrete `MaxStreamingBitrate` value so playback starts quickly on
-/// constrained links instead of buffering at 320 kbps (#447).
+/// constrained links instead of buffering at the user's full quality setting.
 ///
-/// Three tiers are enough to cover the issue-#447 acceptance criteria:
+/// Three tiers capture the meaningful distinctions between link types without
+/// requiring callers to reason about raw interface flags or cost categories:
 ///   - `.unmetered` — Ethernet or a non-metered Wi-Fi path. Stream at full
 ///     quality (320 kbps or whatever the user picked in Preferences).
 ///   - `.metered` — a cellular interface, a Wi-Fi path marked "expensive"
@@ -61,7 +62,7 @@ enum NetworkQualityHint {
 /// In addition to the binary `isOnline` flag the monitor also publishes a
 /// `qualityHint` (`NetworkQualityHint`) that downstream components — most
 /// notably `AppModel+Playback.resolvedStreamingBitrate` — use to pick an
-/// adaptive bitrate ceiling for the current connection (#447).
+/// adaptive bitrate ceiling that matches the current link's capacity.
 @Observable
 @MainActor
 final class NetworkMonitor {
