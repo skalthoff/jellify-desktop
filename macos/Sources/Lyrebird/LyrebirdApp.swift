@@ -806,7 +806,7 @@ struct RootView: View {
             // defers the radio scan until the app's root view is mounted and the
             // main run-loop is live, matching the lifecycle contract in the
             // AVFoundation docs. The singleton retains detection for the app
-            // lifetime; there is no corresponding disable call. See #38.
+            // lifetime; there is no corresponding disable call.
             RouteDetector.shared.isEnabled = true
         }
         // App-wide bare-Space Play/Pause (audit L383). Installed here on the

@@ -161,7 +161,7 @@ public final class MediaSession {
         // polling the source device. Compute it as "now minus the elapsed
         // playback position" so the receiver can extrapolate forward at the
         // given `playbackRate`. Only set while playing — a paused receiver
-        // must not auto-advance its own scrubber. See issue #38.
+        // must not auto-advance its own scrubber.
         if rate > 0 {
             info[MPNowPlayingInfoPropertyCurrentPlaybackDate] = Date(timeIntervalSinceNow: -elapsed)
         }
@@ -260,8 +260,7 @@ public final class MediaSession {
         // so AirPlay receivers (HomePod, Apple TV) see the correct wall-clock
         // anchor after a scrub or a play/pause toggle. On pause, remove the
         // key — a stopped receiver must not drift the progress bar forward on
-        // its own. On play (or seek while playing), recompute from "now". See
-        // issue #38.
+        // its own. On play (or seek while playing), recompute from "now".
         if rate > 0 {
             info[MPNowPlayingInfoPropertyCurrentPlaybackDate] = Date(timeIntervalSinceNow: -clamped)
         } else {
