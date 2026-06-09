@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 @preconcurrency import LyrebirdCore
 
@@ -39,6 +40,18 @@ struct TrackRow: View {
     /// view; forwarded to `TrackContextMenu` so the right-click menu can
     /// surface a "Remove from Playlist" entry (#789).
     var playlistScope: Playlist? = nil
+    /// Whether this row is part of the caller's multi-selection. When `true`
+    /// the row paints a selection rail + tint regardless of hover / active
+    /// state. Callers that don't support multi-select leave this `false`.
+    /// Mirrors `TrackListRow.isSelected` (#217 / #985).
+    var isSelected: Bool = false
+    /// Optional click router for multi-select hosts (#217 / #985). When
+    /// non-nil the row hands every click (with its modifier flags) to the
+    /// caller instead of playing immediately, so the host can resolve
+    /// Cmd-toggle / Shift-range / bare-click-plays. When nil the row plays on
+    /// click exactly as before — every existing single-select call site is
+    /// unaffected. Mirrors `TrackListRow.onSelect`.
+    var onSelect: ((NSEvent.ModifierFlags) -> Void)? = nil
 
     @AppStorage("audio.transcodingPreference") private var transcodingRaw: String = TranscodingPreference.directPlay.rawValue
     // Library preferences. Track numbers default on; play-count-on-hover
@@ -127,6 +140,14 @@ struct TrackRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isFav ? "Unfavorite" : "Favorite")
+                // On the multi-select path the row carries a bare-tap
+                // `.gesture` that routes to `onSelect`; the shield lets the
+                // heart claim taps that land on it so toggling a favorite
+                // never also clears the selection. No-op when `onSelect` is
+                // nil. See #217 / #985.
+                .modifier(FavoriteTapShield(onSelect: onSelect) {
+                    model.toggleFavorite(track: track)
+                })
             }
 
             if showPlayCountOnHover, isHovering, track.playCount > 0 {
@@ -158,9 +179,24 @@ struct TrackRow: View {
             RoundedRectangle(cornerRadius: 6)
                 .stroke(isFocused ? Theme.accent.opacity(0.6) : .clear, lineWidth: 1)
         )
+        .overlay(alignment: .leading) {
+            // Selection rail — 2pt accent bar on the leading edge so a
+            // multi-selected row reads at a glance even when it's also
+            // hovered. Mirrors `TrackListRow` (#217 / #985).
+            if isSelected {
+                Rectangle()
+                    .fill(Theme.accent)
+                    .frame(width: 2)
+                    .padding(.vertical, 2)
+            }
+        }
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .onTapGesture(count: 1) { onPlay?() }
+        // When a selection host is wired up, route clicks (with modifier
+        // flags) to it through the shared gesture stack; otherwise keep the
+        // plain play-on-tap exactly as before. See #217 / #985.
+        .modifier(SelectionClickModifier(onSelect: onSelect))
+        .modifier(PlayTapWhenUnselectableModifier(onSelect: onSelect, onPlay: onPlay))
         .contextMenu { TrackContextMenu(selection: [track], playlistScope: playlistScope) }
         // Drag to Finder: materialises a `.m3u` file referencing the Jellyfin
         // stream URL so the user can drop the row onto VLC/Finder and play it
@@ -179,7 +215,7 @@ struct TrackRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(track.name) by \(track.artistName)")
         .accessibilityHint(isPlaying ? "Now playing" : "Plays this track")
-        .accessibilityAddTraits(isPlaying ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAddTraits(accessibilityTraits)
         // MARK: Keyboard navigation (#105)
         .focusable()
         .focused($isFocused)
@@ -222,10 +258,19 @@ struct TrackRow: View {
     }
 
     private var rowBackground: Color {
+        if isSelected { return Theme.accent.opacity(0.18) }
         if isActive { return Theme.surface2 }
         if isFocused { return Theme.rowHover }
         if isHovering { return Theme.rowHover }
         return .clear
+    }
+
+    /// Mirrors `TrackListRow.accessibilityTraits`: a multi-selected row
+    /// announces as selected even when it isn't the playing one (#985).
+    private var accessibilityTraits: AccessibilityTraits {
+        var traits: AccessibilityTraits = .isButton
+        if isPlaying || isSelected { traits.formUnion(.isSelected) }
+        return traits
     }
 
     /// Inline download-status glyph (#819). `.done` shows a solid offline

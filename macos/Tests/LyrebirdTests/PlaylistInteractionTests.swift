@@ -4,17 +4,17 @@ import XCTest
 @testable import Lyrebird
 @testable import LyrebirdCore
 
-/// Pure-logic coverage for the `PlaylistDetailView` interaction fixes (2.0
-/// polish audit): the drop-to-add payload parser that drives drop acceptance
-/// and error surfacing (#236), and the row-click selection arithmetic the view
-/// shares with `LibraryView` (#74 / #236).
+/// Pure-logic coverage for the playlist screen's track interactions
+/// (consolidated onto `PlaylistView` in #985): the drop-to-add payload parser
+/// that drives drop acceptance and error surfacing (#236), and the row-click
+/// selection arithmetic the view shares with `LibraryView` (#74 / #236).
 ///
 /// These are deliberately View-, FFI-, and `AppModel`-free — the row-click glue
-/// in `PlaylistDetailView.handleRowClick` now delegates to the same
+/// in `PlaylistView.handleTrackClick` delegates to the same
 /// `TrackSelectionResolver.resolve` exercised here, so the out-of-bounds (stale
 /// index) guard and the Cmd-over-Shift precedence are locked down without a
 /// SwiftUI scene graph.
-final class PlaylistDetailInteractionTests: XCTestCase {
+final class PlaylistInteractionTests: XCTestCase {
 
     // MARK: - Drop payload parsing (drop acceptance + empty-ids branch)
 

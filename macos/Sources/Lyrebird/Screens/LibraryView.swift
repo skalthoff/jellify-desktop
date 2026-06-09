@@ -90,7 +90,7 @@ struct LibraryView: View {
     /// Cleared on Esc, on a bare click, and on switching chips. See #217.
     @State private var selectedTrackIds: Set<String> = []
     /// Anchor row index for Shift+Click range extension. Mirrors the pattern
-    /// in `PlaylistDetailView`.
+    /// in `PlaylistView`.
     @State private var anchorIndex: Int? = nil
     /// Persisted default sort applied to the Albums chip on first entry and
     /// whenever the user switches to it without having hand-picked a sort.
@@ -345,7 +345,7 @@ struct LibraryView: View {
     /// Resolve a click on `index` within the sorted tracks list given the
     /// modifier state. Cmd toggles the hit row; Shift extends a contiguous
     /// range from the anchor; a bare click plays the row and resets the
-    /// selection. Mirrors `PlaylistDetailView.handleRowClick`. See #217.
+    /// selection. Mirrors `PlaylistView.handleTrackClick`. See #217.
     ///
     /// The pure selection arithmetic lives in `TrackSelectionResolver.resolve`
     /// so it can be unit-tested without a View or an `AppModel`; this method is
