@@ -103,8 +103,9 @@ public enum AudioOutputDevices {
     }
 
     /// Resolve a UID to a transient `AudioDeviceID` (for property writes that
-    /// the UID-based API can't reach, e.g. hog mode).
-    private static func deviceID(forUID uid: String) -> AudioDeviceID? {
+    /// the UID-based API can't reach, e.g. hog mode, or pinning the DSP
+    /// pipeline's `AVAudioEngine` output unit — see `EngineDSPPipeline`).
+    static func deviceID(forUID uid: String) -> AudioDeviceID? {
         guard let ids = allDeviceIDs() else { return nil }
         return ids.first { stringProperty($0, kAudioDevicePropertyDeviceUID) == uid }
     }

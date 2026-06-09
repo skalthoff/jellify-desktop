@@ -100,4 +100,25 @@ extension AppModel {
     /// `.id` on the selection so a switch recolours the UI live. Enabled; kept as
     /// a kill-switch / regression fallback (same pattern as `supportsGenreActions`).
     var supportsThemeSelection: Bool { true }
+
+    /// `UserDefaults` key backing `supportsEngineDSP` (#39). The literal comes
+    /// from the issue's contract so a dev/test opt-in is a one-liner:
+    /// `defaults write org.lyrebird.desktop engine.useAVAudioEngine -bool YES`.
+    static let engineDSPDefaultsKey = "engine.useAVAudioEngine"
+
+    /// AVAudioEngine-based DSP playback path (#39). Gates whether
+    /// `AudioEngine` routes play/pause/seek/advance through the streaming
+    /// AVAudioEngine pipeline (`EngineDSPPipeline`: player node →
+    /// `AVAudioUnitEQ` → main mixer) instead of `AVQueuePlayer`. The pipeline
+    /// is the foundation for EQ (#40) and crossfade (#41) — neither UI ships
+    /// yet, so the EQ node runs flat/bypassed and this flag defaults to
+    /// **off**: a missing key reads `false`, and nothing in the app writes it,
+    /// so playback stays byte-for-byte on the AVQueuePlayer path until the
+    /// user (or a future Settings toggle from #40/#41) opts in via the
+    /// defaults key above. Read once at launch (`AppModel.init` seeds
+    /// `audio.dspPipelineEnabled`); relaunch to apply — flipping mid-session
+    /// would strand a live player on the other path.
+    var supportsEngineDSP: Bool {
+        UserDefaults.standard.bool(forKey: AppModel.engineDSPDefaultsKey)
+    }
 }
