@@ -12,17 +12,44 @@ extension AppModel {
     // MARK: - Playback
 
     /// The transcode-bitrate ceiling (bits/s) the engine should apply to new
-    /// streams, resolved from the persisted Streaming Quality preference (#260).
+    /// streams, resolved from the persisted Streaming Quality preference (#260)
+    /// and the current network quality hint (#447).
+    ///
     /// `nil` = uncapped (the Lossless / Original tiers). When the feature is
     /// gated off, returns the historical 320 kbps default so playback is
     /// byte-for-byte unchanged. Seeded at audio-config time and refreshed at the
     /// start of each `play(tracks:)`, so a quality change applies the next time
     /// playback starts.
+    ///
+    /// For the `automatic` quality tier the bitrate is further adapted to the
+    /// current link (#447):
+    ///   - Unmetered (Ethernet / standard Wi-Fi): 320 kbps — same as before.
+    ///   - Metered (cellular / Personal Hotspot / `isExpensive`): 192 kbps so
+    ///     the first 8 seconds of a track buffer in ~1 second on a 2 Mbps link.
+    ///
+    /// Fixed tiers (Low / Normal / High / Lossless / Original) are applied
+    /// as-is, regardless of the network condition — the user has explicitly
+    /// asked for that quality.
     var resolvedStreamingBitrate: UInt32? {
         guard supportsStreamingBitrate else { return 320_000 }
         let raw = UserDefaults.standard.string(forKey: "playback.streamingQuality")
         let quality = raw.flatMap(PlaybackQuality.init(rawValue:)) ?? .automatic
-        return quality.maxStreamingBitrate
+        // For fixed tiers, honour the user's explicit choice unconditionally.
+        guard quality == .automatic else { return quality.maxStreamingBitrate }
+        // For the automatic tier, adapt to the current link quality.
+        switch network.qualityHint {
+        case .unmetered, .offline:
+            // Unmetered: stream at full automatic quality (320 kbps).
+            // Offline: `isOnline` will be false and playback will not start,
+            // but return the unmetered default rather than a degraded one so
+            // if the path briefly bounces back we don't serve a low-res stream.
+            return 320_000
+        case .metered:
+            // Cellular or metered Wi-Fi: use 192 kbps so the opening buffer
+            // fills quickly on a 2 Mbps link. The server transcodes to mp3 at
+            // this ceiling (see `stream_url_with_bitrate` in core/src/client.rs).
+            return 192_000
+        }
     }
 
     func play(tracks: [Track], startIndex: Int = 0) {
