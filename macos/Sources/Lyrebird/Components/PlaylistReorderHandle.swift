@@ -3,11 +3,9 @@ import UniformTypeIdentifiers
 @preconcurrency import LyrebirdCore
 
 /// BATCH-06b (#73 / #235): Drag-to-reorder affordance for tracks inside a
-/// playlist detail view. Shipped as a standalone component because the
-/// full `PlaylistDetailView.swift` (BATCH-06a / #540) hasn't merged yet —
-/// this file lets the detail view slot reorder in as a wrapper modifier on
-/// any track row, and lets `PlaylistView.swift` (the current hero-first
-/// playlist screen) adopt it today without a rewrite.
+/// playlist detail view, as a wrapper modifier any track row can adopt.
+/// Consumed by `PlaylistView.swift` — the single playlist screen since the
+/// `PlaylistDetailView` consolidation (#985).
 ///
 /// Usage:
 /// ```swift

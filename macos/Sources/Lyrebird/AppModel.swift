@@ -186,15 +186,16 @@ final class AppModel {
     /// `loadPlaylistTracks(playlist:)`; held for the session; cleared on
     /// logout. See #125 and #234.
     var playlistTracks: [String: [Track]] = [:]       // playlistID → tracks
-    /// Tracks for the playlist currently on screen in `PlaylistDetailView`
-    /// (#74 / #236). Separate from the keyed `playlistTracks` cache because
-    /// the detail view mutates this list in response to remove / add / undo
-    /// and needs a single observable array to drive the list rendering. The
-    /// cache is refreshed from `playlistTracks[playlistId]` when present so
-    /// repeat visits are instant.
+    /// Mirror of the playlist most recently loaded through
+    /// `loadPlaylistTracks(playlistId:)` (#74 / #236). The playlist
+    /// mutations (remove / add / undo) key off `playlistTracks[playlistId]`
+    /// since #985 — `PlaylistView` renders from that keyed cache — and keep
+    /// this mirror in step when it was showing the mutated playlist,
+    /// preserving the `loadPlaylistTracks(playlistId:)` contract for any
+    /// future single-array consumer.
     var currentPlaylistTracks: [Track] = []
     /// The most-recent optimistic removal from a playlist, held so the undo
-    /// toast in `PlaylistDetailView` can restore it. Cleared when the 10s
+    /// toast in `PlaylistView` can restore it. Cleared when the 10s
     /// toast window lapses or the user taps Undo. See #74.
     var pendingPlaylistRemoval: PendingRemoval?
     /// Client-side overrides for playlist description. The server-side
@@ -1046,7 +1047,7 @@ enum ContextSourceType: String, Hashable {
 }
 
 /// One batch of tracks removed from a playlist, kept around long enough for
-/// the `PlaylistDetailView` undo toast to restore them. See #74.
+/// the `PlaylistView` undo toast to restore them. See #74 / #985.
 struct PendingRemoval {
     let playlistId: String
     let tracks: [Track]

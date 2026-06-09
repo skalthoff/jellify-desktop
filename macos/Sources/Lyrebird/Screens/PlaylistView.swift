@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 @preconcurrency import LyrebirdCore
 
 /// Playlist detail screen. The hero follows the Album detail layout but
@@ -6,19 +8,28 @@ import SwiftUI
 /// first four tracks' album art, and puts the title + description under
 /// click-to-edit inline editors. See #234.
 ///
-/// Fuller affordances (favorite toggle, drag-reordering, member-albums
-/// shelf, custom cover drop-zone, virtualized long-playlist scroll) are
-/// tracked as follow-ups. For now this view lands:
-///   - the 2×2 collage hero (falls back to the playlist's own primary
-///     image, and finally a gradient placeholder, when track art is thin);
+/// Beyond the hero this view lands the full track-interaction set
+/// (consolidated from the retired `PlaylistDetailView` in #985):
 ///   - the click-to-edit title (uses `model.renamePlaylist`, which
 ///     persists to the server via `core.renamePlaylist` — optimistic
 ///     update with rollback + `errorMessage` on failure);
 ///   - the click-to-edit description, backed by
 ///     `model.playlistDescriptions` since the core's `Playlist` record
 ///     doesn't yet expose `Overview` — see #130;
-///   - a minimal ordered tracks list using `TrackRow`, wired to play
-///     through `model.play(tracks:startIndex:)`.
+///   - an ordered tracks list using `TrackRow`, wired to play through
+///     `model.play(tracks:startIndex:)`;
+///   - **multi-select** (#74 / #217): Cmd+Click toggles a row, Shift+Click
+///     extends a contiguous range from the anchor, bare-click plays and
+///     resets the selection — resolved by the shared
+///     `TrackSelectionResolver`;
+///   - **Delete / Backspace** removes the selection via
+///     `AppModel.removeFromPlaylist` (optimistic, server-reconciled) with a
+///     10-second undo toast backed by `AppModel.pendingPlaylistRemoval`;
+///   - **drop-to-add** (#236): any dropped payload that parses as track ids
+///     (JSON array or newline-separated, see `PlaylistDropPayload`) is added
+///     via `AppModel.addToPlaylist`;
+///   - drag-reorder (#73 / #235) via `.playlistReorderable` and Alt+Up /
+///     Alt+Down keyboard reorder on the focused row.
 struct PlaylistView: View {
     @Environment(AppModel.self) private var model
     let playlistID: String
@@ -26,6 +37,26 @@ struct PlaylistView: View {
     @State private var tracks: [Track] = []
     @State private var isLoadingTracks = true
     @State private var fetchedPlaylist: Playlist?
+
+    /// Row ids currently in the user's multi-selection. Empty means no
+    /// selection; single-element means one row is highlighted; more means a
+    /// batch operation (Delete, contiguous extend) applies. Reset when the
+    /// user plays a track via a bare click, switches playlist, or edits the
+    /// scoped filter (hidden rows must never be silently batch-removed).
+    @State private var selectedTrackIds: Set<String> = []
+    /// The last-interacted row's *display* index (position inside
+    /// `filteredTracks`), used as the anchor for Shift+Click range extension.
+    @State private var anchorIndex: Int? = nil
+    /// True while a drop is being dragged over the view — gates the accent
+    /// border so the user sees where their drop will land.
+    @State private var isDropTargeted: Bool = false
+    /// Controls whether the undo toast is visible. Flipped on by a remove;
+    /// flipped off by the 10s timer, an Undo tap, or navigating away.
+    @State private var showUndoToast: Bool = false
+    /// Work item backing the 10s auto-dismiss. Held so a second remove batch
+    /// within the window cancels the prior timer before scheduling a fresh
+    /// one. See `scheduleUndoDismiss`.
+    @State private var undoDismissWork: DispatchWorkItem?
 
     /// Editor draft state for the title. `nil` means the title is being
     /// displayed; non-nil means the user has tapped it and a `TextField` is
@@ -80,15 +111,65 @@ struct PlaylistView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                hero
-                transportBar
-                trackList
-                footer
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    hero
+                    transportBar
+                    trackList
+                    footer
+                }
+            }
+            .background(Theme.bg)
+
+            if showUndoToast, let pending = model.pendingPlaylistRemoval {
+                UndoRemovalToast(
+                    count: pending.tracks.count,
+                    onUndo: handleUndo,
+                    onDismiss: dismissUndoToast
+                )
+                .padding(.horizontal, 24)
+                .padding(.bottom, 20)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .background(Theme.bg)
+        .animation(.easeInOut(duration: 0.2), value: showUndoToast)
+        // Backspace / Delete on a non-empty selection → remove. SwiftUI
+        // routes `.onKeyPress` along the focused path; rows are focusable, so
+        // a press on a focused row propagates up to this container handler.
+        // `.focusable(true)` keeps the view eligible even with no row focused
+        // (mirrors the pattern the retired `PlaylistDetailView` shipped).
+        .focusable(true)
+        .onKeyPress(.delete) { handleDeleteKey() }
+        .onKeyPress(.deleteForward) { handleDeleteKey() }
+        // Esc clears the selection from anywhere in the view. See #217.
+        .onKeyPress(.escape) {
+            guard !selectedTrackIds.isEmpty else { return .ignored }
+            clearSelection()
+            return .handled
+        }
+        // Drop-to-add: accept any payload that parses as track ids (JSON
+        // array or newline-separated, per `PlaylistDropPayload`). See
+        // `handleDrop` (#236 / #985).
+        .onDrop(
+            of: [UTType.data, UTType.plainText, UTType.utf8PlainText],
+            isTargeted: $isDropTargeted
+        ) { providers in
+            handleDrop(providers: providers)
+        }
+        .overlay {
+            // Subtle drop-target indicator — a 2pt inset accent border. The
+            // list content stays fully visible so the user's sense of where
+            // the drop will land is intact.
+            if isDropTargeted {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Theme.accent, lineWidth: 2)
+                    .padding(2)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.15), value: isDropTargeted)
         .task(id: playlistID) {
             // Cache miss (deep link past the first page of library playlists,
             // or the pre-#654 "Playlists collection folder id" regression
@@ -104,9 +185,21 @@ struct PlaylistView: View {
                 return
             }
             scopedQuery = ""
+            // A different playlist invalidates the selection, the anchor,
+            // and any in-flight undo window (#985).
+            clearSelection()
+            undoDismissWork?.cancel()
+            showUndoToast = false
             isLoadingTracks = true
             tracks = await model.loadPlaylistTracks(playlist: playlist)
             isLoadingTracks = false
+        }
+        // Editing the scoped filter reorders / hides rows, so both the
+        // positional anchor and the selection itself are invalidated — a
+        // Delete on rows the user can no longer see would be a silent batch
+        // remove (#985).
+        .onChange(of: scopedQuery) { _, _ in
+            clearSelection()
         }
         // ⌘F → AppModel.requestFind() addresses a focus request to a specific
         // route. Only pull focus when the request targets *this* playlist so a
@@ -134,6 +227,8 @@ struct PlaylistView: View {
             // Clear scoped filter on navigation away so it never persists
             // into the next page.
             scopedQuery = ""
+            // Prevent the undo auto-dismiss firing against a detached view.
+            undoDismissWork?.cancel()
         }
     }
 
@@ -310,10 +405,42 @@ struct PlaylistView: View {
                 .accessibilityLabel(isFav ? "Unfavorite playlist" : "Favorite playlist")
             }
             Spacer()
+
+            // Batch-remove affordance for the current multi-selection — the
+            // pointer-driven twin of Delete / Backspace (#74 / #985).
+            if !selectedTrackIds.isEmpty {
+                Text("\(selectedTrackIds.count) selected")
+                    .font(Theme.font(12, weight: .semibold))
+                    .foregroundStyle(Theme.ink2)
+                Button {
+                    performRemove(ids: Array(selectedTrackIds))
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 12, weight: .semibold))
+                        Text("Remove")
+                            .font(Theme.font(12, weight: .bold))
+                    }
+                    .foregroundStyle(Theme.ink)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Theme.danger.opacity(0.25))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Theme.danger, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Remove \(selectedTrackIds.count) selected tracks from playlist")
+            }
         }
         .padding(.horizontal, 32)
         .padding(.top, 20)
         .padding(.bottom, 8)
+        .animation(.easeInOut(duration: 0.15), value: selectedTrackIds.isEmpty)
     }
 
     // MARK: - Track list
@@ -348,7 +475,7 @@ struct PlaylistView: View {
                     .padding(.vertical, 40)
                     .frame(maxWidth: .infinity)
             } else {
-                ForEach(filteredTracks, id: \.track.id) { entry in
+                ForEach(Array(filteredTracks.enumerated()), id: \.element.track.id) { displayIdx, entry in
                     let idx = entry.index
                     let track = entry.track
                     // Playlists ignore `indexNumber` (that's the track's
@@ -361,7 +488,15 @@ struct PlaylistView: View {
                         onPlay: { model.play(tracks: tracks, startIndex: idx) },
                         tracks: tracks,
                         index: idx,
-                        playlistScope: playlist
+                        playlistScope: playlist,
+                        isSelected: selectedTrackIds.contains(track.id),
+                        // Selection arithmetic runs in *display* space (the
+                        // filtered list the user actually sees) so Shift
+                        // ranges match what's on screen; playback indexes
+                        // back into the true playlist position. See #985.
+                        onSelect: { modifiers in
+                            handleTrackClick(displayIndex: displayIdx, modifiers: modifiers)
+                        }
                     )
                     // BATCH-06b (#73 / #235): drag-to-reorder. The modifier
                     // lives in `PlaylistReorderHandle.swift` and routes drops
@@ -410,6 +545,157 @@ struct PlaylistView: View {
                 .foregroundStyle(Theme.ink3)
                 .padding(.horizontal, 32)
                 .padding(.vertical, 24)
+        }
+    }
+
+    // MARK: - Selection handling (#74 / #217 / #985)
+
+    /// Resolve a click on `displayIndex` (position inside `filteredTracks`)
+    /// given the modifier state. Cmd toggles the hit row; Shift extends a
+    /// contiguous range from the anchor; a bare click plays the row and
+    /// resets the selection.
+    ///
+    /// `displayIndex` is captured at render time and can be stale (e.g. the
+    /// list shrank after a remove). The pure arithmetic lives in
+    /// `TrackSelectionResolver.resolve`, which returns `nil` for an
+    /// out-of-bounds index, so a stale click is a no-op instead of a crash.
+    /// Same glue as `LibraryView.handleTrackClick`.
+    private func handleTrackClick(displayIndex: Int, modifiers: NSEvent.ModifierFlags) {
+        let display = filteredTracks
+        guard let outcome = TrackSelectionResolver.resolve(
+            clickedIndex: displayIndex,
+            trackIds: display.map(\.track.id),
+            currentSelection: selectedTrackIds,
+            anchorIndex: anchorIndex,
+            modifiers: modifiers
+        ) else { return }
+        selectedTrackIds = outcome.selection
+        anchorIndex = outcome.anchorIndex
+        if outcome.shouldPlay {
+            // Play with the full (unfiltered) playlist as the queue, starting
+            // from the clicked row's true position — matching `onPlay`.
+            model.play(tracks: tracks, startIndex: display[displayIndex].index)
+        }
+    }
+
+    private func clearSelection() {
+        selectedTrackIds = []
+        anchorIndex = nil
+    }
+
+    /// Handle Delete / Backspace. Only fires a remove when at least one row
+    /// is selected — otherwise the key press is ignored so the event keeps
+    /// propagating.
+    private func handleDeleteKey() -> KeyPress.Result {
+        guard !selectedTrackIds.isEmpty else { return .ignored }
+        performRemove(ids: Array(selectedTrackIds))
+        return .handled
+    }
+
+    private func performRemove(ids: [String]) {
+        guard !ids.isEmpty else { return }
+        model.removeFromPlaylist(playlistId: playlistID, entryIds: ids)
+        clearSelection()
+        showUndoToast = true
+        scheduleUndoDismiss()
+    }
+
+    // MARK: - Undo toast
+
+    private func scheduleUndoDismiss() {
+        undoDismissWork?.cancel()
+        let work = DispatchWorkItem {
+            showUndoToast = false
+            // Also clear the stash so a later "undo" tap after the window
+            // can't resurrect a stale batch.
+            model.pendingPlaylistRemoval = nil
+        }
+        undoDismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
+    }
+
+    private func handleUndo() {
+        undoDismissWork?.cancel()
+        model.undoRemoveFromPlaylist()
+        showUndoToast = false
+    }
+
+    private func dismissUndoToast() {
+        undoDismissWork?.cancel()
+        showUndoToast = false
+        model.pendingPlaylistRemoval = nil
+    }
+
+    // MARK: - Drop handling (#236 / #985)
+
+    /// Read any dropped track-id payloads out of `providers` and forward to
+    /// `AppModel.addToPlaylist`. Accepts two shapes, in order of preference:
+    ///
+    /// - JSON array of strings: `["id-1","id-2"]` — the canonical form a
+    ///   future `Track: Transferable` conformance would emit via its
+    ///   `.data` representation.
+    /// - Newline-separated plain text — interop fallback for drops coming
+    ///   from external sources (e.g. a text file of ids, or a hand-rolled
+    ///   `.plainText` Transferable implementation).
+    ///
+    /// Returns `true` only when at least one provider advertises a type we
+    /// can read (data or plain text) — i.e. the drop has a chance of yielding
+    /// ids, so SwiftUI's affordance confirms it. A drop of solely unreadable
+    /// providers is rejected so the OS plays the "no" animation.
+    ///
+    /// The actual add happens asynchronously once the provider resolves. The
+    /// list refresh is owned by `AppModel.addToPlaylist` (it re-fetches on
+    /// success, which flows back through `playlistTracks[playlistID]` and the
+    /// `.onChange` sync above). Failures inside the async callbacks — a nil
+    /// payload, a provider error, or bytes that yield no ids — surface on
+    /// `model.errorMessage` rather than vanishing silently.
+    private func handleDrop(providers: [NSItemProvider]) -> Bool {
+        guard !providers.isEmpty else { return false }
+        let playlistId = playlistID
+        var accepted = false
+        // Best-effort: try data first, then fall back to plain-text.
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.data.identifier) {
+                accepted = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.data.identifier) { data, error in
+                    handleDroppedPayload(data, error: error, into: playlistId)
+                }
+            } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier) {
+                accepted = true
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.plainText.identifier) { data, error in
+                    handleDroppedPayload(data, error: error, into: playlistId)
+                }
+            }
+        }
+        return accepted
+    }
+
+    /// Resolve one provider's loaded bytes into track ids and forward to
+    /// `AppModel.addToPlaylist`, surfacing any failure on `model.errorMessage`.
+    /// Runs on the provider's callback queue, so it hops to the main actor
+    /// before touching the model.
+    private func handleDroppedPayload(_ data: Data?, error: Error?, into playlistId: String) {
+        if let error {
+            Task { @MainActor in
+                model.errorMessage = "Couldn't read the dropped item: \(error.localizedDescription)"
+            }
+            return
+        }
+        guard let data else {
+            Task { @MainActor in
+                model.errorMessage = "Couldn't read the dropped item."
+            }
+            return
+        }
+        let ids = PlaylistDropPayload.parseTrackIds(from: data)
+        guard !ids.isEmpty else {
+            Task { @MainActor in
+                model.errorMessage = "That drop didn't contain any tracks to add."
+            }
+            return
+        }
+        Task { @MainActor in
+            model.addToPlaylist(playlistId: playlistId, trackIds: ids)
         }
     }
 

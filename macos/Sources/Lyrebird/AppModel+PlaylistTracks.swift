@@ -45,8 +45,11 @@ extension AppModel {
     }
 
     /// Load the ordered track list for `playlistId` and publish it on
-    /// `currentPlaylistTracks` so `PlaylistDetailView` can drive its list and
-    /// multi-select surface off a single observable array. See #74 / #236.
+    /// `currentPlaylistTracks` — the single-array mirror kept alongside the
+    /// keyed cache (see its doc on `AppModel`). `PlaylistView` itself loads
+    /// through `loadPlaylistTracks(playlist:)`; this variant remains for the
+    /// drop-to-add refresh and any future single-array consumer. See
+    /// #74 / #236 / #985.
     ///
     /// Hits the keyed `playlistTracks` cache first so switching back to a
     /// playlist you just left is instant. On a miss, delegates to
@@ -90,14 +93,19 @@ extension AppModel {
     /// hero stat doesn't lie.
     ///
     /// `entryIds` are track `id`s (the underlying `ItemId`). The server call
-    /// needs `PlaylistItemId`s — we resolve those from
-    /// `currentPlaylistTracks` before firing the request, so every removed
-    /// track must have been loaded with its `playlistItemId` set (i.e.
-    /// fetched via `core.playlistTracks`, not synthesized ad-hoc).
+    /// needs `PlaylistItemId`s — we resolve those from the keyed
+    /// `playlistTracks[playlistId]` cache (falling back to the
+    /// `currentPlaylistTracks` mirror for callers that loaded through
+    /// `loadPlaylistTracks(playlistId:)`), so every removed track must have
+    /// been loaded with its `playlistItemId` set (i.e. fetched via
+    /// `core.playlistTracks`, not synthesized ad-hoc). Keying off the cache —
+    /// not the on-screen mirror — is what lets `PlaylistView` (which renders
+    /// from the keyed cache, #985) drive removals for any playlist.
     func removeFromPlaylist(playlistId: String, entryIds: [String]) {
         guard !entryIds.isEmpty else { return }
         let removing = Set(entryIds)
-        let removed = currentPlaylistTracks.filter { removing.contains($0.id) }
+        let source = playlistTracks[playlistId] ?? currentPlaylistTracks
+        let removed = source.filter { removing.contains($0.id) }
         guard !removed.isEmpty else { return }
         let playlistItemIds = removed.compactMap { $0.playlistItemId }
         // Server call requires playlistItemIds. If any removed track lacks
@@ -110,8 +118,12 @@ extension AppModel {
             errorMessage = "Couldn't remove this track from the playlist. Try refreshing the playlist."
             return
         }
-        currentPlaylistTracks.removeAll { removing.contains($0.id) }
-        playlistTracks[playlistId] = currentPlaylistTracks
+        // Whether the on-screen mirror was showing this playlist *before*
+        // the mutation; if so, keep it in step with the keyed cache.
+        let wasShowing = currentPlaylistTracks.map(\.id) == source.map(\.id)
+        let remaining = source.filter { !removing.contains($0.id) }
+        playlistTracks[playlistId] = remaining
+        if wasShowing { currentPlaylistTracks = remaining }
         pendingPlaylistRemoval = PendingRemoval(
             playlistId: playlistId,
             tracks: removed
@@ -151,8 +163,9 @@ extension AppModel {
                     self.serverReachability.noteFailure()
                 }
                 // Rollback: restore the rows + the trackCount we just decremented.
-                self.currentPlaylistTracks.append(contentsOf: removedSnapshot)
-                self.playlistTracks[playlistRef] = self.currentPlaylistTracks
+                let restored = (self.playlistTracks[playlistRef] ?? []) + removedSnapshot
+                self.playlistTracks[playlistRef] = restored
+                if wasShowing { self.currentPlaylistTracks = restored }
                 if let idx = self.playlists.firstIndex(where: { $0.id == playlistRef }) {
                     let p = self.playlists[idx]
                     self.playlists[idx] = Playlist(
@@ -174,9 +187,11 @@ extension AppModel {
     }
 
     /// Restore a previously-removed batch by re-adding via `core.addToPlaylist`.
-    /// Called from the undo toast in `PlaylistDetailView`. Clears
+    /// Called from the undo toast in `PlaylistView`. Clears
     /// `pendingPlaylistRemoval` on success; leaves it intact on failure so
-    /// the user can retry by tapping Undo again.
+    /// the user can retry by tapping Undo again. Keyed off
+    /// `pending.playlistId` (not the on-screen mirror) for the same reason as
+    /// `removeFromPlaylist` — see #985.
     func undoRemoveFromPlaylist() {
         guard let pending = pendingPlaylistRemoval else { return }
         let ids = pending.tracks.map(\.id)
@@ -184,10 +199,13 @@ extension AppModel {
         pendingPlaylistRemoval = nil
         // Optimistically re-insert so the list pops back immediately. The
         // server call below is the actual durability guarantee.
-        let existingIds = Set(currentPlaylistTracks.map(\.id))
+        let source = playlistTracks[playlistId] ?? currentPlaylistTracks
+        let wasShowing = currentPlaylistTracks.map(\.id) == source.map(\.id)
+        let existingIds = Set(source.map(\.id))
         let reinserted = pending.tracks.filter { !existingIds.contains($0.id) }
-        currentPlaylistTracks.append(contentsOf: reinserted)
-        playlistTracks[playlistId] = currentPlaylistTracks
+        let updated = source + reinserted
+        playlistTracks[playlistId] = updated
+        if wasShowing { currentPlaylistTracks = updated }
         if let idx = playlists.firstIndex(where: { $0.id == playlistId }) {
             let p = playlists[idx]
             playlists[idx] = Playlist(
@@ -219,8 +237,10 @@ extension AppModel {
                 }
                 // Roll back the optimistic re-insert: drop the rows we
                 // just added and decrement the playlist count.
-                self.currentPlaylistTracks.removeAll { reinsertedIds.contains($0.id) }
-                self.playlistTracks[playlistRef] = self.currentPlaylistTracks
+                let rolledBack = (self.playlistTracks[playlistRef] ?? [])
+                    .filter { !reinsertedIds.contains($0.id) }
+                self.playlistTracks[playlistRef] = rolledBack
+                if wasShowing { self.currentPlaylistTracks = rolledBack }
                 if let idx = self.playlists.firstIndex(where: { $0.id == playlistRef }) {
                     let p = self.playlists[idx]
                     let newCount = max(0, Int(p.trackCount) - reinsertedCount)
@@ -242,24 +262,21 @@ extension AppModel {
     }
 
     /// Append tracks to a playlist by id. Backs the drop-to-add handler on
-    /// `PlaylistDetailView` and any future "Add to playlist" affordance. See
+    /// `PlaylistView` and any future "Add to playlist" affordance. See
     /// #236. Updates the in-memory caches optimistically and fires the core
     /// call in a detached task.
     ///
     /// We only know the bare track ids here, not full `Track` records, so the
     /// visible list can't be appended to optimistically. Instead, on a
-    /// successful add we invalidate `playlistTracks[playlistId]` and — when
-    /// that playlist is the one currently on screen — re-fetch it so the new
-    /// rows actually appear. Without this the drop "succeeds" but the list
-    /// keeps showing the pre-drop tracks (the cache was never refreshed).
+    /// successful add we invalidate `playlistTracks[playlistId]` and re-fetch
+    /// it so the new rows actually appear — `PlaylistView` picks the refresh
+    /// up through its `.onChange(of: playlistTracks[id])` sync (#985). The
+    /// only caller is the on-screen drop handler, so the re-fetch is never
+    /// wasted. Without it the drop "succeeds" but the list keeps showing the
+    /// pre-drop tracks (the cache was never refreshed).
     func addToPlaylist(playlistId: String, trackIds: [String]) {
         guard !trackIds.isEmpty else { return }
         let ids = trackIds
-        // Is this the playlist currently on screen? `currentPlaylistTracks` is
-        // populated from `playlistTracks[playlistId]` whenever a playlist
-        // loads, so matching id sequences means the detail view is showing it
-        // and needs a re-fetch once the add lands.
-        let isShowingThisPlaylist = playlistTracks[playlistId]?.map(\.id) == currentPlaylistTracks.map(\.id)
         // Optimistically bump the count BEFORE the FFI call so the drop
         // visually lands without waiting for the round-trip. We don't know
         // the full `Track` records for ids that aren't already resident, so
@@ -288,12 +305,10 @@ extension AppModel {
                 self.serverReachability.noteSuccess()
                 // The add persisted but we only had bare ids, so the cached
                 // rows are now stale (missing the new tracks). Invalidate the
-                // cache and, if this playlist is on screen, re-fetch so the
-                // dropped tracks actually appear in the list.
+                // cache and re-fetch so the dropped tracks actually appear in
+                // the list (the visible view syncs off the keyed cache).
                 self.playlistTracks[playlistRef] = nil
-                if isShowingThisPlaylist {
-                    await self.loadPlaylistTracks(playlistId: playlistRef, forceRefresh: true)
-                }
+                await self.loadPlaylistTracks(playlistId: playlistRef, forceRefresh: true)
             } catch {
                 guard let self else { return }
                 if self.handleAuthError(error) { return }
