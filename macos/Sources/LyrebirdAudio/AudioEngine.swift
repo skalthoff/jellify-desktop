@@ -90,8 +90,22 @@ public extension AudioEngineDelegate {
 /// will splice the pre-built item in gaplessly.
 @MainActor
 public final class AudioEngine: NSObject {
-    private let core: LyrebirdCore
+    /// Internal (not private) so the DSP extension (`AudioEngine+DSP.swift`)
+    /// can drive the same core contract — never reach for this from outside
+    /// the engine.
+    let core: LyrebirdCore
     private var player: AVQueuePlayer?
+
+    /// AVAudioEngine DSP path feature flag (#39). Seeded once at startup by
+    /// the owner (`AppModel`, from `supportsEngineDSP`); **off by default**.
+    /// While off, every transport method takes the AVQueuePlayer path
+    /// byte-for-byte unchanged and `dspPipeline` is never constructed.
+    public var dspPipelineEnabled: Bool = false
+
+    /// Lazily-built AVAudioEngine pipeline (player node → EQ → mixer). Only
+    /// non-nil after the first DSP-routed `play(track:)`; see
+    /// `AudioEngine+DSP.swift`.
+    var dspPipeline: EngineDSPPipeline?
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var rateObservation: NSKeyValueObservation?
@@ -180,7 +194,12 @@ public final class AudioEngine: NSObject {
     /// engine re-applies it to the live player immediately and to every player
     /// it builds afterwards (`play`, gapless preload, stall recovery).
     public var outputDeviceUID: String? {
-        didSet { applyOutputDevice(to: player) }
+        didSet {
+            applyOutputDevice(to: player)
+            // No-op while the DSP flag is off — the pipeline only exists on
+            // the flag-on path (#39).
+            dspPipeline?.setOutputDevice(uid: outputDeviceUID)
+        }
     }
 
     /// ReplayGain / loudness-normalization mode (#42). Mirrors the
@@ -318,7 +337,7 @@ public final class AudioEngine: NSObject {
     /// Runs off the main actor: the `core.playbackInfo` FFI blocks the calling
     /// thread on the full `POST /Items/{id}/PlaybackInfo` round-trip, which
     /// would beach-ball the UI if taken on the main actor.
-    private func resolvePlaybackSource(for trackId: String) async -> (mediaSourceId: String?, playSessionId: String?) {
+    func resolvePlaybackSource(for trackId: String) async -> (mediaSourceId: String?, playSessionId: String?) {
         let core = self.core
         let opts = PlaybackInfoOpts(
             userId: nil,
@@ -349,7 +368,7 @@ public final class AudioEngine: NSObject {
     /// core's `downloadLocalPath` already verifies the file exists on disk, so a
     /// non-nil result is safe to hand straight to AVFoundation. The FFI blocks
     /// on a SQLite read, so it runs off the main actor.
-    private func resolveLocalAssetURL(for trackId: String) async -> URL? {
+    func resolveLocalAssetURL(for trackId: String) async -> URL? {
         guard offlinePlaybackEnabled else { return nil }
         let core = self.core
         let path: String? = await Task.detached {
@@ -368,6 +387,11 @@ public final class AudioEngine: NSObject {
     private var reportingPlaySessionId: String?
 
     private func positionTicks() -> Int64 {
+        // DSP path (#39): the shared reporting helpers (`reportStopped`,
+        // `reportProgressSnapshot`) read position through here, so they get
+        // the pipeline's clock when the flag is on. Flag off ⇒ branch never
+        // taken.
+        if dspPipelineEnabled { return dspPositionTicks() }
         guard let player, let item = player.currentItem else { return 0 }
         let seconds = CMTimeGetSeconds(item.currentTime())
         guard seconds.isFinite, seconds >= 0 else { return 0 }
@@ -378,7 +402,7 @@ public final class AudioEngine: NSObject {
     /// AVQueuePlayer's `currentItem`. Best-effort — Jellyfin accepts the
     /// stream regardless of whether the session-begin report landed, so we
     /// swallow errors rather than surfacing them to the UI.
-    private func reportStarted(
+    func reportStarted(
         trackId: String,
         mediaSourceId: String?,
         playSessionId: String?,
@@ -426,7 +450,7 @@ public final class AudioEngine: NSObject {
     /// (`runtime.block_on` in Rust), so it's dispatched off the main actor.
     /// Clearing the reporting triple stays on the actor and happens
     /// synchronously so a follow-up `reportStarted` can't race it.
-    private func reportStopped(positionTicks explicitPosition: Int64? = nil) {
+    func reportStopped(positionTicks explicitPosition: Int64? = nil) {
         guard let itemId = reportingItemId else { return }
         let info = PlaybackStopInfo(
             itemId: itemId,
@@ -452,7 +476,7 @@ public final class AudioEngine: NSObject {
     /// (`runtime.block_on` in Rust), so the FFI is dispatched off the main
     /// actor. The position snapshot is read on the actor first so it reflects
     /// the player state at call time, not whenever the detached task runs.
-    private func reportProgressSnapshot(isPaused: Bool) {
+    func reportProgressSnapshot(isPaused: Bool) {
         guard let itemId = reportingItemId else { return }
         let info = PlaybackProgressInfo(
             itemId: itemId,
@@ -552,6 +576,13 @@ public final class AudioEngine: NSObject {
     // MARK: - Public
 
     public func play(track: Track) async throws {
+        // DSP path (#39): route through the AVAudioEngine pipeline when the
+        // feature flag is on. Flag off (default) ⇒ the AVQueuePlayer path
+        // below runs byte-for-byte unchanged.
+        if dspPipelineEnabled {
+            try await dspPlay(track: track)
+            return
+        }
         // A stall watchdog scheduled for the *old* track would otherwise fire
         // mid-load of the new one and kick a perfectly healthy fresh stream.
         // `removePlayerObservers()` below tears down the KVO observers but does
@@ -682,6 +713,10 @@ public final class AudioEngine: NSObject {
     }
 
     public func pause() {
+        if dspPipelineEnabled {
+            dspPause()
+            return
+        }
         player?.pause()
         core.markState(state: .paused)
         // `rateObservation` below also fires `rateChanged`, but that
@@ -693,6 +728,10 @@ public final class AudioEngine: NSObject {
     }
 
     public func resume() {
+        if dspPipelineEnabled {
+            dspResume()
+            return
+        }
         player?.play()
         core.markState(state: .playing)
         mediaSession?.rateChanged(isPlaying: true)
@@ -700,6 +739,10 @@ public final class AudioEngine: NSObject {
     }
 
     public func stop() {
+        if dspPipelineEnabled {
+            dspStop()
+            return
+        }
         cancelStallWatchdog()
         // Emit Stopped BEFORE draining the queue so positionTicks still
         // reflects the last known playback position.
@@ -720,6 +763,10 @@ public final class AudioEngine: NSObject {
     }
 
     public func seek(toSeconds seconds: Double) {
+        if dspPipelineEnabled {
+            dspSeek(toSeconds: seconds)
+            return
+        }
         guard let player = player else { return }
         // #582: Cancel any in-flight seek before issuing the new one so
         // rapid scrubber drags don't race against each other.
@@ -751,6 +798,10 @@ public final class AudioEngine: NSObject {
     }
 
     public func setVolume(_ v: Float) {
+        if dspPipelineEnabled {
+            dspSetVolume(v)
+            return
+        }
         player?.volume = max(0, min(1, v))
         core.setVolume(volume: v)
     }
@@ -769,6 +820,12 @@ public final class AudioEngine: NSObject {
     /// is what we want. Existing queued-but-not-yet-playing items are replaced
     /// so rapid skip-next doesn't accumulate stale entries.
     public func preloadNextTrack(_ track: Track) {
+        // DSP path (#39): gapless preload is a listed gap — the pipeline
+        // plays one track at a time and `onTrackEnded` rebuilds the next,
+        // exactly like the `gaplessEnabled == false` behaviour. A queued-
+        // ahead AVPlayerItem would be meaningless here, so bail before the
+        // player guard.
+        if dspPipelineEnabled { return }
         guard player != nil else { return }
 
         #if DEBUG

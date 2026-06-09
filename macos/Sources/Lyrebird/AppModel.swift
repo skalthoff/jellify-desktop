@@ -863,6 +863,10 @@ final class AppModel {
         // stays false, so `AudioEngine.play` never queries the core for a local
         // path and the streaming path is byte-for-byte unchanged.
         self.audio.offlinePlaybackEnabled = supportsDownloads
+        // AVAudioEngine DSP path (#39): off by default. While off the engine
+        // never constructs the DSP pipeline and every transport call takes
+        // the AVQueuePlayer path unchanged. See `supportsEngineDSP`.
+        self.audio.dspPipelineEnabled = supportsEngineDSP
         // Streaming quality (#260): seed the engine's transcode ceiling from the
         // persisted Streaming Quality preference so the first track honours it
         // without waiting for a `play(tracks:)`. Defaults to 320 kbps when the
