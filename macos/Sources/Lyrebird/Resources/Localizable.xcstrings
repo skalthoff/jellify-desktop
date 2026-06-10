@@ -22,6 +22,12 @@
             "state": "needs_review",
             "value": "À propos de Lyrebird"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Über Lyrebird"
+          }
         }
       }
     },
@@ -42,6 +48,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Lyrebird"
@@ -70,6 +82,12 @@
             "state": "needs_review",
             "value": "BUREAU"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "DESKTOP"
+          }
         }
       }
     },
@@ -93,6 +111,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Votre session a expiré"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ihre Sitzung ist abgelaufen"
           }
         }
       }
@@ -118,6 +142,12 @@
             "state": "needs_review",
             "value": "Veuillez vous reconnecter pour continuer à écouter."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Bitte melden Sie sich erneut an, um weiter Musik zu hören."
+          }
         }
       }
     },
@@ -141,6 +171,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Se connecter"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Anmelden"
           }
         }
       }
@@ -166,6 +202,12 @@
             "state": "needs_review",
             "value": "Se reconnecter"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Erneut anmelden"
+          }
         }
       }
     },
@@ -189,6 +231,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Connexion en cours…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Anmeldung läuft…"
           }
         }
       }
@@ -214,6 +262,12 @@
             "state": "needs_review",
             "value": "Impossible d'atteindre votre serveur."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Server nicht erreichbar."
+          }
         }
       }
     },
@@ -237,6 +291,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible d'atteindre %@. Nouvelle tentative…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "%@ nicht erreichbar. Neuer Versuch…"
           }
         }
       }
@@ -262,6 +322,12 @@
             "state": "needs_review",
             "value": "Réessayer la connexion au serveur"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Serververbindung erneut versuchen"
+          }
         }
       }
     },
@@ -282,6 +348,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Album"
@@ -310,6 +382,12 @@
             "state": "needs_review",
             "value": "Artiste"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Künstler"
+          }
         }
       }
     },
@@ -333,6 +411,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlist"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabeliste"
           }
         }
       }
@@ -358,6 +442,12 @@
             "state": "needs_review",
             "value": "Annuler"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Abbrechen"
+          }
         }
       }
     },
@@ -381,6 +471,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Supprimer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Löschen"
           }
         }
       }
@@ -406,6 +502,12 @@
             "state": "needs_review",
             "value": "Ignorer"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Schließen"
+          }
         }
       }
     },
@@ -430,6 +532,12 @@
             "state": "needs_review",
             "value": "Terminé"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fertig"
+          }
         }
       }
     },
@@ -453,6 +561,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Réessayer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Erneut versuchen"
           }
         }
       }
@@ -510,6 +624,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld albums"
+                }
+              }
+            }
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Album"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Alben"
                 }
               }
             }
@@ -574,6 +706,24 @@
               }
             }
           }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Künstler"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Künstler"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -630,6 +780,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld éléments"
+                }
+              }
+            }
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Element"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Elemente"
                 }
               }
             }
@@ -694,6 +862,24 @@
               }
             }
           }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Wiedergabeliste"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Wiedergabelisten"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -750,6 +936,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld lectures"
+                }
+              }
+            }
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Wiedergabe"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Wiedergaben"
                 }
               }
             }
@@ -814,6 +1018,24 @@
               }
             }
           }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Ergebnis"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Ergebnisse"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -870,6 +1092,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld sélectionnés"
+                }
+              }
+            }
+          }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld ausgewählt"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld ausgewählt"
                 }
               }
             }
@@ -934,6 +1174,24 @@
               }
             }
           }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Song"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Songs"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -994,6 +1252,24 @@
               }
             }
           }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Titel"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Titel"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1017,6 +1293,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pas encore de musique"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Noch keine Musik"
           }
         }
       }
@@ -1042,6 +1324,12 @@
             "state": "needs_review",
             "value": "Votre serveur Jellyfin ne contient pas de musique dans sa bibliothèque, ou elle est encore en cours d'indexation. Ajoutez une bibliothèque sur le serveur, puis actualisez."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ihr Jellyfin-Server hat keine Musik in seiner Bibliothek, oder sie wird noch indiziert. Fügen Sie eine Bibliothek auf dem Server hinzu und aktualisieren Sie dann."
+          }
         }
       }
     },
@@ -1065,6 +1353,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ouvrir Jellyfin web"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Jellyfin Web öffnen"
           }
         }
       }
@@ -1090,6 +1384,12 @@
             "state": "needs_review",
             "value": "La file d'attente est vide"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Warteschlange ist leer"
+          }
         }
       }
     },
@@ -1113,6 +1413,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Lisez quelque chose pour démarrer une file d'attente."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Geben Sie etwas wieder, um eine Warteschlange zu starten."
           }
         }
       }
@@ -1138,6 +1444,12 @@
             "state": "needs_review",
             "value": "Veuillez vous reconnecter."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Bitte melden Sie sich erneut an."
+          }
         }
       }
     },
@@ -1161,6 +1473,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Vous n'avez pas la permission de faire cela."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sie haben keine Berechtigung dafür."
           }
         }
       }
@@ -1186,6 +1504,12 @@
             "state": "needs_review",
             "value": "Cet élément est introuvable."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Dieses Element wurde nicht gefunden."
+          }
         }
       }
     },
@@ -1209,6 +1533,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Trop de requêtes. Veuillez réessayer dans un moment."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zu viele Anfragen. Bitte versuchen Sie es gleich noch einmal."
           }
         }
       }
@@ -1234,6 +1564,12 @@
             "state": "needs_review",
             "value": "Erreur réseau. Vérifiez votre connexion et réessayez."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Netzwerkfehler. Überprüfen Sie Ihre Verbindung und versuchen Sie es erneut."
+          }
         }
       }
     },
@@ -1257,6 +1593,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Le serveur a rencontré un problème. Veuillez réessayer."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Der Server ist auf ein Problem gestoßen. Bitte versuchen Sie es erneut."
           }
         }
       }
@@ -1282,6 +1624,12 @@
             "state": "needs_review",
             "value": "Impossible de lire la réponse du serveur."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Die Antwort des Servers konnte nicht gelesen werden."
+          }
         }
       }
     },
@@ -1305,6 +1653,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible de télécharger pour la lecture hors ligne."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Herunterladen für die Offline-Wiedergabe fehlgeschlagen."
           }
         }
       }
@@ -1330,6 +1684,12 @@
             "state": "needs_review",
             "value": "Erreur de stockage local. Veuillez réessayer."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lokaler Speicherfehler. Bitte versuchen Sie es erneut."
+          }
         }
       }
     },
@@ -1353,6 +1713,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible d'accéder au trousseau système."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zugriff auf den Systemschlüsselbund nicht möglich."
           }
         }
       }
@@ -1378,6 +1744,12 @@
             "state": "needs_review",
             "value": "Erreur de lecture audio."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fehler bei der Audiowiedergabe."
+          }
         }
       }
     },
@@ -1401,6 +1773,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Le certificat du serveur n'a pas pu être vérifié. Vous devrez peut-être approuver ce serveur."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Das Zertifikat des Servers konnte nicht überprüft werden. Möglicherweise müssen Sie diesem Server vertrauen."
           }
         }
       }
@@ -1426,6 +1804,12 @@
             "state": "needs_review",
             "value": "Cette valeur n'est pas valide."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Dieser Wert ist ungültig."
+          }
         }
       }
     },
@@ -1449,6 +1833,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Une erreur s'est produite."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ein Fehler ist aufgetreten."
           }
         }
       }
@@ -1474,6 +1864,12 @@
             "state": "needs_review",
             "value": "Impossible de démarrer la lecture."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabe konnte nicht gestartet werden."
+          }
         }
       }
     },
@@ -1497,6 +1893,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible de charger votre bibliothèque."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Bibliothek konnte nicht geladen werden."
           }
         }
       }
@@ -1522,6 +1924,12 @@
             "state": "needs_review",
             "value": "Impossible de charger les playlists."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabelisten konnten nicht geladen werden."
+          }
         }
       }
     },
@@ -1545,6 +1953,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible de charger cette playlist."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Diese Wiedergabeliste konnte nicht geladen werden."
           }
         }
       }
@@ -1570,6 +1984,12 @@
             "state": "needs_review",
             "value": "Impossible de charger les pistes de l'album."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Albumtitel konnten nicht geladen werden."
+          }
         }
       }
     },
@@ -1593,6 +2013,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible de charger les pistes de la playlist."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Titel der Wiedergabeliste konnten nicht geladen werden."
           }
         }
       }
@@ -1618,6 +2044,12 @@
             "state": "needs_review",
             "value": "Échec de la recherche."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Suche fehlgeschlagen."
+          }
         }
       }
     },
@@ -1641,6 +2073,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible de mettre à jour le favori."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Favorit konnte nicht aktualisiert werden."
           }
         }
       }
@@ -1666,6 +2104,12 @@
             "state": "needs_review",
             "value": "Impossible de mettre à jour l'état de lecture."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabestatus konnte nicht aktualisiert werden."
+          }
         }
       }
     },
@@ -1689,6 +2133,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible d'ajouter à la playlist."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Konnte nicht zur Wiedergabeliste hinzugefügt werden."
           }
         }
       }
@@ -1714,6 +2164,12 @@
             "state": "needs_review",
             "value": "Échec de la connexion."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Anmeldung fehlgeschlagen."
+          }
         }
       }
     },
@@ -1737,6 +2193,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nom d'utilisateur ou mot de passe incorrect"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Falscher Benutzername oder falsches Passwort"
           }
         }
       }
@@ -1762,6 +2224,12 @@
             "state": "needs_review",
             "value": "Cette action n'est pas encore disponible."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Diese Aktion ist noch nicht verfügbar."
+          }
         }
       }
     },
@@ -1785,6 +2253,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pas de réseau. Vérifiez votre connexion."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Kein Netzwerk. Überprüfen Sie Ihre Verbindung."
           }
         }
       }
@@ -1810,6 +2284,12 @@
             "state": "needs_review",
             "value": "Vérification…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Prüfen…"
+          }
         }
       }
     },
@@ -1833,6 +2313,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "URL DU SERVEUR"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "SERVER-URL"
           }
         }
       }
@@ -1858,6 +2344,12 @@
             "state": "needs_review",
             "value": "NOM D'UTILISATEUR"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "BENUTZERNAME"
+          }
         }
       }
     },
@@ -1881,6 +2373,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "MOT DE PASSE"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "PASSWORT"
           }
         }
       }
@@ -1906,6 +2404,12 @@
             "state": "needs_review",
             "value": "vous"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sie"
+          }
         }
       }
     },
@@ -1929,6 +2433,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "TROUVÉ SUR CE RÉSEAU"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "IN DIESEM NETZWERK GEFUNDEN"
           }
         }
       }
@@ -1954,6 +2464,12 @@
             "state": "needs_review",
             "value": "URL du serveur"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Server-URL"
+          }
         }
       }
     },
@@ -1977,6 +2493,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nom d'utilisateur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Benutzername"
           }
         }
       }
@@ -2002,6 +2524,12 @@
             "state": "needs_review",
             "value": "Mot de passe"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Passwort"
+          }
         }
       }
     },
@@ -2025,6 +2553,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Retour"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zurück"
           }
         }
       }
@@ -2050,6 +2584,12 @@
             "state": "needs_review",
             "value": "Bienvenue sur Lyrebird"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Willkommen bei Lyrebird"
+          }
         }
       }
     },
@@ -2073,6 +2613,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Votre musique, votre serveur, vos règles."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ihre Musik, Ihr Server, Ihre Regeln."
           }
         }
       }
@@ -2098,6 +2644,12 @@
             "state": "needs_review",
             "value": "Commencer"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Loslegen"
+          }
         }
       }
     },
@@ -2121,6 +2673,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "J'ai déjà un compte →"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ich habe bereits ein Konto →"
           }
         }
       }
@@ -2146,6 +2704,12 @@
             "state": "needs_review",
             "value": "J'ai déjà un compte"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ich habe bereits ein Konto"
+          }
         }
       }
     },
@@ -2169,6 +2733,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Connectez votre serveur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Server verbinden"
           }
         }
       }
@@ -2194,6 +2764,12 @@
             "state": "needs_review",
             "value": "L'URL Jellyfin est l'adresse que vous utilisez pour y accéder depuis un navigateur."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Die Jellyfin-URL ist die Adresse, über die Sie vom Browser aus darauf zugreifen."
+          }
         }
       }
     },
@@ -2217,6 +2793,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Continuer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Weiter"
           }
         }
       }
@@ -2242,6 +2824,12 @@
             "state": "needs_review",
             "value": "Connexion…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Verbindung wird hergestellt…"
+          }
         }
       }
     },
@@ -2265,6 +2853,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ignorer, explorer hors ligne →"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Überspringen, offline erkunden →"
           }
         }
       }
@@ -2290,6 +2884,12 @@
             "state": "needs_review",
             "value": "Chargement de votre bibliothèque"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Bibliothek wird geladen"
+          }
         }
       }
     },
@@ -2313,6 +2913,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Chargement des artistes…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Künstler werden geladen…"
           }
         }
       }
@@ -2338,6 +2944,12 @@
             "state": "needs_review",
             "value": "Chargement des albums…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Alben werden geladen…"
+          }
         }
       }
     },
@@ -2361,6 +2973,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Chargement des pistes…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Titel werden geladen…"
           }
         }
       }
@@ -2386,6 +3004,12 @@
             "state": "needs_review",
             "value": "Récupération des pochettes…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cover werden abgerufen…"
+          }
         }
       }
     },
@@ -2409,6 +3033,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "%1$@ pistes · %2$@ artistes · %3$@ albums"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "%1$@ Titel · %2$@ Künstler · %3$@ Alben"
           }
         }
       }
@@ -2434,6 +3064,12 @@
             "state": "needs_review",
             "value": "Accéder à l'accueil"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zur Startseite"
+          }
         }
       }
     },
@@ -2457,6 +3093,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Synchronisation…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Synchronisierung…"
           }
         }
       }
@@ -2482,6 +3124,12 @@
             "state": "needs_review",
             "value": "Impossible de charger votre bibliothèque."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Bibliothek konnte nicht geladen werden."
+          }
         }
       }
     },
@@ -2505,6 +3153,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Réessayer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Erneut versuchen"
           }
         }
       }
@@ -2530,6 +3184,12 @@
             "state": "needs_review",
             "value": "À propos de Lyrebird"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Über Lyrebird"
+          }
         }
       }
     },
@@ -2553,6 +3213,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nouvelle playlist…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Neue Wiedergabeliste…"
           }
         }
       }
@@ -2578,6 +3244,12 @@
             "state": "needs_review",
             "value": "Nouvelle fenêtre"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Neues Fenster"
+          }
         }
       }
     },
@@ -2601,6 +3273,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Afficher la barre latérale"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Seitenleiste einblenden"
           }
         }
       }
@@ -2626,6 +3304,12 @@
             "state": "needs_review",
             "value": "Afficher l'inspecteur de file d'attente"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Warteschlangeninspektor einblenden"
+          }
         }
       }
     },
@@ -2649,6 +3333,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Accueil"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Startseite"
           }
         }
       }
@@ -2674,6 +3364,12 @@
             "state": "needs_review",
             "value": "Bibliothèque"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Bibliothek"
+          }
         }
       }
     },
@@ -2697,6 +3393,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Rechercher"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Suchen"
           }
         }
       }
@@ -2722,6 +3424,12 @@
             "state": "needs_review",
             "value": "Rechercher…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Suchen…"
+          }
         }
       }
     },
@@ -2745,6 +3453,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Rechercher dans la bibliothèque…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "In Bibliothek suchen…"
           }
         }
       }
@@ -2770,6 +3484,12 @@
             "state": "needs_review",
             "value": "Aller à la lecture en cours"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zu „Gerade wiedergegeben“ gehen"
+          }
         }
       }
     },
@@ -2793,6 +3513,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "File de lecture"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabewarteschlange"
           }
         }
       }
@@ -2818,6 +3544,12 @@
             "state": "needs_review",
             "value": "Palette de commandes…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Befehlspalette…"
+          }
         }
       }
     },
@@ -2841,6 +3573,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Lecture"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabe"
           }
         }
       }
@@ -2866,6 +3604,12 @@
             "state": "needs_review",
             "value": "Lire"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabe"
+          }
         }
       }
     },
@@ -2886,6 +3630,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Pause"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Pause"
@@ -2914,6 +3664,12 @@
             "state": "needs_review",
             "value": "Piste suivante"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nächster Titel"
+          }
         }
       }
     },
@@ -2937,6 +3693,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Piste précédente"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Vorheriger Titel"
           }
         }
       }
@@ -2962,6 +3724,12 @@
             "state": "needs_review",
             "value": "Augmenter le volume"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lautstärke erhöhen"
+          }
         }
       }
     },
@@ -2985,6 +3753,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Diminuer le volume"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lautstärke verringern"
           }
         }
       }
@@ -3010,6 +3784,12 @@
             "state": "needs_review",
             "value": "Avancer de 10s"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "10s vorspulen"
+          }
         }
       }
     },
@@ -3033,6 +3813,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Reculer de 10s"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "10s zurückspulen"
           }
         }
       }
@@ -3058,6 +3844,12 @@
             "state": "needs_review",
             "value": "Arrêter"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Stopp"
+          }
         }
       }
     },
@@ -3081,6 +3873,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ancrer la fenêtre à gauche"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fenster links anordnen"
           }
         }
       }
@@ -3106,6 +3904,12 @@
             "state": "needs_review",
             "value": "Ancrer la fenêtre à droite"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fenster rechts anordnen"
+          }
         }
       }
     },
@@ -3129,6 +3933,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Aide Lyrebird"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird-Hilfe"
           }
         }
       }
@@ -3154,6 +3964,12 @@
             "state": "needs_review",
             "value": "Basculer l'inspecteur de file d'attente"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Warteschlangeninspektor ein-/ausblenden"
+          }
         }
       }
     },
@@ -3177,6 +3993,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Rien en lecture"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nichts wird wiedergegeben"
           }
         }
       }
@@ -3202,6 +4024,12 @@
             "state": "needs_review",
             "value": "Accueil"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Startseite"
+          }
         }
       }
     },
@@ -3226,6 +4054,12 @@
             "state": "needs_review",
             "value": "Découvrir"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Entdecken"
+          }
         }
       }
     },
@@ -3246,6 +4080,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Radio"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Radio"
@@ -3274,6 +4114,12 @@
             "state": "needs_review",
             "value": "Bibliothèque"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Bibliothek"
+          }
         }
       }
     },
@@ -3298,6 +4144,12 @@
             "state": "needs_review",
             "value": "Rechercher"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Suchen"
+          }
         }
       }
     },
@@ -3321,6 +4173,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Votre bibliothèque"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Meine Bibliothek"
           }
         }
       }
@@ -3382,6 +4240,24 @@
               }
             }
           }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Element"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Elemente"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -3405,6 +4281,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Déconnecté"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Getrennt"
           }
         }
       }
@@ -3430,6 +4312,12 @@
             "state": "needs_review",
             "value": "Favoris"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Favoriten"
+          }
         }
       }
     },
@@ -3453,6 +4341,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Albums"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Alben"
           }
         }
       }
@@ -3478,6 +4372,12 @@
             "state": "needs_review",
             "value": "Artistes"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Künstler"
+          }
         }
       }
     },
@@ -3501,6 +4401,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlists"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabelisten"
           }
         }
       }
@@ -3526,6 +4432,12 @@
             "state": "needs_review",
             "value": "Modifier les règles de la playlist intelligente"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regeln der intelligenten Wiedergabeliste bearbeiten"
+          }
         }
       }
     },
@@ -3549,6 +4461,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Lire la playlist intelligente"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Intelligente Wiedergabeliste abspielen"
           }
         }
       }
@@ -3574,6 +4492,12 @@
             "state": "needs_review",
             "value": "Lecture aléatoire de la playlist intelligente"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Intelligente Wiedergabeliste zufällig abspielen"
+          }
         }
       }
     },
@@ -3597,6 +4521,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "PLAYLIST INTELLIGENTE"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "INTELLIGENTE WIEDERGABELISTE"
           }
         }
       }
@@ -3622,6 +4552,12 @@
             "state": "needs_review",
             "value": "Ajouter une règle"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regel hinzufügen"
+          }
         }
       }
     },
@@ -3645,6 +4581,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Champ de règle"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regelfeld"
           }
         }
       }
@@ -3670,6 +4612,12 @@
             "state": "needs_review",
             "value": "Mode de correspondance"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Übereinstimmungsmodus"
+          }
         }
       }
     },
@@ -3693,6 +4641,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nom de la playlist intelligente"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Name der intelligenten Wiedergabeliste"
           }
         }
       }
@@ -3718,6 +4672,12 @@
             "state": "needs_review",
             "value": "Opérateur de règle"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regeloperator"
+          }
         }
       }
     },
@@ -3741,6 +4701,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Supprimer la règle"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regel entfernen"
           }
         }
       }
@@ -3766,6 +4732,12 @@
             "state": "needs_review",
             "value": "Enregistrer la playlist intelligente"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Intelligente Wiedergabeliste speichern"
+          }
         }
       }
     },
@@ -3789,6 +4761,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Valeur de règle"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regelwert"
           }
         }
       }
@@ -3814,6 +4792,12 @@
             "state": "needs_review",
             "value": "Valeur de règle en jours"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regelwert in Tagen"
+          }
         }
       }
     },
@@ -3837,6 +4821,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ajouter une règle"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regel hinzufügen"
           }
         }
       }
@@ -3862,6 +4852,12 @@
             "state": "needs_review",
             "value": "non"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "nein"
+          }
         }
       }
     },
@@ -3885,6 +4881,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "oui"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "ja"
           }
         }
       }
@@ -3910,6 +4912,12 @@
             "state": "needs_review",
             "value": "Annuler"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Abbrechen"
+          }
         }
       }
     },
@@ -3933,6 +4941,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Comptage…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wird gezählt…"
           }
         }
       }
@@ -3958,6 +4972,12 @@
             "state": "needs_review",
             "value": "jours"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tage"
+          }
         }
       }
     },
@@ -3981,6 +5001,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlist intelligente"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Intelligente Wiedergabeliste"
           }
         }
       }
@@ -4042,6 +5068,24 @@
               }
             }
           }
+        },
+        "de": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Treffer"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld Treffer"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -4065,6 +5109,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Correspondre"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Übereinstimmen mit"
           }
         }
       }
@@ -4090,6 +5140,12 @@
             "state": "needs_review",
             "value": "aux règles suivantes :"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "der folgenden Regeln:"
+          }
         }
       }
     },
@@ -4113,6 +5169,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "NOM"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "NAME"
           }
         }
       }
@@ -4138,6 +5200,12 @@
             "state": "needs_review",
             "value": "Nom de la playlist intelligente"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Name der intelligenten Wiedergabeliste"
+          }
         }
       }
     },
@@ -4161,6 +5229,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Enregistrer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Speichern"
           }
         }
       }
@@ -4186,6 +5260,12 @@
             "state": "needs_review",
             "value": "Playlist intelligente"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Intelligente Wiedergabeliste"
+          }
         }
       }
     },
@@ -4209,6 +5289,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "valeur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wert"
           }
         }
       }
@@ -4234,6 +5320,12 @@
             "state": "needs_review",
             "value": "Modifier les règles"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Regeln bearbeiten"
+          }
         }
       }
     },
@@ -4257,6 +5349,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "%lld pistes chargées jusqu'ici. Essayez d'assouplir les règles ou ouvrez la Bibliothèque pour avoir plus de pistes en mémoire."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "%lld Titel bisher geladen. Lockern Sie die Regeln oder öffnen Sie die Bibliothek, um mehr Titel im Speicher zu haben."
           }
         }
       }
@@ -4282,6 +5380,12 @@
             "state": "needs_review",
             "value": "Aucune piste ne correspond à ces règles"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Kein Titel entspricht diesen Regeln"
+          }
         }
       }
     },
@@ -4302,6 +5406,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Album"
@@ -4330,6 +5440,12 @@
             "state": "needs_review",
             "value": "Artiste"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Künstler"
+          }
         }
       }
     },
@@ -4354,6 +5470,12 @@
             "state": "needs_review",
             "value": "Favori"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Favorit"
+          }
         }
       }
     },
@@ -4374,6 +5496,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Genre"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Genre"
@@ -4402,6 +5530,12 @@
             "state": "needs_review",
             "value": "Durée (sec)"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Dauer (Sek.)"
+          }
         }
       }
     },
@@ -4425,6 +5559,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Dernière lecture"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zuletzt abgespielt"
           }
         }
       }
@@ -4450,6 +5590,12 @@
             "state": "needs_review",
             "value": "Nombre de lectures"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergaben"
+          }
         }
       }
     },
@@ -4473,6 +5619,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Année"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Jahr"
           }
         }
       }
@@ -4498,6 +5650,12 @@
             "state": "needs_review",
             "value": "Filtrer les pistes"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Titel filtern"
+          }
         }
       }
     },
@@ -4521,6 +5679,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "toutes"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "alle"
           }
         }
       }
@@ -4546,6 +5710,12 @@
             "state": "needs_review",
             "value": "n'importe laquelle"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "beliebige"
+          }
         }
       }
     },
@@ -4569,6 +5739,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Aucune piste ne correspond à \"%@\""
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Kein Titel entspricht \"%@\""
           }
         }
       }
@@ -4594,6 +5770,12 @@
             "state": "needs_review",
             "value": "Playlist intelligente introuvable"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Intelligente Wiedergabeliste nicht gefunden"
+          }
         }
       }
     },
@@ -4617,6 +5799,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "contient"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "enthält"
           }
         }
       }
@@ -4642,6 +5830,12 @@
             "state": "needs_review",
             "value": "supérieur à"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "größer als"
+          }
         }
       }
     },
@@ -4665,6 +5859,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "dans les derniers (jours)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "in den letzten (Tagen)"
           }
         }
       }
@@ -4690,6 +5890,12 @@
             "state": "needs_review",
             "value": "est"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "ist"
+          }
         }
       }
     },
@@ -4713,6 +5919,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "n'est pas"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "ist nicht"
           }
         }
       }
@@ -4738,6 +5950,12 @@
             "state": "needs_review",
             "value": "inférieur à"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "kleiner als"
+          }
         }
       }
     },
@@ -4758,6 +5976,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": ", "
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": ", "
@@ -4786,6 +6010,12 @@
             "state": "needs_review",
             "value": "Correspond %1$@ parmi : %2$@"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Stimmt überein mit %1$@ von: %2$@"
+          }
         }
       }
     },
@@ -4809,6 +6039,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Correspond à toutes les pistes."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Stimmt mit allen Titeln überein."
           }
         }
       }
@@ -4834,6 +6070,12 @@
             "state": "needs_review",
             "value": "Réessayer de lire la piste en échec"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fehlgeschlagenen Titel erneut abspielen"
+          }
         }
       }
     },
@@ -4857,6 +6099,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Aller à la piste"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zum Titel gehen"
           }
         }
       }
@@ -4882,6 +6130,12 @@
             "state": "needs_review",
             "value": "Impossible de lire \"%@\". Passage à la suivante."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "\"%@\" konnte nicht abgespielt werden. Wird übersprungen."
+          }
         }
       }
     },
@@ -4905,6 +6159,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Réessayer la connexion réseau"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Netzwerkverbindung erneut versuchen"
           }
         }
       }
@@ -4930,6 +6190,12 @@
             "state": "needs_review",
             "value": "Vous êtes hors ligne. Lecture uniquement depuis les pistes téléchargées."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sie sind offline. Nur heruntergeladene Titel werden abgespielt."
+          }
         }
       }
     },
@@ -4954,6 +6220,12 @@
             "state": "needs_review",
             "value": "Cette action supprimera définitivement cette playlist. Cette action est irréversible."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Dadurch wird diese Wiedergabeliste dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden."
+          }
         }
       }
     },
@@ -4974,6 +6246,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Album"
@@ -5002,6 +6280,12 @@
             "state": "needs_review",
             "value": "Disque"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "CD"
+          }
         }
       }
     },
@@ -5026,6 +6310,12 @@
             "state": "needs_review",
             "value": "Durée"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Dauer"
+          }
         }
       }
     },
@@ -5046,6 +6336,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Format"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Format"
@@ -5074,6 +6370,12 @@
             "state": "needs_review",
             "value": "Lectures"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergaben"
+          }
         }
       }
     },
@@ -5097,6 +6399,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Piste"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Titel"
           }
         }
       }
@@ -5122,6 +6430,12 @@
             "state": "needs_review",
             "value": "Année"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Jahr"
+          }
         }
       }
     },
@@ -5145,6 +6459,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Mini-lecteur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini-Player"
           }
         }
       }
@@ -5170,6 +6490,12 @@
             "state": "needs_review",
             "value": "En cours de lecture"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Gerade gespielt"
+          }
         }
       }
     },
@@ -5193,6 +6519,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Suivant"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Weiter"
           }
         }
       }
@@ -5218,6 +6550,12 @@
             "state": "needs_review",
             "value": "Ouvrir Lyrebird"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird öffnen"
+          }
         }
       }
     },
@@ -5238,6 +6576,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Pause"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Pause"
@@ -5266,6 +6610,12 @@
             "state": "needs_review",
             "value": "Lire"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabe"
+          }
         }
       }
     },
@@ -5289,6 +6639,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Précédent"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zurück"
           }
         }
       }
@@ -5314,6 +6670,12 @@
             "state": "needs_review",
             "value": "Mini-lecteur"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini-Player"
+          }
         }
       }
     },
@@ -5337,6 +6699,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Mini-lecteur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini-Player"
           }
         }
       }
@@ -5362,6 +6730,12 @@
             "state": "needs_review",
             "value": "Pochette. Faites glisser pour déplacer le mini-lecteur."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cover. Ziehen Sie es, um den Mini-Player zu verschieben."
+          }
         }
       }
     },
@@ -5385,6 +6759,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Options du mini-lecteur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini-Player-Optionen"
           }
         }
       }
@@ -5410,6 +6790,12 @@
             "state": "needs_review",
             "value": "Toujours au premier plan"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Immer im Vordergrund"
+          }
         }
       }
     },
@@ -5433,6 +6819,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Revenir à la fenêtre complète"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zum Vollbild zurückkehren"
           }
         }
       }
@@ -5458,6 +6850,12 @@
             "state": "needs_review",
             "value": "Transparent lorsqu'inactif"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Transparent wenn inaktiv"
+          }
         }
       }
     },
@@ -5481,6 +6879,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Fermer le mini-lecteur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini-Player schließen"
           }
         }
       }
@@ -5506,6 +6910,12 @@
             "state": "needs_review",
             "value": "Pochette. Appuyez pour ouvrir l'album ; faites glisser pour déplacer le mini-lecteur."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cover. Tippen Sie, um das Album zu öffnen; ziehen Sie, um den Mini-Player zu verschieben."
+          }
         }
       }
     },
@@ -5529,6 +6939,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ouvrir la page de l'artiste"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Künstlerseite öffnen"
           }
         }
       }
@@ -5554,6 +6970,12 @@
             "state": "needs_review",
             "value": "Agrandir à la fenêtre complète"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zum Vollbild erweitern"
+          }
         }
       }
     },
@@ -5577,6 +6999,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Favori"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Favorit"
           }
         }
       }
@@ -5602,6 +7030,12 @@
             "state": "needs_review",
             "value": "Retirer des favoris"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Aus Favoriten entfernen"
+          }
         }
       }
     },
@@ -5625,6 +7059,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Piste précédente"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Vorheriger Titel"
           }
         }
       }
@@ -5650,6 +7090,12 @@
             "state": "needs_review",
             "value": "Lire"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabe"
+          }
         }
       }
     },
@@ -5670,6 +7116,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Pause"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Pause"
@@ -5698,6 +7150,12 @@
             "state": "needs_review",
             "value": "Piste suivante"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nächster Titel"
+          }
         }
       }
     },
@@ -5721,6 +7179,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Revenir à la fenêtre complète"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zum Vollbild zurückkehren"
           }
         }
       }
@@ -5746,6 +7210,12 @@
             "state": "needs_review",
             "value": "Volume"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lautstärke"
+          }
         }
       }
     },
@@ -5769,6 +7239,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Position de lecture"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabeposition"
           }
         }
       }
@@ -5794,6 +7270,12 @@
             "state": "needs_review",
             "value": "Exporter le bundle de diagnostic…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Diagnose-Bundle exportieren…"
+          }
         }
       }
     },
@@ -5816,6 +7298,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Raccourcis clavier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tastaturkürzel"
           }
         }
       }
@@ -5840,6 +7328,12 @@
             "state": "needs_review",
             "value": "Lire / Pause"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabe / Pause"
+          }
         }
       }
     },
@@ -5862,6 +7356,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Rechercher des raccourcis clavier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tastaturkürzel durchsuchen"
           }
         }
       }
@@ -5886,6 +7386,12 @@
             "state": "needs_review",
             "value": "Effacer la recherche"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Suche löschen"
+          }
         }
       }
     },
@@ -5908,6 +7414,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Aucun raccourci ne correspond à votre recherche"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Kein Kürzel entspricht Ihrer Suche"
           }
         }
       }
@@ -5932,6 +7444,12 @@
             "state": "needs_review",
             "value": "Rechercher des raccourcis"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Kürzel suchen"
+          }
         }
       }
     },
@@ -5954,6 +7472,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Fichier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ablage"
           }
         }
       }
@@ -5978,6 +7502,12 @@
             "state": "needs_review",
             "value": "Lecture"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wiedergabe"
+          }
         }
       }
     },
@@ -6000,6 +7530,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Affichage"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Darstellung"
           }
         }
       }
@@ -6024,6 +7560,12 @@
             "state": "needs_review",
             "value": "Fenêtre"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fenster"
+          }
         }
       }
     },
@@ -6046,6 +7588,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Raccourcis clavier"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tastaturkürzel"
           }
         }
       }
@@ -6071,6 +7619,12 @@
             "state": "needs_review",
             "value": "Albums"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Alben"
+          }
         }
       }
     },
@@ -6094,6 +7648,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Tout"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Alle"
           }
         }
       }
@@ -6119,6 +7679,12 @@
             "state": "needs_review",
             "value": "Artistes"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Künstler"
+          }
         }
       }
     },
@@ -6139,6 +7705,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Genres"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Genres"
@@ -6167,6 +7739,12 @@
             "state": "needs_review",
             "value": "Pistes"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Titel"
+          }
         }
       }
     },
@@ -6190,6 +7768,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Fermer le sélecteur de mix instantané"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sofort-Mix-Auswahl schließen"
           }
         }
       }
@@ -6215,6 +7799,12 @@
             "state": "needs_review",
             "value": "Recherchez quelque chose pour créer un mix."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Suchen Sie nach etwas, um einen Mix zu erstellen."
+          }
         }
       }
     },
@@ -6238,6 +7828,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Générer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Generieren"
           }
         }
       }
@@ -6263,6 +7859,12 @@
             "state": "needs_review",
             "value": "Dernier mix :"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Letzter Mix:"
+          }
         }
       }
     },
@@ -6286,6 +7888,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Aucun résultat"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Keine Treffer"
           }
         }
       }
@@ -6311,6 +7919,12 @@
             "state": "needs_review",
             "value": "Recherchez une piste, un album, un artiste ou un genre"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Titel, Album, Künstler oder Genre suchen"
+          }
         }
       }
     },
@@ -6334,6 +7948,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Origine :"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Basis:"
           }
         }
       }
@@ -6359,6 +7979,12 @@
             "state": "needs_review",
             "value": "Nouveau mix instantané"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Neuer Sofort-Mix"
+          }
         }
       }
     },
@@ -6382,6 +8008,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nouveau mix instantané…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Neuer Sofort-Mix…"
           }
         }
       }
@@ -6407,6 +8039,12 @@
             "state": "needs_review",
             "value": "Afficher la visite guidée"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tour anzeigen"
+          }
         }
       }
     },
@@ -6430,6 +8068,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Visite guidée des fonctionnalités"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Funktionsrundgang"
           }
         }
       }
@@ -6455,6 +8099,12 @@
             "state": "needs_review",
             "value": "Étape %1$lld sur %2$lld"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Schritt %1$lld von %2$lld"
+          }
         }
       }
     },
@@ -6478,6 +8128,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Raccourci clavier %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tastaturkürzel %@"
           }
         }
       }
@@ -6503,6 +8159,12 @@
             "state": "needs_review",
             "value": "Précédent"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Zurück"
+          }
         }
       }
     },
@@ -6526,6 +8188,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Terminé"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fertig"
           }
         }
       }
@@ -6551,6 +8219,12 @@
             "state": "needs_review",
             "value": "Appuyez sur ⌘⌥P pour un lecteur compact, toujours au premier plan, que vous pouvez placer dans un coin pendant que vous travaillez."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Drücken Sie ⌘⌥P für einen kompakten, immer sichtbaren Player, den Sie in eine Ecke verschieben können, während Sie arbeiten."
+          }
         }
       }
     },
@@ -6574,6 +8248,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ouvrez le mini-lecteur"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini-Player öffnen"
           }
         }
       }
@@ -6599,6 +8279,12 @@
             "state": "needs_review",
             "value": "Suivant"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Weiter"
+          }
         }
       }
     },
@@ -6622,6 +8308,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Cliquez avec le bouton droit sur n'importe quelle piste, album, artiste ou playlist pour des actions rapides — lire ensuite, ajouter à une playlist, démarrer une station radio, et plus encore."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Klicken Sie mit der rechten Maustaste auf einen Titel, ein Album, einen Künstler oder eine Wiedergabeliste für Schnellaktionen — als nächstes abspielen, zu einer Wiedergabeliste hinzufügen, einen Radiosender starten und mehr."
           }
         }
       }
@@ -6647,6 +8339,12 @@
             "state": "needs_review",
             "value": "Clic droit pour plus d'options"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Rechtsklick für mehr Optionen"
+          }
         }
       }
     },
@@ -6670,6 +8368,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Appuyez sur ⌘F pour accéder directement à la recherche et trouver n'importe quelle chanson, album ou artiste dans votre bibliothèque."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Drücken Sie ⌘F, um direkt zur Suche zu gelangen und jeden Song, jedes Album oder jeden Künstler in Ihrer Bibliothek zu finden."
           }
         }
       }
@@ -6695,6 +8399,12 @@
             "state": "needs_review",
             "value": "Trouvez n'importe quoi rapidement"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Alles schnell finden"
+          }
         }
       }
     },
@@ -6718,6 +8428,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Passer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Überspringen"
           }
         }
       }
@@ -6743,6 +8459,12 @@
             "state": "needs_review",
             "value": "Appuyez sur la barre d'espace n'importe où en dehors d'un champ de texte pour lire ou mettre en pause la piste en cours."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Drücken Sie die Leertaste außerhalb eines Textfelds, um den aktuellen Titel abzuspielen oder zu pausieren."
+          }
         }
       }
     },
@@ -6766,6 +8488,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Lire et mettre en pause avec Espace"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mit Leertaste abspielen und pausieren"
           }
         }
       }
@@ -6791,6 +8519,12 @@
             "state": "needs_review",
             "value": "Les données locales de Lyrebird n'ont pas pu être ouvertes. Cela se résout généralement ainsi : réinitialisez les données locales pour repartir de zéro, ou exportez un bundle de diagnostic à joindre à un rapport de bug."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Die lokalen Daten von Lyrebird konnten nicht geöffnet werden. Meistens lässt sich das beheben: Setzen Sie die lokalen Daten zurück, um neu zu beginnen, oder exportieren Sie ein Diagnose-Bundle, um es einem Fehlerbericht beizufügen."
+          }
         }
       }
     },
@@ -6814,6 +8548,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Exporter le diagnostic…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Diagnose exportieren…"
           }
         }
       }
@@ -6839,6 +8579,12 @@
             "state": "needs_review",
             "value": "Diagnostic exporté."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Diagnose exportiert."
+          }
         }
       }
     },
@@ -6862,6 +8608,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible d'exporter le diagnostic : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Diagnose konnte nicht exportiert werden: %@"
           }
         }
       }
@@ -6887,6 +8639,12 @@
             "state": "needs_review",
             "value": "Quitter"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Beenden"
+          }
         }
       }
     },
@@ -6910,6 +8668,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Réinitialiser les données locales"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lokale Daten zurücksetzen"
           }
         }
       }
@@ -6935,6 +8699,12 @@
             "state": "needs_review",
             "value": "Les données locales ont été déplacées vers :\n%@\nVeuillez quitter et relancer Lyrebird."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lokale Daten wurden verschoben nach:\n%@\nBitte beenden Sie Lyrebird und öffnen Sie es erneut."
+          }
         }
       }
     },
@@ -6958,6 +8728,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossible de réinitialiser les données locales : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lokale Daten konnten nicht zurückgesetzt werden: %@"
           }
         }
       }
@@ -6983,6 +8759,12 @@
             "state": "needs_review",
             "value": "Aucune donnée locale à réinitialiser. Essayez d'exporter le diagnostic."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Keine lokalen Daten zum Zurücksetzen gefunden. Versuchen Sie, die Diagnose zu exportieren."
+          }
         }
       }
     },
@@ -7006,6 +8788,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Lyrebird n'a pas pu démarrer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird konnte nicht gestartet werden"
           }
         }
       }
@@ -7031,6 +8819,12 @@
             "state": "needs_review",
             "value": "Nom de l'appareil"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Gerätename"
+          }
         }
       }
     },
@@ -7054,6 +8848,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nom de l'appareil : %@"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Gerätename: %@"
           }
         }
       }
@@ -7079,6 +8879,12 @@
             "state": "needs_review",
             "value": "Annuler"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Abbrechen"
+          }
         }
       }
     },
@@ -7102,6 +8908,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Modifiez le nom que Jellyfin affiche pour cet appareil."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ändern Sie den Namen, den Jellyfin für dieses Gerät anzeigt."
           }
         }
       }
@@ -7127,6 +8939,12 @@
             "state": "needs_review",
             "value": "Mon Mac"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mein Mac"
+          }
         }
       }
     },
@@ -7150,6 +8968,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Enregistrer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Speichern"
           }
         }
       }
@@ -7175,6 +8999,12 @@
             "state": "needs_review",
             "value": "Affiché dans le tableau de bord de ce serveur et dans les autres clients Jellyfin."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Wird im Dashboard dieses Servers und in anderen Jellyfin-Clients angezeigt."
+          }
         }
       }
     },
@@ -7198,6 +9028,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nom de l'appareil"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Gerätename"
           }
         }
       }
@@ -7223,6 +9059,12 @@
             "state": "needs_review",
             "value": "Associez cet appareil en saisissant un code dans un autre client Jellyfin connecté."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Koppeln Sie dieses Gerät, indem Sie einen Code in einem anderen angemeldeten Jellyfin-Client eingeben."
+          }
         }
       }
     },
@@ -7247,6 +9089,12 @@
             "state": "needs_review",
             "value": "Annuler"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Abbrechen"
+          }
         }
       }
     },
@@ -7267,6 +9115,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "CODE"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "CODE"
@@ -7295,6 +9149,12 @@
             "state": "needs_review",
             "value": "Quick Connect n'a pas pu être finalisé. Veuillez réessayer."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Quick Connect konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut."
+          }
         }
       }
     },
@@ -7318,6 +9178,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Utiliser Jellyfin Quick Connect"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Jellyfin Quick Connect verwenden"
           }
         }
       }
@@ -7343,6 +9209,12 @@
             "state": "needs_review",
             "value": "Saisissez l'adresse de votre serveur sur l'écran de connexion d'abord, puis réessayez Quick Connect."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Geben Sie zuerst Ihre Serveradresse auf dem Anmeldebildschirm ein und versuchen Sie dann Quick Connect."
+          }
         }
       }
     },
@@ -7366,6 +9238,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Réessayer"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Erneut versuchen"
           }
         }
       }
@@ -7391,6 +9269,12 @@
             "state": "needs_review",
             "value": "Démarrage de Quick Connect…"
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Quick Connect wird gestartet…"
+          }
         }
       }
     },
@@ -7415,6 +9299,12 @@
             "state": "needs_review",
             "value": "Saisissez ce code dans une autre app Jellyfin connectée pour associer cet appareil."
           }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Geben Sie diesen Code in einer anderen angemeldeten Jellyfin-App ein, um dieses Gerät zu koppeln."
+          }
         }
       }
     },
@@ -7435,6 +9325,12 @@
           }
         },
         "fr": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Quick Connect"
+          }
+        },
+        "de": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Quick Connect"
@@ -7462,6 +9358,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "En attente d'approbation…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Warten auf Genehmigung…"
           }
         }
       }
