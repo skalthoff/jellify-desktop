@@ -15,6 +15,9 @@ set -euo pipefail
 : "${LYREBIRD_E2E_PASS:=test}"
 export LYREBIRD_E2E_URL LYREBIRD_E2E_USER LYREBIRD_E2E_PASS
 
+# In-memory credential store (debug builds only): each rebuilt test binary is unsigned, so persisting the session through the real macOS Keychain would pop the ACL password prompt on every run.
+export LYREBIRD_CREDENTIAL_STORE=memory
+
 cd "$(dirname "$0")/.."
 
 # Fail fast with a readable message when the server is down, instead of

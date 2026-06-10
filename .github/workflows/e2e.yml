@@ -23,6 +23,10 @@ env:
   LYREBIRD_E2E_URL: https://music.skalthoff.com
   LYREBIRD_E2E_USER: test
   LYREBIRD_E2E_PASS: test
+  # Route core's credential store to a process-local map (debug builds only)
+  # so headless runners never touch a real keychain. No-op on Linux, where no
+  # native keyring backend is compiled in; ignored entirely by release builds.
+  LYREBIRD_CREDENTIAL_STORE: memory
 
 jobs:
   rust-core:

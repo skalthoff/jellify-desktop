@@ -2,7 +2,9 @@ use crate::error::{LyrebirdError, Result};
 use crate::player::RepeatMode;
 use parking_lot::Mutex;
 use rusqlite::{params, Connection};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 const SCHEMA_VERSION: i32 = 3;
 
@@ -597,57 +599,162 @@ const SERVICE: &str = "org.lyrebird.desktop";
 /// the settings table.
 const SCROBBLE_ACCOUNT: &str = "scrobble/listenbrainz";
 
+/// Which backing store [`CredentialStore`] routes secrets through.
+///
+/// `Native` is the production path: the OS credential store via the `keyring`
+/// crate (macOS Keychain / Windows Credential Manager). `Memory` is a
+/// process-local map for development and live-e2e runs, where each freshly
+/// compiled (and therefore unsigned) test binary would otherwise trip the
+/// macOS Keychain ACL prompt when persisting the session token. The memory
+/// arm makes zero Security-framework calls — it never constructs a
+/// `keyring::Entry`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum CredentialBackend {
+    Native,
+    Memory,
+}
+
+/// Map the raw `LYREBIRD_CREDENTIAL_STORE` value to a backend.
+///
+/// Pure (no environment read) so the decision matrix is unit-testable without
+/// process-global env mutation. Exactly `Some("memory")` selects the
+/// in-memory store; absent, empty, or any other spelling (including case
+/// variants) selects the native keyring.
+pub(crate) fn resolve_backend(env_value: Option<&str>) -> CredentialBackend {
+    match env_value {
+        Some("memory") => CredentialBackend::Memory,
+        _ => CredentialBackend::Native,
+    }
+}
+
+/// The backend every [`CredentialStore`] call routes through.
+///
+/// Debug builds (excluding the unit-test harness — see below) read
+/// `LYREBIRD_CREDENTIAL_STORE` exactly once and cache the decision for the
+/// life of the process. Release builds never read the environment at all: the
+/// `cfg` structure compiles this function down to a constant
+/// [`CredentialBackend::Native`], so production keychain behavior cannot be
+/// downgraded via the environment.
+///
+/// The unit-test harness (`cfg(test)`) is likewise pinned to `Native` so the
+/// suite always exercises the `keyring` code path through the process-wide
+/// mock builder its fixtures install (`install_mock_keyring`), regardless of
+/// what a developer's shell happens to export. The live e2e integration
+/// target (`core/tests/e2e_live.rs`) links the library *without* `cfg(test)`,
+/// so it honors the variable — that is the path `Scripts/smoke-test.sh`
+/// relies on.
+pub(crate) fn credential_backend() -> CredentialBackend {
+    #[cfg(all(debug_assertions, not(test)))]
+    {
+        static BACKEND: OnceLock<CredentialBackend> = OnceLock::new();
+        *BACKEND.get_or_init(|| {
+            resolve_backend(std::env::var("LYREBIRD_CREDENTIAL_STORE").ok().as_deref())
+        })
+    }
+    #[cfg(not(all(debug_assertions, not(test))))]
+    {
+        // Release and unit-test builds: constant `Native`, environment never
+        // consulted.
+        resolve_backend(None)
+    }
+}
+
+/// Process-local secret map backing [`CredentialBackend::Memory`], keyed on
+/// the keyring account string (the service is the fixed `SERVICE` constant).
+/// Never persisted — secrets vanish with the process.
+fn memory_store() -> &'static Mutex<HashMap<String, String>> {
+    static STORE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
 pub struct CredentialStore;
 
 impl CredentialStore {
     pub fn save_token(server_id: &str, username: &str, token: &str) -> Result<()> {
-        let entry = keyring::Entry::new(SERVICE, &format!("{server_id}/{username}"))?;
-        entry.set_password(token)?;
-        Ok(())
+        Self::save_secret(
+            credential_backend(),
+            &format!("{server_id}/{username}"),
+            token,
+        )
     }
 
     pub fn load_token(server_id: &str, username: &str) -> Result<Option<String>> {
-        let entry = keyring::Entry::new(SERVICE, &format!("{server_id}/{username}"))?;
-        match entry.get_password() {
-            Ok(t) => Ok(Some(t)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        Self::load_secret(credential_backend(), &format!("{server_id}/{username}"))
     }
 
     pub fn delete_token(server_id: &str, username: &str) -> Result<()> {
-        let entry = keyring::Entry::new(SERVICE, &format!("{server_id}/{username}"))?;
-        match entry.delete_credential() {
-            Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.into()),
-        }
+        Self::delete_secret(credential_backend(), &format!("{server_id}/{username}"))
     }
 
     /// Persist the ListenBrainz scrobble token in the OS keyring (same secure
     /// store as the Jellyfin access token), keyed on `SCROBBLE_ACCOUNT`.
     pub fn save_scrobble_token(token: &str) -> Result<()> {
-        let entry = keyring::Entry::new(SERVICE, SCROBBLE_ACCOUNT)?;
-        entry.set_password(token)?;
-        Ok(())
+        Self::save_secret(credential_backend(), SCROBBLE_ACCOUNT, token)
     }
 
     /// Read the stored ListenBrainz scrobble token, or `None` when none is
     /// stored. Discriminates a missing entry from a real keyring fault.
     pub fn load_scrobble_token() -> Result<Option<String>> {
-        let entry = keyring::Entry::new(SERVICE, SCROBBLE_ACCOUNT)?;
-        match entry.get_password() {
-            Ok(t) => Ok(Some(t)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        Self::load_secret(credential_backend(), SCROBBLE_ACCOUNT)
     }
 
     /// Remove the stored ListenBrainz scrobble token. A no-op when absent.
     pub fn delete_scrobble_token() -> Result<()> {
-        let entry = keyring::Entry::new(SERVICE, SCROBBLE_ACCOUNT)?;
-        match entry.delete_credential() {
-            Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(e) => Err(e.into()),
+        Self::delete_secret(credential_backend(), SCROBBLE_ACCOUNT)
+    }
+
+    // Backend-explicit primitives. The public API above always passes
+    // `credential_backend()`; unit tests drive the `Memory` arm directly so
+    // the in-memory semantics stay covered even though the test harness pins
+    // the resolver to `Native` (see `credential_backend`).
+
+    pub(crate) fn save_secret(
+        backend: CredentialBackend,
+        account: &str,
+        secret: &str,
+    ) -> Result<()> {
+        match backend {
+            CredentialBackend::Memory => {
+                memory_store()
+                    .lock()
+                    .insert(account.to_owned(), secret.to_owned());
+                Ok(())
+            }
+            CredentialBackend::Native => {
+                let entry = keyring::Entry::new(SERVICE, account)?;
+                entry.set_password(secret)?;
+                Ok(())
+            }
+        }
+    }
+
+    pub(crate) fn load_secret(backend: CredentialBackend, account: &str) -> Result<Option<String>> {
+        match backend {
+            CredentialBackend::Memory => Ok(memory_store().lock().get(account).cloned()),
+            CredentialBackend::Native => {
+                let entry = keyring::Entry::new(SERVICE, account)?;
+                match entry.get_password() {
+                    Ok(t) => Ok(Some(t)),
+                    Err(keyring::Error::NoEntry) => Ok(None),
+                    Err(e) => Err(e.into()),
+                }
+            }
+        }
+    }
+
+    pub(crate) fn delete_secret(backend: CredentialBackend, account: &str) -> Result<()> {
+        match backend {
+            CredentialBackend::Memory => {
+                memory_store().lock().remove(account);
+                Ok(())
+            }
+            CredentialBackend::Native => {
+                let entry = keyring::Entry::new(SERVICE, account)?;
+                match entry.delete_credential() {
+                    Ok(_) | Err(keyring::Error::NoEntry) => Ok(()),
+                    Err(e) => Err(e.into()),
+                }
+            }
         }
     }
 }
