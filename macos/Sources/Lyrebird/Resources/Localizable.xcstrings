@@ -8501,13 +8501,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld elemento"
+                  "value": "Conectado · %lld álbum"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld elementos"
+                  "value": "Conectado · %lld álbumes"
                 }
               }
             }
@@ -8519,13 +8519,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld élément"
+                  "value": "Connecté · %lld album"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld éléments"
+                  "value": "Connecté · %lld albums"
                 }
               }
             }
@@ -8537,13 +8537,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld Element"
+                  "value": "Verbunden · %lld Album"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld Elemente"
+                  "value": "Verbunden · %lld Alben"
                 }
               }
             }
@@ -8555,7 +8555,7 @@
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld件"
+                  "value": "接続済み · %lld枚のアルバム"
                 }
               }
             }
@@ -8567,13 +8567,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld item"
+                  "value": "Conectado · %lld álbum"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld itens"
+                  "value": "Conectado · %lld álbuns"
                 }
               }
             }
@@ -8585,13 +8585,13 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld elemento"
+                  "value": "Connesso · %lld album"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld elementi"
+                  "value": "Connesso · %lld album"
                 }
               }
             }
@@ -8603,25 +8603,25 @@
               "one": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld элемент"
+                  "value": "Подключено · %lld альбом"
                 }
               },
               "few": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld элемента"
+                  "value": "Подключено · %lld альбома"
                 }
               },
               "many": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld элементов"
+                  "value": "Подключено · %lld альбомов"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld элемента"
+                  "value": "Подключено · %lld альбома"
                 }
               }
             }
@@ -8633,7 +8633,7 @@
               "other": {
                 "stringUnit": {
                   "state": "needs_review",
-                  "value": "%lld 个项目"
+                  "value": "已连接 · %lld 张专辑"
                 }
               }
             }

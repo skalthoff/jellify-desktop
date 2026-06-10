@@ -35,7 +35,6 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
 
-    <!-- First-wave localizations. Keep in sync with Localizable.xcstrings. -->
     <key>CFBundleLocalizations</key>
     <array>
         <string>en</string>
