@@ -163,6 +163,10 @@ extension AppModel {
             self.serverURL = session.server.url
             self.username = session.user.name
             self.errorMessage = nil
+            // The splash must end at the session decision, not after the
+            // library fetch — the shell owns that phase with skeletons and
+            // the cache-first paint.
+            isRestoringSession = false
             startStatusEventStream()
             await refreshLibrary()
             await refreshDownloads()
