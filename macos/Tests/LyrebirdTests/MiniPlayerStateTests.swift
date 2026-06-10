@@ -146,4 +146,43 @@ final class MiniPlayerStateTests: XCTestCase {
             "closeMiniPlayer must clear the visibility flag"
         )
     }
+
+    // MARK: - Dock menu / menu-bar launcher entry points
+
+    /// The dock menu's "Open Mini Player" item calls `toggleMiniPlayer()`.
+    /// Verify it opens when closed and closes when open — same contract the
+    /// ⌘⌥P menu item exercises, but reached through the `toggleMiniPlayer`
+    /// entry point that the AppDelegate `@objc` action dispatches to.
+    func testDockMenuLauncherOpensAndClosesViaSameToggle() throws {
+        let model = try AppModel()
+        XCTAssertFalse(model.isMiniPlayerVisible, "fresh model starts hidden")
+
+        // Simulate the dock "Open Mini Player" tap.
+        model.toggleMiniPlayer()
+        XCTAssertTrue(model.isMiniPlayerVisible, "dock open tap must show the player")
+
+        // Simulate the dock "Close Mini Player" tap.
+        model.toggleMiniPlayer()
+        XCTAssertFalse(model.isMiniPlayerVisible, "dock close tap must hide the player")
+    }
+
+    /// The menu-bar extra button reflects `isMiniPlayerVisible` and calls
+    /// `toggleMiniPlayer()`. Confirm the flag round-trips so the `pip.enter`
+    /// / `pip.exit` SF Symbol and the button label stay in sync.
+    func testMenuBarLauncherButtonReflectsVisibilityFlag() throws {
+        let model = try AppModel()
+
+        // Open via the public setter (simulates the menu-bar button's action).
+        model.isMiniPlayerVisible = true
+        XCTAssertTrue(
+            model.isMiniPlayerVisible,
+            "flag must be true so the menu-bar button shows 'Close Mini Player'"
+        )
+
+        model.isMiniPlayerVisible = false
+        XCTAssertFalse(
+            model.isMiniPlayerVisible,
+            "flag must be false so the menu-bar button shows 'Open Mini Player'"
+        )
+    }
 }

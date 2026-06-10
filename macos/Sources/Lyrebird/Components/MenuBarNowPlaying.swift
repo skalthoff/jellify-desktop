@@ -102,7 +102,7 @@ struct MenuBarNowPlaying: View {
         }
     }
 
-    // MARK: - Open the app
+    // MARK: - Open the app / Mini Player
 
     /// Focus the main window. Routes through the same `returnToFullWindow`
     /// contract the mini player uses, which activates the app (raising the
@@ -124,6 +124,28 @@ struct MenuBarNowPlaying: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("menu_bar.now_playing.open"))
+
+        /// Toggle the detached Mini Player window. Disabled when signed out
+        /// because the mini player requires a live session to show track info.
+        Button {
+            model.toggleMiniPlayer()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: model.isMiniPlayerVisible ? "pip.exit" : "pip.enter")
+                    .font(.system(size: 12))
+                Text(model.isMiniPlayerVisible
+                     ? "menu_bar.now_playing.close_mini_player"
+                     : "menu_bar.now_playing.open_mini_player")
+                    .font(Theme.font(12, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Theme.ink2)
+        }
+        .buttonStyle(.plain)
+        .disabled(model.session == nil)
+        .accessibilityLabel(Text(model.isMiniPlayerVisible
+            ? "menu_bar.now_playing.close_mini_player"
+            : "menu_bar.now_playing.open_mini_player"))
     }
 
     // MARK: - Derived

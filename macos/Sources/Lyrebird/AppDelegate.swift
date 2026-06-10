@@ -241,6 +241,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         previousItem.isEnabled = hasTrack
         menu.addItem(previousItem)
 
+        // Mini Player toggle. Surfaces the ⌘⌥P action without requiring the
+        // keyboard; title reflects the current window state. Disabled while
+        // signed out because the scene requires a live session to be useful.
+        let hasMiniPlayer = appModel?.isMiniPlayerVisible == true
+        let hasSession = appModel?.session != nil
+        let miniPlayerItem = NSMenuItem(
+            title: hasMiniPlayer ? "Close Mini Player" : "Open Mini Player",
+            action: #selector(dockToggleMiniPlayer(_:)),
+            keyEquivalent: ""
+        )
+        miniPlayerItem.target = self
+        miniPlayerItem.isEnabled = hasSession
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(miniPlayerItem)
+
         // Recent albums. Use `jumpBackIn` (the home screen's "last played"
         // shelf) as the source of truth so the dock menu and the window
         // stay in sync. Cap at six so the dock menu stays compact even
@@ -436,6 +451,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if let album = model.jumpBackIn.first(where: { $0.id == id }) {
                 model.play(album: album)
             }
+        }
+    }
+
+    @objc private func dockToggleMiniPlayer(_ sender: NSMenuItem) {
+        Task { @MainActor [weak self] in
+            self?.appModel?.toggleMiniPlayer()
         }
     }
 }
