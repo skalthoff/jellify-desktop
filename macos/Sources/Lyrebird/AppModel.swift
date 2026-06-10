@@ -636,19 +636,6 @@ final class AppModel {
     /// tracked separately in #440 — this flag only powers the prompt.
     var authExpired: Bool = false
 
-    /// Toggled `true` for a brief window when a track fails to stream, so the
-    /// `PlayerBar` can flash a 10% danger tint as a peripheral-vision cue.
-    /// `StreamErrorToast` is the foreground surface; this flag is the
-    /// subtle accompanying signal (see issue #302).
-    ///
-    /// The toast + flash pair is published here so the reliability wiring
-    /// (`BATCH-21`) can flip it without reaching into view code. `PlayerBar`
-    /// observes the flag via the usual `@Environment(AppModel.self)` channel;
-    /// callers that raise an error should flip this on, then flip it off
-    /// after ~2s (the flash duration). No animation is driven from here — the
-    /// consumer owns the tween.
-    var streamErrorFlash: Bool = false
-
     /// Playlist the user asked to delete from a context menu. Observed by
     /// `MainShell` to present a `.confirmationDialog`; cleared when the
     /// user confirms or dismisses. Single-shot rather than a list because
@@ -1428,11 +1415,24 @@ extension AppModel: MediaSessionDelegate {
 // MARK: - AudioEngine transport callbacks
 
 extension AppModel: AudioEngineDelegate {
+    /// The transient stall banner copy. A named constant (rather than a
+    /// literal at the call site) so `audioEngineDidRecover` can recognise —
+    /// and clear — exactly this message without clobbering an unrelated
+    /// error that arrived while the stream was rebuilding.
+    static let stallRetryingMessage = "Stalled, retrying…"
+
     func audioEngineDidStall() {
-        errorMessage = "Stalled, retrying…"
+        errorMessage = Self.stallRetryingMessage
     }
 
     func audioEngineDidFail(_ message: String) {
+        errorMessage = message
+    }
+
+    /// Transient network failure that exhausted the engine's bounded retry
+    /// budget; the engine has already advanced the queue (#806). Surface the
+    /// hand-off so the skip isn't silent.
+    func audioEngineDidEncounterTransientError(_ message: String) {
         errorMessage = message
     }
 
@@ -1441,7 +1441,14 @@ extension AppModel: AudioEngineDelegate {
     /// gapless playback by preloading the upcoming track again — the same
     /// core-queue lookahead (`nextTrackForPreload`) the normal end-of-track
     /// advance uses, so both paths splice the track that actually plays next.
+    ///
+    /// Also retire the "Stalled, retrying…" banner — recovery is the happy
+    /// ending to that message. Only the stall copy is cleared: a different
+    /// error that landed mid-recovery still deserves its full display window.
     func audioEngineDidRecover() {
+        if errorMessage == Self.stallRetryingMessage {
+            errorMessage = nil
+        }
         armNextTrackPreload()
     }
 }
