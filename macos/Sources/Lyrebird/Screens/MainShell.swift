@@ -575,7 +575,31 @@ struct MainShell: View {
         case .genre(let g):
             GenreDetailView(genre: g)
         case .nowPlaying:
+            // Entrance: handled inside `NowPlayingView` via `appeared` + `.onAppear`
+            // (slide up 40pt + fade in, 0.4s cubic-bezier(0.22, 1, 0.36, 1)).
+            // Exit: the `.transition` here fires when the NavigationStack pops
+            // the destination — slide down 40pt + fade out on the same curve so
+            // dismiss mirrors the entrance exactly.
+            // Reduce Motion: `.identity` for insertion (entrance already uses a
+            // plain opacity fade); opacity-only removal.
             NowPlayingView()
+                .transition(
+                    reduceMotion
+                        ? .asymmetric(insertion: .identity, removal: .opacity)
+                        : .asymmetric(
+                            insertion: .identity,
+                            removal: AnyTransition.modifier(
+                                active: NowPlayingExitModifier(fraction: 1),
+                                identity: NowPlayingExitModifier(fraction: 0)
+                            )
+                        )
+                )
+                .animation(
+                    reduceMotion
+                        ? .linear(duration: 0.2)
+                        : .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.4),
+                    value: model.isShowingNowPlaying
+                )
         case .fullQueue:
             FullQueueView()
         }
