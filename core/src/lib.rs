@@ -15,6 +15,7 @@ pub mod downloads;
 pub mod enums;
 pub mod error;
 pub mod library_cache;
+pub mod logging;
 pub mod models;
 pub mod player;
 pub mod query;
@@ -24,6 +25,7 @@ pub mod storage;
 pub use enums::{ImageType, ItemField, ItemKind, ItemSortBy, SortOrder};
 pub use error::{LyrebirdError, Result};
 pub use library_cache::{LibrarySyncObserver, LibrarySyncSummary};
+pub use logging::{LogEvent, LogLevel, LogObserver};
 pub use models::*;
 pub use player::{
     PlaybackState, Player, PlayerEventKind, PlayerObserver, PlayerStatus, RepeatMode,
@@ -127,6 +129,9 @@ pub struct CoreConfig {
 impl LyrebirdCore {
     #[uniffi::constructor]
     pub fn new(config: CoreConfig) -> std::result::Result<Arc<Self>, LyrebirdError> {
+        // Idempotent — safe to call on every construction (tests, CLI tools).
+        crate::logging::init_logging();
+
         let data_dir = if config.data_dir.is_empty() {
             storage::default_data_dir()
         } else {

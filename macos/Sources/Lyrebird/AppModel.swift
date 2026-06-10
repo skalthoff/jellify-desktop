@@ -920,6 +920,11 @@ final class AppModel {
         // without waiting for a `play(tracks:)`. Defaults to 320 kbps when the
         // feature is gated off, leaving the streaming path unchanged.
         self.audio.maxStreamingBitrate = resolvedStreamingBitrate
+        // Install the os_log bridge so Rust tracing events appear in
+        // Console.app under subsystem "org.lyrebird.desktop" alongside
+        // Swift-side log entries. Called last so all stored properties
+        // are initialized before `self` is captured.
+        installCoreLogBridge()
     }
 
     /// Internal guard for `attemptRestoreSession` — the restore pass should
