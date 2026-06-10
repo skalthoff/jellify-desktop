@@ -53,6 +53,10 @@ extension AudioEngine {
         pipeline.onPositionTick = { [weak self] seconds in
             guard let self, seconds.isFinite, seconds >= 0 else { return }
             self.core.markPosition(seconds: seconds)
+            // Reporting parity with the AVQueuePlayer path: forward the tick
+            // so the owner's progress surfaces advance on the DSP route too
+            // (#433 — `markPosition` is event-silent core-side).
+            self.onPositionTick?(seconds)
         }
         pipeline.onStreamError = { [weak self] message in
             guard let self else { return }

@@ -38,7 +38,7 @@ extension AppModel {
             self.serverURL = url
             self.username = username
             self.errorMessage = nil
-            startPolling()
+            startStatusEventStream()
             await refreshLibrary()
             await refreshDownloads()
         } catch {
@@ -122,7 +122,7 @@ extension AppModel {
             self.serverURL = session.server.url
             self.username = session.user.name
             self.errorMessage = nil
-            startPolling()
+            startStatusEventStream()
             await refreshLibrary()
             await refreshDownloads()
             return true
@@ -163,7 +163,7 @@ extension AppModel {
             self.serverURL = session.server.url
             self.username = session.user.name
             self.errorMessage = nil
-            startPolling()
+            startStatusEventStream()
             await refreshLibrary()
             await refreshDownloads()
         } catch {
@@ -249,7 +249,7 @@ extension AppModel {
         downloadStats = nil
         downloadsInFlight = []
         resetPaginationState()
-        stopPolling()
+        stopStatusEventStream()
     }
 
     /// Drop the stored access token (keychain + in-memory session) without
@@ -323,7 +323,7 @@ extension AppModel {
         currentLyricsForId = nil
         sessionPlayHistory = []
         resetPaginationState()
-        stopPolling()
+        stopStatusEventStream()
     }
 
     /// Clear all pagination counters and in-flight flags. Kept in one place
@@ -349,7 +349,7 @@ extension AppModel {
     func markAuthExpired() {
         guard !authExpired else { return }
         audio.stop()
-        stopPolling()
+        stopStatusEventStream()
         authExpired = true
     }
 

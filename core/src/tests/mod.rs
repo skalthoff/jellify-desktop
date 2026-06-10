@@ -17,6 +17,7 @@ mod playlists;
 mod scrobble;
 mod search;
 mod session_auth;
+mod status_events;
 
 pub(crate) use crate::client::JellyfinClient;
 pub(crate) use crate::enums::ImageType;

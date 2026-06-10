@@ -469,12 +469,24 @@ final class AppModel {
 
     // MARK: - Player
     var status: PlayerStatus
-    var pollTimer: Timer?
+    /// UniFFI callback bridge feeding the core's player event stream into
+    /// `applyPlayerEvent` (#433) — the push-based replacement for the old
+    /// 1 Hz `core.status()` poll timer. Held strongly so the registered
+    /// observer outlives the subscription; managed by
+    /// `startStatusEventStream()` / `stopStatusEventStream()` in
+    /// `AppModel+PlayerEvents`.
+    var playerEventBridge: PlayerEventBridge?
+    /// Sequence number of the last player push applied to `status`. The core
+    /// stamps pushes in mutation order, so any push at or below this value is
+    /// a late-delivered stale snapshot and must be dropped — see
+    /// `applyPlayerEvent`.
+    var lastPlayerEventSeq: UInt64 = 0
 
     // MARK: - Scrobbling (#46)
     /// Decides when to fire a `playing_now` vs a durable `single` listen. Driven
-    /// from the 1 Hz status poll; the actual POSTs go to the Rust core off the
-    /// main actor. Pure value type — see `ScrobbleGate`.
+    /// from player push events and the 1 Hz playing-only position tick; the
+    /// actual POSTs go to the Rust core off the main actor. Pure value type —
+    /// see `ScrobbleGate`.
     var scrobbleGate = ScrobbleGate()
     /// Mirrors `core.isScrobbleConfigured()` for the Preferences pane to read
     /// without a per-render FFI. Refreshed when the token changes and at launch.
@@ -548,7 +560,7 @@ final class AppModel {
     /// they just heard. Distinct from `recentlyPlayed`, which is the server's
     /// cross-device listening history — this is purely in-memory and resets
     /// on sign-out. Capped at `sessionPlayHistoryLimit`; populated by the
-    /// status-poll track-change hook in `startPolling`.
+    /// track-change hook in `applyPlayerEvent`.
     var sessionPlayHistory: [Track] = []
 
     /// Hard cap on `sessionPlayHistory`. The acceptance criteria call for the
@@ -854,6 +866,13 @@ final class AppModel {
         self.status = core.status()
         self.audio.onTrackEnded = { [weak self] in
             self?.handleTrackEnded()
+        }
+        // 1 Hz position tick, fired only while audio is actually advancing
+        // (the engine skips it at `rate == 0`). With the status poll gone
+        // (#433) this is what moves `status.positionSeconds` — and the dock
+        // ring + scrobble threshold — between push events.
+        self.audio.onPositionTick = { [weak self] seconds in
+            self?.handlePositionTick(seconds: seconds)
         }
         // Hand the engine and the media session the things they need
         // from us *after* all stored properties are initialized. The
@@ -1417,9 +1436,10 @@ extension AppModel: AudioEngineDelegate {
 extension AppModel {
     /// Pull the latest `PlayerStatus` snapshot out of the core and hand it
     /// to `MediaSession` so the remote-control surface reflects any
-    /// just-applied change (shuffle, repeat, favorite). The polling timer
-    /// refreshes this on a cadence, but command handlers want the round-trip
-    /// to feel synchronous — without this, Control Center's shuffle toggle
+    /// just-applied change (shuffle, repeat, favorite). Shuffle / repeat /
+    /// volume setters are deliberately outside the core's push-event set
+    /// (#433), so command handlers refresh inline to make the round-trip
+    /// feel synchronous — without this, Control Center's shuffle toggle
     /// can flicker back to the previous state on the next redraw.
     fileprivate func refreshStatus() {
         self.status = core.status()

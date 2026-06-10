@@ -25,7 +25,9 @@ pub use enums::{ImageType, ItemField, ItemKind, ItemSortBy, SortOrder};
 pub use error::{LyrebirdError, Result};
 pub use library_cache::{LibrarySyncObserver, LibrarySyncSummary};
 pub use models::*;
-pub use player::{PlaybackState, Player, PlayerStatus, RepeatMode};
+pub use player::{
+    PlaybackState, Player, PlayerEventKind, PlayerObserver, PlayerStatus, RepeatMode,
+};
 pub use query::ItemsQuery;
 
 use crate::client::{JellyfinClient, PublicSystemInfo};
@@ -1584,6 +1586,31 @@ impl LyrebirdCore {
 
     pub fn status(&self) -> PlayerStatus {
         self.player.status()
+    }
+
+    /// Register `observer` to receive push notifications for player-state
+    /// changes (#433) — state transitions, current-track changes, and queue
+    /// changes — replacing the UI's 1 Hz `status()` poll loop. Replaces any
+    /// previously-registered observer.
+    ///
+    /// Contract highlights (full details on [`PlayerObserver`]):
+    /// * Callbacks fire synchronously on the mutating thread; marshal to
+    ///   your main thread and return quickly.
+    /// * No core lock is held during the callback, so re-entering any FFI
+    ///   from inside it is safe.
+    /// * `seq` is monotonic in mutation order — drop pushes whose `seq` is
+    ///   not greater than the last applied one.
+    /// * Position ticks never emit; the platform's own 1 Hz time observer is
+    ///   the position source. Volume / shuffle / repeat setters don't emit
+    ///   either — their UI call sites already refresh `status()` inline.
+    pub fn set_player_observer(&self, observer: Box<dyn PlayerObserver>) {
+        self.player.set_observer(Some(Arc::from(observer)));
+    }
+
+    /// Remove the observer registered via [`Self::set_player_observer`], if
+    /// any. Subsequent player-state changes emit nothing.
+    pub fn clear_player_observer(&self) {
+        self.player.set_observer(None);
     }
 
     // ======================================================================

@@ -258,15 +258,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Rebuild the Dock tile from the current player status. Idempotent and
     /// cheap: the `DockTileController` throttles its own `display()` to ≤1 Hz
-    /// and skips redundant redraws, so this is safe to call from both the
-    /// state-change observer and the 1 s status poll.
+    /// and skips redundant redraws, so this is safe to call from every
+    /// caller below at once.
     ///
     /// The progress ring's *per-second advance during playback* is driven by
-    /// `AppModel.startPolling()`, whose 1 Hz tick re-reads `core.status()` and
-    /// calls this method — see the `AppDelegate.shared?.refreshDockTile()` call
-    /// in that loop. The local `startDockBadgeObserver` only adds the discrete
-    /// play/pause/stop transitions; it is *not* the source of the ring's fill,
-    /// so the ring is not frozen between transitions.
+    /// `AppModel.handlePositionTick(seconds:)` — the engine's 1 Hz
+    /// playing-only time observer — and the discrete state/track transitions
+    /// arrive via `AppModel.applyPlayerEvent` (the #433 push stream that
+    /// replaced the old status poll); both call this method. The local
+    /// `startDockBadgeObserver` only adds the play/pause/stop badge flips; it
+    /// is *not* the source of the ring's fill, so the ring is not frozen
+    /// between transitions.
     ///
     /// While a track is loaded the controller installs the custom album-art +
     /// progress-ring tile; when nothing is loaded it tears the tile down and

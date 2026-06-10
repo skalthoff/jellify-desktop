@@ -5,12 +5,12 @@ import LyrebirdAudio
 
 /// Playback-session reporting on `AppModel`: last.fm-style scrobbling, the
 /// Now-Playing inspector details (track people + lyrics fetched on track
-/// change), end-of-track handling (autoplay / stop-after-current / gapless
-/// advance), and the 1 Hz status poll that mirrors `core.status()` into the
-/// reactive surface.
+/// change), and end-of-track handling (autoplay / stop-after-current /
+/// gapless advance). The reactive `status` surface itself is fed by the
+/// core's push event stream — see `AppModel+PlayerEvents.swift` (#433).
 ///
 /// The backing state (`scrobbleGate`, `currentTrackPeopleForId`,
-/// `currentLyricsForId`, `trackAnnounceTask`, `pollTimer`,
+/// `currentLyricsForId`, `trackAnnounceTask`, `playerEventBridge`,
 /// `currentTrackPeople`, `currentLyrics`, …) stays declared on the
 /// main `AppModel` class — stored properties can't live in an extension.
 /// Extensions of a `@MainActor` type inherit its isolation, so every method
@@ -38,8 +38,10 @@ extension AppModel {
         connectScrobbler(token: nil)
     }
 
-    /// Drive the scrobble gate from one status-poll observation and perform
-    /// whichever action it returns. Called once per poll tick.
+    /// Drive the scrobble gate from one status observation and perform
+    /// whichever action it returns. Called on every player push event
+    /// (track changes fire `playing_now` promptly) and on each 1 Hz
+    /// playing-only position tick (which crosses the listen threshold).
     ///
     /// Both submit paths hop off the main actor via `Task.detached` — they take
     /// the core's `parking_lot` mutex and make a network call, neither of which
@@ -51,7 +53,10 @@ extension AppModel {
     /// interrupt playback or surface a toast. A genuinely bad token shows up
     /// in the pane (the connect call validates it); transient network blips
     /// are simply skipped.
-    private func driveScrobble() {
+    ///
+    /// Internal (not private): the call sites live in
+    /// `AppModel+PlayerEvents.swift`.
+    func driveScrobble() {
         let track = status.currentTrack
         let enabled = ScrobblePreference.enabled && scrobbleConnected
         let action = scrobbleGate.noteTrack(
@@ -214,7 +219,7 @@ extension AppModel {
     ///
     /// Safe to call repeatedly — short-circuits when the current track
     /// id already matches the last successful fetch. Cleared on track
-    /// change by the polling loop (see `startPolling`).
+    /// change by the event-stream hook (see `applyPlayerEvent`).
     func fetchCurrentTrackLyrics() async {
         guard let track = status.currentTrack else {
             currentLyrics = nil
@@ -342,113 +347,11 @@ extension AppModel {
         }
     }
 
-    // MARK: - Status polling
-
-    /// Drive the status poll loop. The timer fires at a 1s cadence (was
-    /// 500ms in rc<=10 — every tick takes the Rust core's `parking_lot`
-    /// mutex on the MainActor and republishes `@Observable` state, which
-    /// SwiftUI treats as a redraw signal even when the actual values
-    /// didn't change).
-    ///
-    /// rc11 also tried to skip the tick body entirely when
-    /// `status.state != .playing`, but `pause()` / `resume()` /
-    /// `skipNext()` / `skipPrevious()` delegate straight to
-    /// `AudioEngine` and never call `refreshStatus()` — so after the
-    /// first user-driven pause the local `status.state` stayed `.paused`
-    /// forever and the PlayerBar froze: clicking play resumed audio
-    /// audibly but no UI signaled the transition (rc12 regression
-    /// caught by the user). The energy win from this skip was small
-    /// compared to the dominant `timeObserver` rate-zero skip in
-    /// `LyrebirdAudio/AudioEngine`, so rc13 keeps the 1s cadence and
-    /// drops the gate. Idle wakes/hour:
-    ///   rc<=10: ~14,400 (500ms pollTimer + 500ms timeObserver)
-    ///   rc11/12: ~0 paused, but UI broke
-    ///   rc13:    ~3,600 paused (1s pollTimer ticks; timeObserver
-    ///            still skips when `player.rate == 0`)
-    /// — which still clears the macOS "high energy use" badge while
-    /// keeping the player UI live.
-    func startPolling() {
-        stopPolling()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            Task { @MainActor in
-                let beforeTrack = self.status.currentTrack
-                let before = beforeTrack?.id
-                let beforeQueuePos = self.status.queuePosition
-                let beforeQueueLen = self.status.queueLength
-                self.status = self.core.status()
-                let after = self.status.currentTrack?.id
-                // Keep the custom Dock tile's progress ring filling in real
-                // time. The controller throttles its own redraws to ≤1 Hz, so
-                // calling it on every 1 s poll tick is the right cadence.
-                AppDelegate.shared?.refreshDockTile()
-                // Feed the scrobble gate the fresh status. Fires a ListenBrainz
-                // `playing_now` on track change and a durable listen once the
-                // current track passes the threshold — both off the main actor.
-                self.driveScrobble()
-                // Trigger a details refetch when the track changes. Scoped
-                // to the polling loop so skipping via the PlayerBar,
-                // media keys, or end-of-track auto-advance all get it
-                // for free.
-                if before != after {
-                    // Record the track we just left onto the in-session
-                    // history (#81). Only push real outgoing tracks — a
-                    // start-from-stopped transition (before == nil) has
-                    // nothing to record.
-                    if let outgoing = beforeTrack {
-                        self.recordSessionPlay(outgoing)
-                    }
-                    if after == nil {
-                        self.currentTrackPeople = []
-                        self.currentTrackPeopleForId = nil
-                        self.currentLyrics = nil
-                        self.currentLyricsForId = nil
-                    } else {
-                        Task { await self.fetchCurrentTrackDetails() }
-                        Task { await self.fetchCurrentTrackLyrics() }
-                        // Notify on the new track. The manager no-ops when the
-                        // banner toggle is off, so this is cheap on every change.
-                        // The first track after a startup-from-resume is left
-                        // unsuppressed — a fresh play is exactly when the user
-                        // wants the banner.
-                        if let track = self.status.currentTrack {
-                            NotificationManager.shared.notifyTrackChange(
-                                title: track.name,
-                                artist: track.artistName,
-                                album: track.albumName
-                            )
-                        }
-                    }
-                }
-                // Menu-bar "while playing" needs no poll-driven mirroring:
-                // `LyrebirdApp`'s `MenuBarExtra(isInserted:)` binding observes
-                // `status.state` directly, so the transient icon tracks
-                // play/pause reactively (#984 retired the old
-                // `MenuBarController.setVisibleWhilePlaying` call here).
-                // Keep MediaSession's queue index in sync when a skip
-                // happens. `AudioEngine.play(track:)` already fires
-                // `trackChanged` for the new item; `queueChanged` handles
-                // the case where the queue length shifts without a new
-                // track starting (e.g. future `setQueue` on the current).
-                // Elapsed time is intentionally NOT pushed on every tick
-                // (see issue #48 — the widget interpolates from
-                // `elapsed + wallclock * rate`).
-                if beforeQueuePos != self.status.queuePosition
-                    || beforeQueueLen != self.status.queueLength {
-                    self.mediaSession.queueChanged()
-                }
-            }
-        }
-        // Pin the timer to .common so it keeps firing while the user is
-        // dragging a slider or interacting with menus (the default
-        // .default mode is suspended during those tracking loops).
-        if let pollTimer {
-            RunLoop.main.add(pollTimer, forMode: .common)
-        }
-    }
-
-    func stopPolling() {
-        pollTimer?.invalidate()
-        pollTimer = nil
-    }
+    // The 1 Hz status poll that used to live here (`startPolling` /
+    // `stopPolling`) was retired by #433: the core now pushes state / track /
+    // queue changes through the `PlayerObserver` event stream, and the
+    // position advances via `AudioEngine`'s playing-only time observer. See
+    // `AppModel+PlayerEvents.swift` for the subscription + the transplanted
+    // tick body (`applyPlayerEvent`), including the rc11→rc13 history of why
+    // a state-gated poll was tried and reverted before events replaced it.
 }

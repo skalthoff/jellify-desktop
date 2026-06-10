@@ -188,6 +188,16 @@ public final class AudioEngine: NSObject {
     /// owner (AppModel) can advance the queue.
     public var onTrackEnded: (() -> Void)?
 
+    /// Called at the 1 Hz position cadence, but **only while audio is
+    /// actually advancing** — the time observer skips entirely at
+    /// `rate == 0` (paused / stalled), so subscribers inherit the zero-wake
+    /// idle contract for free. Fired on the main queue right after the same
+    /// position is written into the core via `markPosition`. With the status
+    /// poll retired (#433) this is what advances the owner's progress
+    /// surfaces (PlayerBar elapsed, Dock ring, scrobble threshold) between
+    /// push events.
+    public var onPositionTick: ((Double) -> Void)?
+
     /// Single writer of `MPNowPlayingInfoCenter.nowPlayingInfo`. Held weakly
     /// because the session is owned by `AppModel` — the engine just notifies
     /// it of transport state transitions. See `MediaSession.swift` and
@@ -961,6 +971,11 @@ public final class AudioEngine: NSObject {
             guard player.rate != 0 else { return }
             let seconds = time.seconds.isFinite ? time.seconds : 0
             self.core.markPosition(seconds: seconds)
+            // Forward the tick to the owner (AppModel) so the UI position
+            // advances without polling — `markPosition` is deliberately
+            // event-silent core-side (#433), so this closure is the only
+            // way the per-second position reaches the reactive surface.
+            self.onPositionTick?(seconds)
         }
 
         // Wire the end-of-item notification to the first item. When
