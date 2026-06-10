@@ -18,7 +18,7 @@
 #   - Generates Sparkle binary delta (.delta) files for the last N releases
 #     (DELTA_MAX, default 3). Delta files are placed in $DMG_DIR alongside
 #     the source DMGs and listed to stdout via DELTA_MANIFEST for the
-#     release workflow to upload. Closes #187.
+#     release workflow to upload.
 #
 # Environment:
 #   SPARKLE_ED25519_PRIVATE   base64 private key (required unless --dry-run)
@@ -169,7 +169,7 @@ echo "==> Running generate_appcast (maximum-deltas=$DELTA_MAX)"
 # generate_appcast writes .delta files into $DMG_DIR alongside the source DMGs.
 # The release workflow uploads those deltas to the current GitHub release; the
 # post-process URL injection below then rewrites the delta enclosure URLs to
-# include the correct tag segment (same as for the full DMG). Fixes #187.
+# include the correct tag segment (same as for the full DMG).
 "$SPARKLE_BIN" \
   --ed-key-file "$KEY_FILE" \
   --download-url-prefix "$DOWNLOAD_URL_PREFIX/" \
