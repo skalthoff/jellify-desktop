@@ -7,6 +7,7 @@
 use crate::error::{LyrebirdError, Result};
 use crate::models::Track;
 use parking_lot::Mutex;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
 pub enum PlaybackState {
@@ -16,6 +17,50 @@ pub enum PlaybackState {
     Paused,
     Stopped,
     Ended,
+}
+
+/// Which facet of player state a [`PlayerObserver::player_changed`] push
+/// reflects. One mutation can change several facets at once (e.g. a skip
+/// moves both the current track and the queue cursor), so the callback
+/// carries a `Vec` of kinds rather than a single value.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Enum)]
+pub enum PlayerEventKind {
+    /// `status.state` transitioned (play / pause / stop / load / end).
+    StateChanged,
+    /// `status.current_track` changed identity (skip, queue jump,
+    /// `set_queue`, stop-clear). Identity is the track id — re-marking the
+    /// same track does not emit.
+    TrackChanged,
+    /// Queue membership or the playhead index changed (`set_queue`,
+    /// `insert_next`, `append_to_queue`, `clear_queue`, skips).
+    QueueChanged,
+}
+
+/// Push-notification sink for player-state changes (#433). Implemented by
+/// the UI layer (a Swift class via the UniFFI callback interface) and
+/// registered through `LyrebirdCore::set_player_observer`; replaces the UI's
+/// 1 Hz `status()` poll loop.
+///
+/// Contract:
+/// * Invoked **synchronously on the thread that performed the mutation** —
+///   implementations must marshal to their own main thread and return
+///   quickly.
+/// * **No lock is held during the callback**: the player snapshots state and
+///   releases its mutex before invoking, so an implementation may safely
+///   re-enter any core FFI (including `status()` and the registration
+///   methods) from inside the callback without deadlocking.
+/// * `seq` increases monotonically and is assigned in mutation order, so a
+///   late-delivered older snapshot can be detected and dropped: ignore any
+///   push whose `seq` is not greater than the last one applied.
+/// * Position ticks (`mark_position`) deliberately do **not** emit — the
+///   platform side already owns a 1 Hz position source (AVPlayer's periodic
+///   time observer) and mirroring it back out would reintroduce the idle
+///   wake-storm this interface exists to remove.
+#[uniffi::export(callback_interface)]
+pub trait PlayerObserver: Send + Sync {
+    /// One or more facets of [`PlayerStatus`] changed; `status` is the
+    /// complete post-mutation snapshot.
+    fn player_changed(&self, seq: u64, kinds: Vec<PlayerEventKind>, status: PlayerStatus);
 }
 
 /// Queue-wide repeat mode carried on [`PlayerStatus`] and exposed to the
@@ -64,7 +109,16 @@ pub struct PlayerStatus {
 
 pub struct Player {
     shared: Mutex<Shared>,
+    /// Registered push sink, if any. Guarded by its **own** mutex (not
+    /// `shared`) so registration can never contend with a snapshot, and so
+    /// emission can clone the `Arc` out and drop this lock *before* the
+    /// callback runs — see [`Player::emit`].
+    observer: Mutex<Option<Arc<dyn PlayerObserver>>>,
 }
+
+/// A pending observer push, computed under the `shared` lock and delivered
+/// after it is released: `(seq, changed facets, post-mutation snapshot)`.
+type Notification = (u64, Vec<PlayerEventKind>, PlayerStatus);
 
 struct Shared {
     state: PlaybackState,
@@ -76,6 +130,11 @@ struct Shared {
     shuffle: bool,
     repeat_mode: RepeatMode,
     play_session_id: Option<String>,
+    /// Monotonic counter stamped onto every observer push. Incremented under
+    /// the `shared` lock so sequence order always matches mutation order even
+    /// when mutations race on different threads; the subscriber uses it to
+    /// drop out-of-order deliveries.
+    event_seq: u64,
 }
 
 impl Shared {
@@ -90,7 +149,48 @@ impl Shared {
             shuffle: false,
             repeat_mode: RepeatMode::Off,
             play_session_id: None,
+            event_seq: 0,
         }
+    }
+
+    /// Stamp and package an observer push for the given changed facets.
+    /// Must be called while the mutation's lock is still held so the
+    /// sequence number is assigned in mutation order; the caller delivers
+    /// the result via [`Player::emit`] *after* releasing the lock.
+    fn notification(&mut self, kinds: Vec<PlayerEventKind>) -> Option<Notification> {
+        if kinds.is_empty() {
+            return None;
+        }
+        self.event_seq += 1;
+        Some((self.event_seq, kinds, self.snapshot()))
+    }
+
+    /// Track-identity probe used for [`PlayerEventKind::TrackChanged`]
+    /// diffing: the current track's id, if any.
+    fn current_id(&self) -> Option<String> {
+        self.current.as_ref().map(|t| t.id.clone())
+    }
+
+    /// Move the playhead to `idx` (which must be in bounds), realign
+    /// `current`, and return the landed-on track together with a push whose
+    /// kinds are diffed against the pre-move state — so e.g. a
+    /// `RepeatMode::All` wrap on a single-track queue (same index, same
+    /// track) emits nothing. Shared by `skip_next` / `skip_previous`.
+    fn advance_cursor(&mut self, idx: usize) -> (Option<Track>, Option<Notification>) {
+        let before_id = self.current_id();
+        let before_index = self.queue_index;
+        self.queue_index = idx;
+        let track = self.queue.get(idx).cloned();
+        self.current = track.clone();
+        let mut kinds = Vec::new();
+        if self.current_id() != before_id {
+            kinds.push(PlayerEventKind::TrackChanged);
+        }
+        if self.queue_index != before_index {
+            kinds.push(PlayerEventKind::QueueChanged);
+        }
+        let notification = self.notification(kinds);
+        (track, notification)
     }
 
     fn snapshot(&self) -> PlayerStatus {
@@ -124,6 +224,33 @@ impl Player {
     pub fn new() -> Self {
         Self {
             shared: Mutex::new(Shared::new()),
+            observer: Mutex::new(None),
+        }
+    }
+
+    /// Register (or, with `None`, remove) the push sink for player-state
+    /// changes. Replaces any previously-registered observer; the displaced
+    /// one receives no further pushes.
+    pub fn set_observer(&self, observer: Option<Arc<dyn PlayerObserver>>) {
+        *self.observer.lock() = observer;
+    }
+
+    /// Deliver a pending push to the registered observer, if any.
+    ///
+    /// Deadlock safety (#433): callers must have already released the
+    /// `shared` lock — every mutation computes its [`Notification`] inside
+    /// the lock scope and calls this outside it. The `observer` lock is held
+    /// only long enough to clone the `Arc`, never across the callback, so an
+    /// observer may re-enter any `Player` method (including
+    /// [`Player::set_observer`] and [`Player::status`]) from inside
+    /// `player_changed` without deadlocking.
+    fn emit(&self, notification: Option<Notification>) {
+        let Some((seq, kinds, status)) = notification else {
+            return;
+        };
+        let observer = self.observer.lock().clone();
+        if let Some(observer) = observer {
+            observer.player_changed(seq, kinds, status);
         }
     }
 
@@ -141,10 +268,22 @@ impl Player {
                 len: tracks.len(),
             });
         }
-        let mut s = self.shared.lock();
-        s.current = tracks.get(idx).cloned();
-        s.queue = tracks;
-        s.queue_index = idx;
+        let notification = {
+            let mut s = self.shared.lock();
+            let before_id = s.current_id();
+            s.current = tracks.get(idx).cloned();
+            s.queue = tracks;
+            s.queue_index = idx;
+            // Queue membership always changed (a fresh queue replaced the old
+            // one, even at identical length/index); the current track only
+            // changed when its identity moved.
+            let mut kinds = vec![PlayerEventKind::QueueChanged];
+            if s.current_id() != before_id {
+                kinds.insert(0, PlayerEventKind::TrackChanged);
+            }
+            s.notification(kinds)
+        };
+        self.emit(notification);
         Ok(())
     }
 
@@ -167,23 +306,23 @@ impl Player {
     /// "track ended" callback that invokes `skip_next` keeps replaying the
     /// same entry.
     pub fn skip_next(&self) -> Option<Track> {
-        let mut s = self.shared.lock();
-        if matches!(s.repeat_mode, RepeatMode::One) {
-            return s.queue.get(s.queue_index).cloned();
-        }
-        if s.queue_index + 1 < s.queue.len() {
-            s.queue_index += 1;
-            let track = s.queue.get(s.queue_index).cloned();
-            s.current = track.clone();
-            track
-        } else if matches!(s.repeat_mode, RepeatMode::All) && !s.queue.is_empty() {
-            s.queue_index = 0;
-            let track = s.queue.first().cloned();
-            s.current = track.clone();
-            track
-        } else {
-            None
-        }
+        let (track, notification) = {
+            let mut s = self.shared.lock();
+            if matches!(s.repeat_mode, RepeatMode::One) {
+                // Replay-in-place: nothing about the snapshot changes, so
+                // there is nothing to push.
+                (s.queue.get(s.queue_index).cloned(), None)
+            } else if s.queue_index + 1 < s.queue.len() {
+                let next = s.queue_index + 1;
+                s.advance_cursor(next)
+            } else if matches!(s.repeat_mode, RepeatMode::All) && !s.queue.is_empty() {
+                s.advance_cursor(0)
+            } else {
+                (None, None)
+            }
+        };
+        self.emit(notification);
+        track
     }
 
     /// The track [`Player::skip_next`] *would* return, without mutating the
@@ -224,24 +363,23 @@ impl Player {
     /// * [`RepeatMode::One`] — returns the current track without advancing
     ///   the queue index; `current` and `queue_position` are unchanged.
     pub fn skip_previous(&self) -> Option<Track> {
-        let mut s = self.shared.lock();
-        if matches!(s.repeat_mode, RepeatMode::One) {
-            return s.queue.get(s.queue_index).cloned();
-        }
-        if s.queue_index > 0 {
-            s.queue_index -= 1;
-            let track = s.queue.get(s.queue_index).cloned();
-            s.current = track.clone();
-            track
-        } else if matches!(s.repeat_mode, RepeatMode::All) && !s.queue.is_empty() {
-            let last = s.queue.len() - 1;
-            s.queue_index = last;
-            let track = s.queue.get(last).cloned();
-            s.current = track.clone();
-            track
-        } else {
-            None
-        }
+        let (track, notification) = {
+            let mut s = self.shared.lock();
+            if matches!(s.repeat_mode, RepeatMode::One) {
+                // Replay-in-place — see `skip_next`.
+                (s.queue.get(s.queue_index).cloned(), None)
+            } else if s.queue_index > 0 {
+                let prev = s.queue_index - 1;
+                s.advance_cursor(prev)
+            } else if matches!(s.repeat_mode, RepeatMode::All) && !s.queue.is_empty() {
+                let last = s.queue.len() - 1;
+                s.advance_cursor(last)
+            } else {
+                (None, None)
+            }
+        };
+        self.emit(notification);
+        track
     }
 
     /// Insert `tracks` into the queue immediately after the currently-playing
@@ -259,21 +397,31 @@ impl Player {
     /// Returns the new queue length. Closes #282 for the Play Next flows
     /// (album / playlist / track context menu, Up Next panel drag-drop).
     pub fn insert_next(&self, tracks: Vec<Track>) -> u32 {
-        let mut s = self.shared.lock();
-        if tracks.is_empty() {
-            return s.queue.len() as u32;
-        }
-        if s.queue.is_empty() {
-            // No playhead to insert after — start a fresh queue so the
-            // tracks are actually playable (mirrors `set_queue`).
-            s.current = tracks.first().cloned();
-            s.queue = tracks;
-            s.queue_index = 0;
-            return s.queue.len() as u32;
-        }
-        let insert_at = (s.queue_index + 1).min(s.queue.len());
-        s.queue.splice(insert_at..insert_at, tracks);
-        s.queue.len() as u32
+        let (len, notification) = {
+            let mut s = self.shared.lock();
+            if tracks.is_empty() {
+                (s.queue.len() as u32, None)
+            } else if s.queue.is_empty() {
+                // No playhead to insert after — start a fresh queue so the
+                // tracks are actually playable (mirrors `set_queue`). The
+                // playhead priming makes this a track change too.
+                s.current = tracks.first().cloned();
+                s.queue = tracks;
+                s.queue_index = 0;
+                let n = s.notification(vec![
+                    PlayerEventKind::TrackChanged,
+                    PlayerEventKind::QueueChanged,
+                ]);
+                (s.queue.len() as u32, n)
+            } else {
+                let insert_at = (s.queue_index + 1).min(s.queue.len());
+                s.queue.splice(insert_at..insert_at, tracks);
+                let n = s.notification(vec![PlayerEventKind::QueueChanged]);
+                (s.queue.len() as u32, n)
+            }
+        };
+        self.emit(notification);
+        len
     }
 
     /// Append `tracks` to the end of the queue. "Add to Queue" semantics.
@@ -288,17 +436,27 @@ impl Player {
     ///
     /// Returns the new queue length. Closes #282 for Add-to-Queue flows.
     pub fn append_to_queue(&self, tracks: Vec<Track>) -> u32 {
-        let mut s = self.shared.lock();
-        if tracks.is_empty() {
-            return s.queue.len() as u32;
-        }
-        let was_empty = s.queue.is_empty();
-        s.queue.extend(tracks);
-        if was_empty {
-            s.queue_index = 0;
-            s.current = s.queue.first().cloned();
-        }
-        s.queue.len() as u32
+        let (len, notification) = {
+            let mut s = self.shared.lock();
+            if tracks.is_empty() {
+                (s.queue.len() as u32, None)
+            } else {
+                let was_empty = s.queue.is_empty();
+                s.queue.extend(tracks);
+                let mut kinds = vec![PlayerEventKind::QueueChanged];
+                if was_empty {
+                    s.queue_index = 0;
+                    s.current = s.queue.first().cloned();
+                    // Priming the playhead onto the first appended track is a
+                    // track change as well.
+                    kinds.insert(0, PlayerEventKind::TrackChanged);
+                }
+                let n = s.notification(kinds);
+                (s.queue.len() as u32, n)
+            }
+        };
+        self.emit(notification);
+        len
     }
 
     /// Replace the queue with an empty vec. Distinct from [`Player::clear`]
@@ -308,14 +466,24 @@ impl Player {
     /// queue so subsequent `skip_next` correctly reports `None` rather than
     /// falling off a zero-length vec.
     pub fn clear_queue(&self) {
-        let mut s = self.shared.lock();
-        if let Some(current) = s.current.clone() {
-            s.queue = vec![current];
-            s.queue_index = 0;
-        } else {
-            s.queue.clear();
-            s.queue_index = 0;
-        }
+        let notification = {
+            let mut s = self.shared.lock();
+            let before_len = s.queue.len();
+            let before_index = s.queue_index;
+            if let Some(current) = s.current.clone() {
+                s.queue = vec![current];
+                s.queue_index = 0;
+            } else {
+                s.queue.clear();
+                s.queue_index = 0;
+            }
+            if s.queue.len() != before_len || s.queue_index != before_index {
+                s.notification(vec![PlayerEventKind::QueueChanged])
+            } else {
+                None
+            }
+        };
+        self.emit(notification);
     }
 
     /// Mark `track` as the currently-playing entry and force state to
@@ -325,12 +493,26 @@ impl Player {
     /// skip/peek cursor). When it is not in the queue (e.g. a one-off play of
     /// an item that was never enqueued) the index is left untouched.
     pub fn set_current(&self, track: Track) {
-        let mut s = self.shared.lock();
-        if let Some(i) = s.queue.iter().position(|t| t.id == track.id) {
-            s.queue_index = i;
-        }
-        s.current = Some(track);
-        s.state = PlaybackState::Playing;
+        let notification = {
+            let mut s = self.shared.lock();
+            let mut kinds = Vec::new();
+            if s.state != PlaybackState::Playing {
+                kinds.push(PlayerEventKind::StateChanged);
+            }
+            if s.current_id().as_deref() != Some(track.id.as_str()) {
+                kinds.push(PlayerEventKind::TrackChanged);
+            }
+            if let Some(i) = s.queue.iter().position(|t| t.id == track.id) {
+                if s.queue_index != i {
+                    kinds.push(PlayerEventKind::QueueChanged);
+                }
+                s.queue_index = i;
+            }
+            s.current = Some(track);
+            s.state = PlaybackState::Playing;
+            s.notification(kinds)
+        };
+        self.emit(notification);
     }
 
     /// Store the `PlaySessionId` from `POST /Items/{id}/PlaybackInfo`.
@@ -347,9 +529,23 @@ impl Player {
     }
 
     pub fn mark_state(&self, state: PlaybackState) {
-        self.shared.lock().state = state;
+        let notification = {
+            let mut s = self.shared.lock();
+            if s.state == state {
+                None
+            } else {
+                s.state = state;
+                s.notification(vec![PlayerEventKind::StateChanged])
+            }
+        };
+        self.emit(notification);
     }
 
+    /// Record the playback position. Deliberately does **not** push a
+    /// [`PlayerObserver`] event: the platform side already owns the 1 Hz
+    /// position source that calls this (AVPlayer's periodic time observer),
+    /// and echoing every tick back across the FFI would reintroduce the
+    /// per-second wakes #433 removed.
     pub fn mark_position(&self, seconds: f64) {
         self.shared.lock().position_seconds = seconds.max(0.0);
     }
@@ -375,13 +571,27 @@ impl Player {
     }
 
     pub fn clear(&self) {
-        let mut s = self.shared.lock();
-        s.state = PlaybackState::Stopped;
-        s.current = None;
-        s.position_seconds = 0.0;
-        s.play_session_id = None;
-        s.queue.clear();
-        s.queue_index = 0;
+        let notification = {
+            let mut s = self.shared.lock();
+            let mut kinds = Vec::new();
+            if s.state != PlaybackState::Stopped {
+                kinds.push(PlayerEventKind::StateChanged);
+            }
+            if s.current.is_some() {
+                kinds.push(PlayerEventKind::TrackChanged);
+            }
+            if !s.queue.is_empty() || s.queue_index != 0 {
+                kinds.push(PlayerEventKind::QueueChanged);
+            }
+            s.state = PlaybackState::Stopped;
+            s.current = None;
+            s.position_seconds = 0.0;
+            s.play_session_id = None;
+            s.queue.clear();
+            s.queue_index = 0;
+            s.notification(kinds)
+        };
+        self.emit(notification);
     }
 
     pub fn status(&self) -> PlayerStatus {
