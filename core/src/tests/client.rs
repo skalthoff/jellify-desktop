@@ -1535,6 +1535,19 @@ async fn appears_on_albums_uses_artist_ids_and_subtracts_own_releases() {
     );
     assert!(q.contains("IncludeItemTypes=MusicAlbum"), "query: {q}");
     assert!(q.contains("Recursive=true"), "query: {q}");
+
+    // AlbumArtist must be in Fields so the server returns AlbumArtistId; without
+    // it the subtraction filter always sees None and is a no-op.
+    let fields = get
+        .url
+        .query_pairs()
+        .find(|(k, _)| k == "Fields")
+        .map(|(_, v)| v.into_owned())
+        .expect("Fields must be present in the query");
+    assert!(
+        fields.split(',').any(|f| f == "AlbumArtist"),
+        "Fields must include AlbumArtist so AlbumArtistId is returned; got: {fields}"
+    );
 }
 
 // ============================================================================
