@@ -403,6 +403,7 @@ struct PreferencesPlayback: View {
 private struct CrossfadeEnvelopeView: View {
     let durationSeconds: Double
     let curve: CrossfadeSettings.Curve
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Number of path sample points. 64 is more than enough resolution for
     /// a 264-point-wide preview at this scale while staying well below any
@@ -425,7 +426,7 @@ private struct CrossfadeEnvelopeView: View {
                     .accessibilityLabel(accessibilityLabel)
                     .accessibilityHidden(false)
             } animation: { _ in
-                .easeInOut(duration: 1.2)
+                reduceMotion ? nil : .easeInOut(duration: 1.2)
             }
 
             // Legend: two dots + labels identifying the two curves.
