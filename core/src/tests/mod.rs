@@ -11,6 +11,7 @@ mod errors_enums;
 mod favorites;
 mod library;
 mod library_cache;
+mod logging;
 mod persistence;
 mod playback;
 mod playlists;
