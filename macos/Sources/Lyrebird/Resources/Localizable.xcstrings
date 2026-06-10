@@ -40,6 +40,12 @@
             "state": "needs_review",
             "value": "Sobre o Lyrebird"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Informazioni su Lyrebird"
+          }
         }
       }
     },
@@ -78,6 +84,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Lyrebird"
@@ -124,6 +136,12 @@
             "state": "needs_review",
             "value": "DESKTOP"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "DESKTOP"
+          }
         }
       }
     },
@@ -165,6 +183,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Sua sessão expirou"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "La sessione è scaduta"
           }
         }
       }
@@ -208,6 +232,12 @@
             "state": "needs_review",
             "value": "Faça login novamente para continuar ouvindo."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Accedi di nuovo per continuare ad ascoltare."
+          }
         }
       }
     },
@@ -249,6 +279,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Entrar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Accedi"
           }
         }
       }
@@ -292,6 +328,12 @@
             "state": "needs_review",
             "value": "Entrar novamente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Accedi di nuovo"
+          }
         }
       }
     },
@@ -333,6 +375,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Entrando…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Accesso in corso…"
           }
         }
       }
@@ -376,6 +424,12 @@
             "state": "needs_review",
             "value": "Não foi possível alcançar o seu servidor."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile raggiungere il server."
+          }
         }
       }
     },
@@ -417,6 +471,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível alcançar %@. Tentando novamente…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile raggiungere %@. Nuovo tentativo…"
           }
         }
       }
@@ -460,6 +520,12 @@
             "state": "needs_review",
             "value": "Tentar reconectar ao servidor"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riprova la connessione al server"
+          }
         }
       }
     },
@@ -502,6 +568,12 @@
             "state": "needs_review",
             "value": "Álbum"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
+          }
         }
       }
     },
@@ -540,6 +612,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Artista"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Artista"
@@ -586,6 +664,12 @@
             "state": "needs_review",
             "value": "Playlist"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Playlist"
+          }
         }
       }
     },
@@ -627,6 +711,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Cancelar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Annulla"
           }
         }
       }
@@ -670,6 +760,12 @@
             "state": "needs_review",
             "value": "Excluir"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Elimina"
+          }
         }
       }
     },
@@ -711,6 +807,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Dispensar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ignora"
           }
         }
       }
@@ -754,6 +856,12 @@
             "state": "needs_review",
             "value": "Concluído"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fine"
+          }
         }
       }
     },
@@ -795,6 +903,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Tentar novamente"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riprova"
           }
         }
       }
@@ -900,6 +1014,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld álbuns"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld album"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld album"
                 }
               }
             }
@@ -1012,6 +1144,24 @@
               }
             }
           }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld artista"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld artisti"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1116,6 +1266,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld itens"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld elemento"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld elementi"
                 }
               }
             }
@@ -1228,6 +1396,24 @@
               }
             }
           }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld playlist"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld playlist"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1332,6 +1518,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld reproduções"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld riproduzione"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld riproduzioni"
                 }
               }
             }
@@ -1444,6 +1648,24 @@
               }
             }
           }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld risultato"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld risultati"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1548,6 +1770,24 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld selecionados"
+                }
+              }
+            }
+          }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld selezionato"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld selezionati"
                 }
               }
             }
@@ -1660,6 +1900,24 @@
               }
             }
           }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld canzone"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld canzoni"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1768,6 +2026,24 @@
               }
             }
           }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld brano"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld brani"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1809,6 +2085,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nenhuma música ainda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessuna musica ancora"
           }
         }
       }
@@ -1852,6 +2134,12 @@
             "state": "needs_review",
             "value": "Seu servidor Jellyfin não tem música na biblioteca, ou ela ainda está sendo indexada. Adicione uma biblioteca no servidor e atualize."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Il server Jellyfin non ha musica nella libreria, o è ancora in fase di indicizzazione. Aggiungi una libreria sul server, poi aggiorna."
+          }
         }
       }
     },
@@ -1893,6 +2181,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Abrir Jellyfin web"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Apri Jellyfin web"
           }
         }
       }
@@ -1936,6 +2230,12 @@
             "state": "needs_review",
             "value": "A fila está vazia"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "La coda è vuota"
+          }
         }
       }
     },
@@ -1977,6 +2277,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Reproduza algo para iniciar uma fila."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduci qualcosa per avviare una coda."
           }
         }
       }
@@ -2020,6 +2326,12 @@
             "state": "needs_review",
             "value": "Faça login novamente."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Accedi di nuovo."
+          }
         }
       }
     },
@@ -2061,6 +2373,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Você não tem permissão para fazer isso."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Non hai il permesso di farlo."
           }
         }
       }
@@ -2104,6 +2422,12 @@
             "state": "needs_review",
             "value": "Esse item não foi encontrado."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Quell'elemento non è stato trovato."
+          }
         }
       }
     },
@@ -2145,6 +2469,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Muitas solicitações. Tente novamente em um momento."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Troppe richieste. Riprova tra un momento."
           }
         }
       }
@@ -2188,6 +2518,12 @@
             "state": "needs_review",
             "value": "Erro de rede. Verifique sua conexão e tente novamente."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Errore di rete. Controlla la connessione e riprova."
+          }
         }
       }
     },
@@ -2229,6 +2565,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "O servidor encontrou um problema. Tente novamente."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Il server ha riscontrato un problema. Riprova."
           }
         }
       }
@@ -2272,6 +2614,12 @@
             "state": "needs_review",
             "value": "Não foi possível ler a resposta do servidor."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile leggere la risposta del server."
+          }
         }
       }
     },
@@ -2313,6 +2661,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível baixar para reprodução offline."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile scaricare per la riproduzione offline."
           }
         }
       }
@@ -2356,6 +2710,12 @@
             "state": "needs_review",
             "value": "Erro de armazenamento local. Tente novamente."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Errore di archiviazione locale. Riprova."
+          }
         }
       }
     },
@@ -2397,6 +2757,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível acessar o chaveiro do sistema."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile accedere al portachiavi di sistema."
           }
         }
       }
@@ -2440,6 +2806,12 @@
             "state": "needs_review",
             "value": "Erro de reprodução de áudio."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Errore di riproduzione audio."
+          }
         }
       }
     },
@@ -2481,6 +2853,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível verificar o certificado do servidor. Talvez seja necessário confiar neste servidor."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile verificare il certificato del server. Potrebbe essere necessario approvare questo server."
           }
         }
       }
@@ -2524,6 +2902,12 @@
             "state": "needs_review",
             "value": "Esse valor não é válido."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Questo valore non è valido."
+          }
         }
       }
     },
@@ -2565,6 +2949,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Algo deu errado."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Qualcosa è andato storto."
           }
         }
       }
@@ -2608,6 +2998,12 @@
             "state": "needs_review",
             "value": "Não foi possível iniciar a reprodução."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile avviare la riproduzione."
+          }
         }
       }
     },
@@ -2649,6 +3045,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível carregar sua biblioteca."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile caricare la libreria."
           }
         }
       }
@@ -2692,6 +3094,12 @@
             "state": "needs_review",
             "value": "Não foi possível carregar as playlists."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile caricare le playlist."
+          }
         }
       }
     },
@@ -2733,6 +3141,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível carregar esta playlist."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile caricare questa playlist."
           }
         }
       }
@@ -2776,6 +3190,12 @@
             "state": "needs_review",
             "value": "Não foi possível carregar as faixas do álbum."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile caricare i brani dell'album."
+          }
         }
       }
     },
@@ -2817,6 +3237,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível carregar as faixas da playlist."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile caricare i brani della playlist."
           }
         }
       }
@@ -2860,6 +3286,12 @@
             "state": "needs_review",
             "value": "A busca falhou."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ricerca non riuscita."
+          }
         }
       }
     },
@@ -2901,6 +3333,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível atualizar o favorito."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile aggiornare il preferito."
           }
         }
       }
@@ -2944,6 +3382,12 @@
             "state": "needs_review",
             "value": "Não foi possível atualizar o status de reprodução."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile aggiornare lo stato di riproduzione."
+          }
         }
       }
     },
@@ -2985,6 +3429,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível adicionar à playlist."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile aggiungere alla playlist."
           }
         }
       }
@@ -3028,6 +3478,12 @@
             "state": "needs_review",
             "value": "Falha ao entrar."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Accesso non riuscito."
+          }
         }
       }
     },
@@ -3069,6 +3525,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Usuário ou senha incorretos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nome utente o password errati"
           }
         }
       }
@@ -3112,6 +3574,12 @@
             "state": "needs_review",
             "value": "Esta ação ainda não está disponível."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Questa azione non è ancora disponibile."
+          }
         }
       }
     },
@@ -3153,6 +3621,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Sem rede. Verifique sua conexão."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessuna rete. Controlla la connessione."
           }
         }
       }
@@ -3196,6 +3670,12 @@
             "state": "needs_review",
             "value": "Verificando…"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Verifica…"
+          }
         }
       }
     },
@@ -3237,6 +3717,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "URL DO SERVIDOR"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "URL SERVER"
           }
         }
       }
@@ -3280,6 +3766,12 @@
             "state": "needs_review",
             "value": "USUÁRIO"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "NOME UTENTE"
+          }
         }
       }
     },
@@ -3321,6 +3813,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "SENHA"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "PASSWORD"
           }
         }
       }
@@ -3364,6 +3862,12 @@
             "state": "needs_review",
             "value": "você"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "tu"
+          }
         }
       }
     },
@@ -3405,6 +3909,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "ENCONTRADO NESTA REDE"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "TROVATO IN QUESTA RETE"
           }
         }
       }
@@ -3448,6 +3958,12 @@
             "state": "needs_review",
             "value": "URL do servidor"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "URL server"
+          }
         }
       }
     },
@@ -3489,6 +4005,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Usuário"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nome utente"
           }
         }
       }
@@ -3532,6 +4054,12 @@
             "state": "needs_review",
             "value": "Senha"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Password"
+          }
         }
       }
     },
@@ -3573,6 +4101,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Voltar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Indietro"
           }
         }
       }
@@ -3616,6 +4150,12 @@
             "state": "needs_review",
             "value": "Bem-vindo ao Lyrebird"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Benvenuto in Lyrebird"
+          }
         }
       }
     },
@@ -3657,6 +4197,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Sua música, seu servidor, suas regras."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "La tua musica, il tuo server, le tue regole."
           }
         }
       }
@@ -3700,6 +4246,12 @@
             "state": "needs_review",
             "value": "Começar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inizia"
+          }
         }
       }
     },
@@ -3741,6 +4293,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Já tenho uma conta →"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ho già un account →"
           }
         }
       }
@@ -3784,6 +4342,12 @@
             "state": "needs_review",
             "value": "Já tenho uma conta"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ho già un account"
+          }
         }
       }
     },
@@ -3825,6 +4389,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Conecte seu servidor"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Connetti il tuo server"
           }
         }
       }
@@ -3868,6 +4438,12 @@
             "state": "needs_review",
             "value": "A URL do Jellyfin é o endereço que você usa para acessá-lo pelo navegador."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "L'URL di Jellyfin è l'indirizzo che usi per accedervi dal browser."
+          }
         }
       }
     },
@@ -3909,6 +4485,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Continuar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Continua"
           }
         }
       }
@@ -3952,6 +4534,12 @@
             "state": "needs_review",
             "value": "Conectando…"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Connessione…"
+          }
         }
       }
     },
@@ -3993,6 +4581,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pular, explorar offline →"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Salta, esplora offline →"
           }
         }
       }
@@ -4036,6 +4630,12 @@
             "state": "needs_review",
             "value": "Carregando sua biblioteca"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Caricamento libreria"
+          }
         }
       }
     },
@@ -4077,6 +4677,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Carregando artistas…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Caricamento artisti…"
           }
         }
       }
@@ -4120,6 +4726,12 @@
             "state": "needs_review",
             "value": "Carregando álbuns…"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Caricamento album…"
+          }
         }
       }
     },
@@ -4161,6 +4773,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Carregando faixas…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Caricamento brani…"
           }
         }
       }
@@ -4204,6 +4822,12 @@
             "state": "needs_review",
             "value": "Buscando capas…"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Recupero copertine…"
+          }
         }
       }
     },
@@ -4245,6 +4869,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "%1$@ faixas · %2$@ artistas · %3$@ álbuns"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "%1$@ brani · %2$@ artisti · %3$@ album"
           }
         }
       }
@@ -4288,6 +4918,12 @@
             "state": "needs_review",
             "value": "Ir para o início"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Vai alla home"
+          }
         }
       }
     },
@@ -4329,6 +4965,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Sincronizando…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sincronizzazione…"
           }
         }
       }
@@ -4372,6 +5014,12 @@
             "state": "needs_review",
             "value": "Não foi possível carregar sua biblioteca."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile caricare la libreria."
+          }
         }
       }
     },
@@ -4413,6 +5061,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Tentar novamente"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riprova"
           }
         }
       }
@@ -4456,6 +5110,12 @@
             "state": "needs_review",
             "value": "Sobre o Lyrebird"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Informazioni su Lyrebird"
+          }
         }
       }
     },
@@ -4497,6 +5157,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nova Playlist…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nuova Playlist…"
           }
         }
       }
@@ -4540,6 +5206,12 @@
             "state": "needs_review",
             "value": "Nova Janela"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nuova Finestra"
+          }
         }
       }
     },
@@ -4581,6 +5253,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Mostrar Barra Lateral"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mostra Barra Laterale"
           }
         }
       }
@@ -4624,6 +5302,12 @@
             "state": "needs_review",
             "value": "Mostrar Inspetor de Fila"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mostra Ispettore Coda"
+          }
         }
       }
     },
@@ -4665,6 +5349,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Início"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Home"
           }
         }
       }
@@ -4708,6 +5398,12 @@
             "state": "needs_review",
             "value": "Biblioteca"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Libreria"
+          }
         }
       }
     },
@@ -4749,6 +5445,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Buscar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca"
           }
         }
       }
@@ -4792,6 +5494,12 @@
             "state": "needs_review",
             "value": "Buscar…"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca…"
+          }
         }
       }
     },
@@ -4833,6 +5541,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Buscar na Biblioteca…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca nella Libreria…"
           }
         }
       }
@@ -4876,6 +5590,12 @@
             "state": "needs_review",
             "value": "Ir para Reproduzindo Agora"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Vai a In Riproduzione"
+          }
         }
       }
     },
@@ -4917,6 +5637,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Fila de Reprodução"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Coda di Riproduzione"
           }
         }
       }
@@ -4960,6 +5686,12 @@
             "state": "needs_review",
             "value": "Paleta de Comandos…"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tavolozza Comandi…"
+          }
         }
       }
     },
@@ -5001,6 +5733,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Reprodução"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduzione"
           }
         }
       }
@@ -5044,6 +5782,12 @@
             "state": "needs_review",
             "value": "Reproduzir"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduci"
+          }
         }
       }
     },
@@ -5085,6 +5829,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pausar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Pausa"
           }
         }
       }
@@ -5128,6 +5878,12 @@
             "state": "needs_review",
             "value": "Próxima Faixa"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Brano Successivo"
+          }
         }
       }
     },
@@ -5169,6 +5925,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Faixa Anterior"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Brano Precedente"
           }
         }
       }
@@ -5212,6 +5974,12 @@
             "state": "needs_review",
             "value": "Aumentar Volume"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Alza Volume"
+          }
         }
       }
     },
@@ -5253,6 +6021,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Diminuir Volume"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Abbassa Volume"
           }
         }
       }
@@ -5296,6 +6070,12 @@
             "state": "needs_review",
             "value": "Avançar 10s"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Avanza 10s"
+          }
         }
       }
     },
@@ -5337,6 +6117,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Retroceder 10s"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Indietro 10s"
           }
         }
       }
@@ -5380,6 +6166,12 @@
             "state": "needs_review",
             "value": "Parar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ferma"
+          }
         }
       }
     },
@@ -5421,6 +6213,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Organizar Janela à Esquerda"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Affianca Finestra a Sinistra"
           }
         }
       }
@@ -5464,6 +6262,12 @@
             "state": "needs_review",
             "value": "Organizar Janela à Direita"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Affianca Finestra a Destra"
+          }
         }
       }
     },
@@ -5505,6 +6309,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ajuda do Lyrebird"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Guida Lyrebird"
           }
         }
       }
@@ -5548,6 +6358,12 @@
             "state": "needs_review",
             "value": "Alternar Inspetor de Fila"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Attiva/Disattiva Ispettore Coda"
+          }
         }
       }
     },
@@ -5589,6 +6405,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nada sendo reproduzido"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessuna riproduzione"
           }
         }
       }
@@ -5632,6 +6454,12 @@
             "state": "needs_review",
             "value": "Início"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Home"
+          }
         }
       }
     },
@@ -5673,6 +6501,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Descobrir"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Scopri"
           }
         }
       }
@@ -5716,6 +6550,12 @@
             "state": "needs_review",
             "value": "Rádio"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Radio"
+          }
         }
       }
     },
@@ -5757,6 +6597,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Biblioteca"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Libreria"
           }
         }
       }
@@ -5800,6 +6646,12 @@
             "state": "needs_review",
             "value": "Buscar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca"
+          }
         }
       }
     },
@@ -5841,6 +6693,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Minha Biblioteca"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "La Mia Libreria"
           }
         }
       }
@@ -5950,6 +6808,24 @@
               }
             }
           }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld elemento"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld elementi"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -5991,6 +6867,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Desconectado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Disconnesso"
           }
         }
       }
@@ -6034,6 +6916,12 @@
             "state": "needs_review",
             "value": "Favoritos"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Preferiti"
+          }
         }
       }
     },
@@ -6075,6 +6963,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Álbuns"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
           }
         }
       }
@@ -6118,6 +7012,12 @@
             "state": "needs_review",
             "value": "Artistas"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Artisti"
+          }
         }
       }
     },
@@ -6159,6 +7059,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlists"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Playlist"
           }
         }
       }
@@ -6202,6 +7108,12 @@
             "state": "needs_review",
             "value": "Editar regras da playlist inteligente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Modifica regole playlist intelligente"
+          }
         }
       }
     },
@@ -6243,6 +7155,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Reproduzir playlist inteligente"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduci playlist intelligente"
           }
         }
       }
@@ -6286,6 +7204,12 @@
             "state": "needs_review",
             "value": "Embaralhar playlist inteligente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduzione casuale playlist intelligente"
+          }
         }
       }
     },
@@ -6327,6 +7251,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "PLAYLIST INTELIGENTE"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "PLAYLIST INTELLIGENTE"
           }
         }
       }
@@ -6370,6 +7300,12 @@
             "state": "needs_review",
             "value": "Adicionar regra"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Aggiungi regola"
+          }
         }
       }
     },
@@ -6411,6 +7347,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Campo da regra"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Campo regola"
           }
         }
       }
@@ -6454,6 +7396,12 @@
             "state": "needs_review",
             "value": "Modo de correspondência"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Modalità corrispondenza"
+          }
         }
       }
     },
@@ -6495,6 +7443,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome da playlist inteligente"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nome playlist intelligente"
           }
         }
       }
@@ -6538,6 +7492,12 @@
             "state": "needs_review",
             "value": "Operador da regra"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Operatore regola"
+          }
         }
       }
     },
@@ -6579,6 +7539,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Remover regra"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Rimuovi regola"
           }
         }
       }
@@ -6622,6 +7588,12 @@
             "state": "needs_review",
             "value": "Salvar playlist inteligente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Salva playlist intelligente"
+          }
         }
       }
     },
@@ -6663,6 +7635,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Valor da regra"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Valore regola"
           }
         }
       }
@@ -6706,6 +7684,12 @@
             "state": "needs_review",
             "value": "Valor da regra em dias"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Valore regola in giorni"
+          }
         }
       }
     },
@@ -6747,6 +7731,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Adicionar Regra"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Aggiungi Regola"
           }
         }
       }
@@ -6790,6 +7780,12 @@
             "state": "needs_review",
             "value": "não"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "no"
+          }
         }
       }
     },
@@ -6831,6 +7827,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "sim"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "sì"
           }
         }
       }
@@ -6874,6 +7876,12 @@
             "state": "needs_review",
             "value": "Cancelar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Annulla"
+          }
         }
       }
     },
@@ -6915,6 +7923,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Contando…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Conteggio…"
           }
         }
       }
@@ -6958,6 +7972,12 @@
             "state": "needs_review",
             "value": "dias"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "giorni"
+          }
         }
       }
     },
@@ -6999,6 +8019,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlist Inteligente"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Playlist Intelligente"
           }
         }
       }
@@ -7108,6 +8134,24 @@
               }
             }
           }
+        },
+        "it": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld corrispondenza"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld corrispondenze"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -7149,6 +8193,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Corresponder"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Corrisponde"
           }
         }
       }
@@ -7192,6 +8242,12 @@
             "state": "needs_review",
             "value": "das seguintes regras:"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "delle seguenti regole:"
+          }
         }
       }
     },
@@ -7230,6 +8286,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "NOME"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "NOME"
@@ -7276,6 +8338,12 @@
             "state": "needs_review",
             "value": "Nome da Playlist Inteligente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nome Playlist Intelligente"
+          }
         }
       }
     },
@@ -7317,6 +8385,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Salvar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Salva"
           }
         }
       }
@@ -7360,6 +8434,12 @@
             "state": "needs_review",
             "value": "Playlist Inteligente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Playlist Intelligente"
+          }
         }
       }
     },
@@ -7401,6 +8481,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "valor"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "valore"
           }
         }
       }
@@ -7444,6 +8530,12 @@
             "state": "needs_review",
             "value": "Editar Regras"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Modifica Regole"
+          }
         }
       }
     },
@@ -7485,6 +8577,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "%lld faixas carregadas até agora. Tente relaxar as regras ou abra a Biblioteca para ter mais faixas na memória."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "%lld brani caricati finora. Prova ad allentare le regole o apri la Libreria per avere più brani in memoria."
           }
         }
       }
@@ -7528,6 +8626,12 @@
             "state": "needs_review",
             "value": "Nenhuma faixa corresponde a essas regras"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessun brano corrisponde a queste regole"
+          }
         }
       }
     },
@@ -7570,6 +8674,12 @@
             "state": "needs_review",
             "value": "Álbum"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
+          }
         }
       }
     },
@@ -7608,6 +8718,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Artista"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Artista"
@@ -7654,6 +8770,12 @@
             "state": "needs_review",
             "value": "Favorito"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Preferito"
+          }
         }
       }
     },
@@ -7695,6 +8817,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Gênero"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Genere"
           }
         }
       }
@@ -7738,6 +8866,12 @@
             "state": "needs_review",
             "value": "Duração (seg)"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Durata (sec)"
+          }
         }
       }
     },
@@ -7779,6 +8913,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Última Reprodução"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ultima Riproduzione"
           }
         }
       }
@@ -7822,6 +8962,12 @@
             "state": "needs_review",
             "value": "Reproduções"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduzioni"
+          }
         }
       }
     },
@@ -7863,6 +9009,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ano"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Anno"
           }
         }
       }
@@ -7906,6 +9058,12 @@
             "state": "needs_review",
             "value": "Filtrar faixas"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Filtra brani"
+          }
         }
       }
     },
@@ -7947,6 +9105,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "todas"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "tutte"
           }
         }
       }
@@ -7990,6 +9154,12 @@
             "state": "needs_review",
             "value": "qualquer"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "qualsiasi"
+          }
         }
       }
     },
@@ -8031,6 +9201,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nenhuma faixa corresponde a \"%@\""
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessun brano corrisponde a \"%@\""
           }
         }
       }
@@ -8074,6 +9250,12 @@
             "state": "needs_review",
             "value": "Playlist inteligente não encontrada"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Playlist intelligente non trovata"
+          }
         }
       }
     },
@@ -8115,6 +9297,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "contém"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "contiene"
           }
         }
       }
@@ -8158,6 +9346,12 @@
             "state": "needs_review",
             "value": "maior que"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "maggiore di"
+          }
         }
       }
     },
@@ -8199,6 +9393,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "nos últimos (dias)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "negli ultimi (giorni)"
           }
         }
       }
@@ -8242,6 +9442,12 @@
             "state": "needs_review",
             "value": "é"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "è"
+          }
         }
       }
     },
@@ -8283,6 +9489,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "não é"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "non è"
           }
         }
       }
@@ -8326,6 +9538,12 @@
             "state": "needs_review",
             "value": "menor que"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "minore di"
+          }
         }
       }
     },
@@ -8364,6 +9582,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": ", "
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": ", "
@@ -8410,6 +9634,12 @@
             "state": "needs_review",
             "value": "Corresponde %1$@ de: %2$@"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Corrisponde a %1$@ di: %2$@"
+          }
         }
       }
     },
@@ -8451,6 +9681,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Corresponde a todas as faixas."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Corrisponde a tutti i brani."
           }
         }
       }
@@ -8494,6 +9730,12 @@
             "state": "needs_review",
             "value": "Tentar reproduzir a faixa com falha novamente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riprova il brano che ha avuto un errore"
+          }
         }
       }
     },
@@ -8535,6 +9777,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ir para a faixa"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Vai al brano"
           }
         }
       }
@@ -8578,6 +9826,12 @@
             "state": "needs_review",
             "value": "Não foi possível reproduzir \"%@\". Pulando."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile riprodurre \"%@\". Salto."
+          }
         }
       }
     },
@@ -8619,6 +9873,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Tentar reconectar à rede"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riprova la connessione di rete"
           }
         }
       }
@@ -8662,6 +9922,12 @@
             "state": "needs_review",
             "value": "Você está offline. Reproduzindo apenas faixas baixadas."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sei offline. Riproduzione solo dai brani scaricati."
+          }
         }
       }
     },
@@ -8703,6 +9969,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Isso excluirá permanentemente esta playlist. Esta ação não pode ser desfeita."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Questa azione eliminerà definitivamente questa playlist. Non è possibile annullare."
           }
         }
       }
@@ -8746,6 +10018,12 @@
             "state": "needs_review",
             "value": "Álbum"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
+          }
         }
       }
     },
@@ -8784,6 +10062,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Disco"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Disco"
@@ -8830,6 +10114,12 @@
             "state": "needs_review",
             "value": "Duração"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Durata"
+          }
         }
       }
     },
@@ -8868,6 +10158,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Formato"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Formato"
@@ -8914,6 +10210,12 @@
             "state": "needs_review",
             "value": "Reproduções"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduzioni"
+          }
         }
       }
     },
@@ -8955,6 +10257,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Faixa"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Brano"
           }
         }
       }
@@ -8998,6 +10306,12 @@
             "state": "needs_review",
             "value": "Ano"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Anno"
+          }
         }
       }
     },
@@ -9036,6 +10350,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini Player"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Mini Player"
@@ -9082,6 +10402,12 @@
             "state": "needs_review",
             "value": "Reproduzindo Agora"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "In Riproduzione"
+          }
         }
       }
     },
@@ -9123,6 +10449,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Próximo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Avanti"
           }
         }
       }
@@ -9166,6 +10498,12 @@
             "state": "needs_review",
             "value": "Abrir Lyrebird"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Apri Lyrebird"
+          }
         }
       }
     },
@@ -9207,6 +10545,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pausar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Pausa"
           }
         }
       }
@@ -9250,6 +10594,12 @@
             "state": "needs_review",
             "value": "Reproduzir"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduci"
+          }
         }
       }
     },
@@ -9292,6 +10642,12 @@
             "state": "needs_review",
             "value": "Anterior"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Indietro"
+          }
         }
       }
     },
@@ -9330,6 +10686,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini Player"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Mini Player"
@@ -9376,6 +10738,12 @@
             "state": "needs_review",
             "value": "Mini Player"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mini Player"
+          }
         }
       }
     },
@@ -9417,6 +10785,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Capa do álbum. Arraste para mover o mini player."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Copertina album. Trascina per spostare il mini player."
           }
         }
       }
@@ -9460,6 +10834,12 @@
             "state": "needs_review",
             "value": "Opções do mini player"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Opzioni mini player"
+          }
         }
       }
     },
@@ -9501,6 +10881,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Sempre Visível"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Sempre in Primo Piano"
           }
         }
       }
@@ -9544,6 +10930,12 @@
             "state": "needs_review",
             "value": "Voltar à Janela Completa"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Torna alla Finestra Completa"
+          }
         }
       }
     },
@@ -9585,6 +10977,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Transparente quando Inativo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Trasparente quando Inattivo"
           }
         }
       }
@@ -9628,6 +11026,12 @@
             "state": "needs_review",
             "value": "Fechar Mini Player"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Chiudi Mini Player"
+          }
         }
       }
     },
@@ -9669,6 +11073,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Capa do álbum. Toque para abrir o álbum; arraste para mover o mini player."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Copertina album. Tocca per aprire l'album; trascina per spostare il mini player."
           }
         }
       }
@@ -9712,6 +11122,12 @@
             "state": "needs_review",
             "value": "Abrir página do artista"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Apri pagina artista"
+          }
         }
       }
     },
@@ -9753,6 +11169,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Expandir para Janela Completa"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Espandi a Finestra Completa"
           }
         }
       }
@@ -9796,6 +11218,12 @@
             "state": "needs_review",
             "value": "Favorito"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Preferito"
+          }
         }
       }
     },
@@ -9837,6 +11265,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Remover dos Favoritos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Rimuovi dai Preferiti"
           }
         }
       }
@@ -9880,6 +11314,12 @@
             "state": "needs_review",
             "value": "Faixa anterior"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Brano precedente"
+          }
         }
       }
     },
@@ -9921,6 +11361,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Reproduzir"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduci"
           }
         }
       }
@@ -9964,6 +11410,12 @@
             "state": "needs_review",
             "value": "Pausar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Pausa"
+          }
         }
       }
     },
@@ -10005,6 +11457,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Próxima faixa"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Brano successivo"
           }
         }
       }
@@ -10048,6 +11506,12 @@
             "state": "needs_review",
             "value": "Voltar à janela completa"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Torna alla finestra completa"
+          }
         }
       }
     },
@@ -10086,6 +11550,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Volume"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Volume"
@@ -10132,6 +11602,12 @@
             "state": "needs_review",
             "value": "Posição de reprodução"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Posizione di riproduzione"
+          }
         }
       }
     },
@@ -10174,6 +11650,12 @@
             "state": "needs_review",
             "value": "Exportar Pacote de Diagnóstico…"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Esporta Bundle Diagnostica…"
+          }
         }
       }
     },
@@ -10214,6 +11696,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Atalhos de Teclado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Scorciatoie da Tastiera"
           }
         }
       }
@@ -10256,6 +11744,12 @@
             "state": "needs_review",
             "value": "Reproduzir / Pausar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduci / Pausa"
+          }
         }
       }
     },
@@ -10296,6 +11790,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Buscar atalhos de teclado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca scorciatoie da tastiera"
           }
         }
       }
@@ -10338,6 +11838,12 @@
             "state": "needs_review",
             "value": "Limpar busca"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cancella ricerca"
+          }
         }
       }
     },
@@ -10378,6 +11884,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nenhum atalho corresponde à sua busca"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessuna scorciatoia corrisponde alla ricerca"
           }
         }
       }
@@ -10420,6 +11932,12 @@
             "state": "needs_review",
             "value": "Buscar atalhos"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca scorciatoie"
+          }
         }
       }
     },
@@ -10460,6 +11978,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Arquivo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Archivio"
           }
         }
       }
@@ -10502,6 +12026,12 @@
             "state": "needs_review",
             "value": "Reprodução"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduzione"
+          }
         }
       }
     },
@@ -10542,6 +12072,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Visualizar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Visualizza"
           }
         }
       }
@@ -10584,6 +12120,12 @@
             "state": "needs_review",
             "value": "Janela"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Finestra"
+          }
         }
       }
     },
@@ -10624,6 +12166,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Atalhos de Teclado"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Scorciatoie da Tastiera"
           }
         }
       }
@@ -10667,6 +12215,12 @@
             "state": "needs_review",
             "value": "Álbuns"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Album"
+          }
         }
       }
     },
@@ -10708,6 +12262,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Todos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tutto"
           }
         }
       }
@@ -10751,6 +12311,12 @@
             "state": "needs_review",
             "value": "Artistas"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Artisti"
+          }
         }
       }
     },
@@ -10792,6 +12358,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Gêneros"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Generi"
           }
         }
       }
@@ -10835,6 +12407,12 @@
             "state": "needs_review",
             "value": "Faixas"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Brani"
+          }
         }
       }
     },
@@ -10876,6 +12454,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Fechar seletor de mix instantâneo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Chiudi selettore mix istantaneo"
           }
         }
       }
@@ -10919,6 +12503,12 @@
             "state": "needs_review",
             "value": "Pesquise algo para criar um mix."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca qualcosa per creare un mix."
+          }
         }
       }
     },
@@ -10960,6 +12550,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Gerar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Genera"
           }
         }
       }
@@ -11003,6 +12599,12 @@
             "state": "needs_review",
             "value": "Último mix:"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ultimo mix:"
+          }
         }
       }
     },
@@ -11044,6 +12646,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Sem correspondências"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessun risultato"
           }
         }
       }
@@ -11087,6 +12695,12 @@
             "state": "needs_review",
             "value": "Busque uma faixa, álbum, artista ou gênero"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cerca un brano, album, artista o genere"
+          }
         }
       }
     },
@@ -11128,6 +12742,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Base:"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Origine:"
           }
         }
       }
@@ -11171,6 +12791,12 @@
             "state": "needs_review",
             "value": "Novo Mix Instantâneo"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nuovo Mix Istantaneo"
+          }
         }
       }
     },
@@ -11212,6 +12838,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Novo Mix Instantâneo…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nuovo Mix Istantaneo…"
           }
         }
       }
@@ -11255,6 +12887,12 @@
             "state": "needs_review",
             "value": "Mostrar Tour"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mostra Tour"
+          }
         }
       }
     },
@@ -11296,6 +12934,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Tour de recursos"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Tour delle funzionalità"
           }
         }
       }
@@ -11339,6 +12983,12 @@
             "state": "needs_review",
             "value": "Etapa %1$lld de %2$lld"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Passo %1$lld di %2$lld"
+          }
         }
       }
     },
@@ -11380,6 +13030,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Atalho de teclado %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Scorciatoia da tastiera %@"
           }
         }
       }
@@ -11423,6 +13079,12 @@
             "state": "needs_review",
             "value": "Voltar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Indietro"
+          }
         }
       }
     },
@@ -11464,6 +13126,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Concluído"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fine"
           }
         }
       }
@@ -11507,6 +13175,12 @@
             "state": "needs_review",
             "value": "Pressione ⌘⌥P para um player compacto, sempre visível, que você pode colocar em um canto enquanto trabalha."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Premi ⌘⌥P per un player compatto, sempre in primo piano, che puoi mettere in un angolo mentre lavori."
+          }
         }
       }
     },
@@ -11548,6 +13222,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Abra o mini player"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Apri il mini player"
           }
         }
       }
@@ -11591,6 +13271,12 @@
             "state": "needs_review",
             "value": "Próximo"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Avanti"
+          }
         }
       }
     },
@@ -11632,6 +13318,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Clique com o botão direito em qualquer faixa, álbum, artista ou playlist para ações rápidas — reproduzir a seguir, adicionar a uma playlist, iniciar uma rádio e mais."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Fai clic destro su qualsiasi brano, album, artista o playlist per azioni rapide — riproduci successivo, aggiungi a playlist, avvia una stazione radio e altro."
           }
         }
       }
@@ -11675,6 +13367,12 @@
             "state": "needs_review",
             "value": "Clique direito para mais"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Clic destro per altro"
+          }
         }
       }
     },
@@ -11716,6 +13414,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pressione ⌘F para ir direto à busca e encontrar qualquer música, álbum ou artista na sua biblioteca."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Premi ⌘F per andare direttamente alla ricerca e trovare qualsiasi canzone, album o artista nella tua libreria."
           }
         }
       }
@@ -11759,6 +13463,12 @@
             "state": "needs_review",
             "value": "Encontre qualquer coisa rapidamente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Trova qualsiasi cosa velocemente"
+          }
         }
       }
     },
@@ -11800,6 +13510,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pular"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Salta"
           }
         }
       }
@@ -11843,6 +13559,12 @@
             "state": "needs_review",
             "value": "Pressione a barra de espaço em qualquer lugar fora de um campo de texto para reproduzir ou pausar a faixa atual."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Premi la barra spazio ovunque al di fuori di un campo di testo per riprodurre o mettere in pausa il brano corrente."
+          }
         }
       }
     },
@@ -11884,6 +13606,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Reproduza e pause com Espaço"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riproduci e metti in pausa con Spazio"
           }
         }
       }
@@ -11927,6 +13655,12 @@
             "state": "needs_review",
             "value": "Os dados locais do Lyrebird não puderam ser abertos. Geralmente é solucionável: redefina os dados locais para começar do zero, ou exporte um pacote de diagnóstico para compartilhar com um relatório de bug."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "I dati locali di Lyrebird non possono essere aperti. Di solito si risolve: ripristina i dati locali per ricominciare, o esporta un bundle di diagnostica da allegare a un segnalazione di bug."
+          }
         }
       }
     },
@@ -11968,6 +13702,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Exportar Diagnóstico…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Esporta Diagnostica…"
           }
         }
       }
@@ -12011,6 +13751,12 @@
             "state": "needs_review",
             "value": "Diagnóstico exportado."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Diagnostica esportata."
+          }
         }
       }
     },
@@ -12052,6 +13798,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível exportar o diagnóstico: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile esportare la diagnostica: %@"
           }
         }
       }
@@ -12095,6 +13847,12 @@
             "state": "needs_review",
             "value": "Sair"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Esci"
+          }
         }
       }
     },
@@ -12136,6 +13894,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Redefinir Dados Locais"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ripristina Dati Locali"
           }
         }
       }
@@ -12179,6 +13943,12 @@
             "state": "needs_review",
             "value": "Os dados locais foram movidos para:\n%@\nPor favor, saia e reabra o Lyrebird."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "I dati locali sono stati spostati in:\n%@\nEsci e riapri Lyrebird."
+          }
         }
       }
     },
@@ -12220,6 +13990,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Não foi possível redefinir os dados locais: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Impossibile ripristinare i dati locali: %@"
           }
         }
       }
@@ -12263,6 +14039,12 @@
             "state": "needs_review",
             "value": "Nenhum dado local encontrado para redefinir. Tente exportar o diagnóstico."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nessun dato locale trovato da ripristinare. Prova a esportare la diagnostica."
+          }
         }
       }
     },
@@ -12304,6 +14086,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "O Lyrebird não pôde iniciar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird non ha potuto avviarsi"
           }
         }
       }
@@ -12347,6 +14135,12 @@
             "state": "needs_review",
             "value": "Nome do dispositivo"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nome dispositivo"
+          }
         }
       }
     },
@@ -12388,6 +14182,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome do dispositivo: %@"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nome dispositivo: %@"
           }
         }
       }
@@ -12431,6 +14231,12 @@
             "state": "needs_review",
             "value": "Cancelar"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Annulla"
+          }
         }
       }
     },
@@ -12472,6 +14278,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Altere o nome que o Jellyfin exibe para este dispositivo."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Cambia il nome che Jellyfin mostra per questo dispositivo."
           }
         }
       }
@@ -12515,6 +14327,12 @@
             "state": "needs_review",
             "value": "Meu Mac"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Il mio Mac"
+          }
         }
       }
     },
@@ -12556,6 +14374,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Salvar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Salva"
           }
         }
       }
@@ -12599,6 +14423,12 @@
             "state": "needs_review",
             "value": "Exibido no painel deste servidor e em outros clientes Jellyfin."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Mostrato nel pannello di questo server e in altri client Jellyfin."
+          }
         }
       }
     },
@@ -12640,6 +14470,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome do dispositivo"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Nome dispositivo"
           }
         }
       }
@@ -12683,6 +14519,12 @@
             "state": "needs_review",
             "value": "Emparelhe este dispositivo inserindo um código em outro cliente Jellyfin conectado."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Associa questo dispositivo inserendo un codice in un altro client Jellyfin connesso."
+          }
         }
       }
     },
@@ -12724,6 +14566,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Cancelar"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Annulla"
           }
         }
       }
@@ -12767,6 +14615,12 @@
             "state": "needs_review",
             "value": "CÓDIGO"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "CODICE"
+          }
         }
       }
     },
@@ -12808,6 +14662,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "O Quick Connect não pôde ser concluído. Tente novamente."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Quick Connect non ha potuto completarsi. Riprova."
           }
         }
       }
@@ -12851,6 +14711,12 @@
             "state": "needs_review",
             "value": "Usar Jellyfin Quick Connect"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Usa Jellyfin Quick Connect"
+          }
         }
       }
     },
@@ -12892,6 +14758,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Insira o endereço do servidor na tela de login primeiro, depois tente o Quick Connect."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inserisci l'indirizzo del server nella schermata di accesso prima, poi prova Quick Connect."
           }
         }
       }
@@ -12935,6 +14807,12 @@
             "state": "needs_review",
             "value": "Tentar novamente"
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Riprova"
+          }
         }
       }
     },
@@ -12976,6 +14854,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Iniciando Quick Connect…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Avvio Quick Connect…"
           }
         }
       }
@@ -13019,6 +14903,12 @@
             "state": "needs_review",
             "value": "Insira este código em outro aplicativo Jellyfin conectado para emparelhar este dispositivo."
           }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Inserisci questo codice in un'altra app Jellyfin connessa per associare questo dispositivo."
+          }
         }
       }
     },
@@ -13057,6 +14947,12 @@
           }
         },
         "pt-BR": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Quick Connect"
+          }
+        },
+        "it": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Quick Connect"
@@ -13102,6 +14998,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Aguardando aprovação…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "In attesa di approvazione…"
           }
         }
       }
