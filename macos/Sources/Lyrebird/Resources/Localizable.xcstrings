@@ -46,6 +46,12 @@
             "state": "needs_review",
             "value": "Informazioni su Lyrebird"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "О Lyrebird"
+          }
         }
       }
     },
@@ -90,6 +96,12 @@
           }
         },
         "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird"
+          }
+        },
+        "ru": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Lyrebird"
@@ -142,6 +154,12 @@
             "state": "needs_review",
             "value": "DESKTOP"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "РАБОЧИЙ СТОЛ"
+          }
         }
       }
     },
@@ -189,6 +207,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "La sessione è scaduta"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сеанс истёк"
           }
         }
       }
@@ -238,6 +262,12 @@
             "state": "needs_review",
             "value": "Accedi di nuovo per continuare ad ascoltare."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Войдите снова, чтобы продолжить прослушивание."
+          }
         }
       }
     },
@@ -285,6 +315,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Accedi"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Войти"
           }
         }
       }
@@ -334,6 +370,12 @@
             "state": "needs_review",
             "value": "Accedi di nuovo"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Войти снова"
+          }
         }
       }
     },
@@ -381,6 +423,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Accesso in corso…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Выполняется вход…"
           }
         }
       }
@@ -430,6 +478,12 @@
             "state": "needs_review",
             "value": "Impossibile raggiungere il server."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удаётся достичь сервера."
+          }
         }
       }
     },
@@ -477,6 +531,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile raggiungere %@. Nuovo tentativo…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удаётся достичь %@. Повторная попытка…"
           }
         }
       }
@@ -526,6 +586,12 @@
             "state": "needs_review",
             "value": "Riprova la connessione al server"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Повторить подключение к серверу"
+          }
         }
       }
     },
@@ -573,6 +639,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Album"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Альбом"
           }
         }
       }
@@ -622,6 +694,12 @@
             "state": "needs_review",
             "value": "Artista"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Исполнитель"
+          }
         }
       }
     },
@@ -669,6 +747,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlist"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Плейлист"
           }
         }
       }
@@ -718,6 +802,12 @@
             "state": "needs_review",
             "value": "Annulla"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Отмена"
+          }
         }
       }
     },
@@ -765,6 +855,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Elimina"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Удалить"
           }
         }
       }
@@ -814,6 +910,12 @@
             "state": "needs_review",
             "value": "Ignora"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Закрыть"
+          }
         }
       }
     },
@@ -862,6 +964,12 @@
             "state": "needs_review",
             "value": "Fine"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Готово"
+          }
         }
       }
     },
@@ -909,6 +1017,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riprova"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Повторить"
           }
         }
       }
@@ -1032,6 +1146,36 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld album"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld альбом"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld альбома"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld альбомов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld альбома"
                 }
               }
             }
@@ -1162,6 +1306,36 @@
               }
             }
           }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld исполнитель"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld исполнителя"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld исполнителей"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld исполнителя"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1284,6 +1458,36 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld elementi"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элемент"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элемента"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элементов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элемента"
                 }
               }
             }
@@ -1414,6 +1618,36 @@
               }
             }
           }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld плейлист"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld плейлиста"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld плейлистов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld плейлиста"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1536,6 +1770,36 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld riproduzioni"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld воспроизведение"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld воспроизведения"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld воспроизведений"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld воспроизведения"
                 }
               }
             }
@@ -1666,6 +1930,36 @@
               }
             }
           }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld результат"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld результата"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld результатов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld результата"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -1788,6 +2082,36 @@
                 "stringUnit": {
                   "state": "needs_review",
                   "value": "%lld selezionati"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld выбран"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld выбрано"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld выбрано"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld выбрано"
                 }
               }
             }
@@ -1918,6 +2242,36 @@
               }
             }
           }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld песня"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld песни"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld песен"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld песни"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -2044,6 +2398,36 @@
               }
             }
           }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld трек"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld трека"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld треков"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld трека"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -2091,6 +2475,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nessuna musica ancora"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нет музыки"
           }
         }
       }
@@ -2140,6 +2530,12 @@
             "state": "needs_review",
             "value": "Il server Jellyfin non ha musica nella libreria, o è ancora in fase di indicizzazione. Aggiungi una libreria sul server, poi aggiorna."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "На сервере Jellyfin нет музыки в библиотеке, либо она ещё индексируется. Добавьте библиотеку на сервере и обновите страницу."
+          }
         }
       }
     },
@@ -2187,6 +2583,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Apri Jellyfin web"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Открыть Jellyfin в браузере"
           }
         }
       }
@@ -2236,6 +2638,12 @@
             "state": "needs_review",
             "value": "La coda è vuota"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Очередь пуста"
+          }
         }
       }
     },
@@ -2283,6 +2691,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riproduci qualcosa per avviare una coda."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизведите что-нибудь, чтобы начать очередь."
           }
         }
       }
@@ -2332,6 +2746,12 @@
             "state": "needs_review",
             "value": "Accedi di nuovo."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Войдите снова."
+          }
         }
       }
     },
@@ -2379,6 +2799,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Non hai il permesso di farlo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "У вас нет прав на это действие."
           }
         }
       }
@@ -2428,6 +2854,12 @@
             "state": "needs_review",
             "value": "Quell'elemento non è stato trovato."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Элемент не найден."
+          }
         }
       }
     },
@@ -2475,6 +2907,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Troppe richieste. Riprova tra un momento."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Слишком много запросов. Попробуйте снова через мгновение."
           }
         }
       }
@@ -2524,6 +2962,12 @@
             "state": "needs_review",
             "value": "Errore di rete. Controlla la connessione e riprova."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ошибка сети. Проверьте подключение и попробуйте снова."
+          }
         }
       }
     },
@@ -2571,6 +3015,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Il server ha riscontrato un problema. Riprova."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сервер столкнулся с проблемой. Попробуйте снова."
           }
         }
       }
@@ -2620,6 +3070,12 @@
             "state": "needs_review",
             "value": "Impossibile leggere la risposta del server."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось прочитать ответ сервера."
+          }
         }
       }
     },
@@ -2667,6 +3123,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile scaricare per la riproduzione offline."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось загрузить для воспроизведения без подключения."
           }
         }
       }
@@ -2716,6 +3178,12 @@
             "state": "needs_review",
             "value": "Errore di archiviazione locale. Riprova."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ошибка локального хранилища. Попробуйте снова."
+          }
         }
       }
     },
@@ -2763,6 +3231,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile accedere al portachiavi di sistema."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось получить доступ к системному ключнице."
           }
         }
       }
@@ -2812,6 +3286,12 @@
             "state": "needs_review",
             "value": "Errore di riproduzione audio."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ошибка воспроизведения аудио."
+          }
         }
       }
     },
@@ -2859,6 +3339,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile verificare il certificato del server. Potrebbe essere necessario approvare questo server."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось проверить сертификат сервера. Возможно, потребуется доверять этому серверу."
           }
         }
       }
@@ -2908,6 +3394,12 @@
             "state": "needs_review",
             "value": "Questo valore non è valido."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Это значение недействительно."
+          }
         }
       }
     },
@@ -2955,6 +3447,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Qualcosa è andato storto."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Что-то пошло не так."
           }
         }
       }
@@ -3004,6 +3502,12 @@
             "state": "needs_review",
             "value": "Impossibile avviare la riproduzione."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось начать воспроизведение."
+          }
         }
       }
     },
@@ -3051,6 +3555,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile caricare la libreria."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось загрузить библиотеку."
           }
         }
       }
@@ -3100,6 +3610,12 @@
             "state": "needs_review",
             "value": "Impossibile caricare le playlist."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось загрузить плейлисты."
+          }
         }
       }
     },
@@ -3147,6 +3663,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile caricare questa playlist."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось загрузить этот плейлист."
           }
         }
       }
@@ -3196,6 +3718,12 @@
             "state": "needs_review",
             "value": "Impossibile caricare i brani dell'album."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось загрузить треки альбома."
+          }
         }
       }
     },
@@ -3243,6 +3771,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile caricare i brani della playlist."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось загрузить треки плейлиста."
           }
         }
       }
@@ -3292,6 +3826,12 @@
             "state": "needs_review",
             "value": "Ricerca non riuscita."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Поиск не выполнен."
+          }
         }
       }
     },
@@ -3339,6 +3879,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile aggiornare il preferito."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось обновить избранное."
           }
         }
       }
@@ -3388,6 +3934,12 @@
             "state": "needs_review",
             "value": "Impossibile aggiornare lo stato di riproduzione."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось обновить статус воспроизведения."
+          }
         }
       }
     },
@@ -3435,6 +3987,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile aggiungere alla playlist."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось добавить в плейлист."
           }
         }
       }
@@ -3484,6 +4042,12 @@
             "state": "needs_review",
             "value": "Accesso non riuscito."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ошибка входа."
+          }
         }
       }
     },
@@ -3531,6 +4095,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome utente o password errati"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Неверное имя пользователя или пароль"
           }
         }
       }
@@ -3580,6 +4150,12 @@
             "state": "needs_review",
             "value": "Questa azione non è ancora disponibile."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Это действие пока недоступно."
+          }
         }
       }
     },
@@ -3627,6 +4203,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nessuna rete. Controlla la connessione."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нет сети. Проверьте подключение."
           }
         }
       }
@@ -3676,6 +4258,12 @@
             "state": "needs_review",
             "value": "Verifica…"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Проверка…"
+          }
         }
       }
     },
@@ -3723,6 +4311,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "URL SERVER"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "АДРЕС СЕРВЕРА"
           }
         }
       }
@@ -3772,6 +4366,12 @@
             "state": "needs_review",
             "value": "NOME UTENTE"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "ИМЯ ПОЛЬЗОВАТЕЛЯ"
+          }
         }
       }
     },
@@ -3819,6 +4419,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "PASSWORD"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "ПАРОЛЬ"
           }
         }
       }
@@ -3868,6 +4474,12 @@
             "state": "needs_review",
             "value": "tu"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "вы"
+          }
         }
       }
     },
@@ -3915,6 +4527,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "TROVATO IN QUESTA RETE"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "НАЙДЕНО В ЭТОЙ СЕТИ"
           }
         }
       }
@@ -3964,6 +4582,12 @@
             "state": "needs_review",
             "value": "URL server"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Адрес сервера"
+          }
         }
       }
     },
@@ -4011,6 +4635,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome utente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Имя пользователя"
           }
         }
       }
@@ -4060,6 +4690,12 @@
             "state": "needs_review",
             "value": "Password"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Пароль"
+          }
         }
       }
     },
@@ -4107,6 +4743,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Indietro"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Назад"
           }
         }
       }
@@ -4156,6 +4798,12 @@
             "state": "needs_review",
             "value": "Benvenuto in Lyrebird"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Добро пожаловать в Lyrebird"
+          }
         }
       }
     },
@@ -4203,6 +4851,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "La tua musica, il tuo server, le tue regole."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ваша музыка, ваш сервер, ваши правила."
           }
         }
       }
@@ -4252,6 +4906,12 @@
             "state": "needs_review",
             "value": "Inizia"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Начать"
+          }
         }
       }
     },
@@ -4299,6 +4959,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ho già un account →"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "У меня уже есть аккаунт →"
           }
         }
       }
@@ -4348,6 +5014,12 @@
             "state": "needs_review",
             "value": "Ho già un account"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "У меня уже есть аккаунт"
+          }
         }
       }
     },
@@ -4395,6 +5067,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Connetti il tuo server"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Подключите сервер"
           }
         }
       }
@@ -4444,6 +5122,12 @@
             "state": "needs_review",
             "value": "L'URL di Jellyfin è l'indirizzo che usi per accedervi dal browser."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "URL Jellyfin — это адрес, по которому вы заходите с браузера."
+          }
         }
       }
     },
@@ -4491,6 +5175,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Continua"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Продолжить"
           }
         }
       }
@@ -4540,6 +5230,12 @@
             "state": "needs_review",
             "value": "Connessione…"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Подключение…"
+          }
         }
       }
     },
@@ -4587,6 +5283,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Salta, esplora offline →"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Пропустить, изучить без подключения →"
           }
         }
       }
@@ -4636,6 +5338,12 @@
             "state": "needs_review",
             "value": "Caricamento libreria"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Загрузка библиотеки"
+          }
         }
       }
     },
@@ -4683,6 +5391,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Caricamento artisti…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Загружаем исполнителей…"
           }
         }
       }
@@ -4732,6 +5446,12 @@
             "state": "needs_review",
             "value": "Caricamento album…"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Загружаем альбомы…"
+          }
         }
       }
     },
@@ -4779,6 +5499,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Caricamento brani…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Загружаем треки…"
           }
         }
       }
@@ -4828,6 +5554,12 @@
             "state": "needs_review",
             "value": "Recupero copertine…"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Получаем обложки…"
+          }
         }
       }
     },
@@ -4875,6 +5607,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "%1$@ brani · %2$@ artisti · %3$@ album"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "%1$@ треков · %2$@ исполнителей · %3$@ альбомов"
           }
         }
       }
@@ -4924,6 +5662,12 @@
             "state": "needs_review",
             "value": "Vai alla home"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "На главную"
+          }
         }
       }
     },
@@ -4971,6 +5715,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Sincronizzazione…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Синхронизация…"
           }
         }
       }
@@ -5020,6 +5770,12 @@
             "state": "needs_review",
             "value": "Impossibile caricare la libreria."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось загрузить библиотеку."
+          }
         }
       }
     },
@@ -5067,6 +5823,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riprova"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Попробовать снова"
           }
         }
       }
@@ -5116,6 +5878,12 @@
             "state": "needs_review",
             "value": "Informazioni su Lyrebird"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "О Lyrebird"
+          }
         }
       }
     },
@@ -5163,6 +5931,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nuova Playlist…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новый плейлист…"
           }
         }
       }
@@ -5212,6 +5986,12 @@
             "state": "needs_review",
             "value": "Nuova Finestra"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новое окно"
+          }
         }
       }
     },
@@ -5259,6 +6039,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Mostra Barra Laterale"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Показать боковую панель"
           }
         }
       }
@@ -5308,6 +6094,12 @@
             "state": "needs_review",
             "value": "Mostra Ispettore Coda"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Показать инспектор очереди"
+          }
         }
       }
     },
@@ -5355,6 +6147,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Home"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Главная"
           }
         }
       }
@@ -5404,6 +6202,12 @@
             "state": "needs_review",
             "value": "Libreria"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Библиотека"
+          }
         }
       }
     },
@@ -5451,6 +6255,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Cerca"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Поиск"
           }
         }
       }
@@ -5500,6 +6310,12 @@
             "state": "needs_review",
             "value": "Cerca…"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Найти…"
+          }
         }
       }
     },
@@ -5547,6 +6363,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Cerca nella Libreria…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Найти в библиотеке…"
           }
         }
       }
@@ -5596,6 +6418,12 @@
             "state": "needs_review",
             "value": "Vai a In Riproduzione"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Перейти к воспроизведению"
+          }
         }
       }
     },
@@ -5643,6 +6471,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Coda di Riproduzione"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Очередь воспроизведения"
           }
         }
       }
@@ -5692,6 +6526,12 @@
             "state": "needs_review",
             "value": "Tavolozza Comandi…"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Палитра команд…"
+          }
         }
       }
     },
@@ -5739,6 +6579,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riproduzione"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизведение"
           }
         }
       }
@@ -5788,6 +6634,12 @@
             "state": "needs_review",
             "value": "Riproduci"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизвести"
+          }
         }
       }
     },
@@ -5835,6 +6687,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pausa"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Пауза"
           }
         }
       }
@@ -5884,6 +6742,12 @@
             "state": "needs_review",
             "value": "Brano Successivo"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Следующий трек"
+          }
         }
       }
     },
@@ -5931,6 +6795,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Brano Precedente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Предыдущий трек"
           }
         }
       }
@@ -5980,6 +6850,12 @@
             "state": "needs_review",
             "value": "Alza Volume"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Увеличить громкость"
+          }
         }
       }
     },
@@ -6027,6 +6903,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Abbassa Volume"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Уменьшить громкость"
           }
         }
       }
@@ -6076,6 +6958,12 @@
             "state": "needs_review",
             "value": "Avanza 10s"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Перемотать вперёд на 10с"
+          }
         }
       }
     },
@@ -6123,6 +7011,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Indietro 10s"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Перемотать назад на 10с"
           }
         }
       }
@@ -6172,6 +7066,12 @@
             "state": "needs_review",
             "value": "Ferma"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Стоп"
+          }
         }
       }
     },
@@ -6219,6 +7119,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Affianca Finestra a Sinistra"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Прикрепить окно к левому краю"
           }
         }
       }
@@ -6268,6 +7174,12 @@
             "state": "needs_review",
             "value": "Affianca Finestra a Destra"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Прикрепить окно к правому краю"
+          }
         }
       }
     },
@@ -6315,6 +7227,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Guida Lyrebird"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Справка Lyrebird"
           }
         }
       }
@@ -6364,6 +7282,12 @@
             "state": "needs_review",
             "value": "Attiva/Disattiva Ispettore Coda"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Показать/скрыть инспектор очереди"
+          }
         }
       }
     },
@@ -6411,6 +7335,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nessuna riproduzione"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ничего не воспроизводится"
           }
         }
       }
@@ -6460,6 +7390,12 @@
             "state": "needs_review",
             "value": "Home"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Главная"
+          }
         }
       }
     },
@@ -6507,6 +7443,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Scopri"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Открытия"
           }
         }
       }
@@ -6556,6 +7498,12 @@
             "state": "needs_review",
             "value": "Radio"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Радио"
+          }
         }
       }
     },
@@ -6603,6 +7551,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Libreria"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Библиотека"
           }
         }
       }
@@ -6652,6 +7606,12 @@
             "state": "needs_review",
             "value": "Cerca"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Поиск"
+          }
         }
       }
     },
@@ -6699,6 +7659,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "La Mia Libreria"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Моя библиотека"
           }
         }
       }
@@ -6826,6 +7792,36 @@
               }
             }
           }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элемент"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элемента"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элементов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld элемента"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -6873,6 +7869,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Disconnesso"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Отключено"
           }
         }
       }
@@ -6922,6 +7924,12 @@
             "state": "needs_review",
             "value": "Preferiti"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Избранное"
+          }
         }
       }
     },
@@ -6969,6 +7977,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Album"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Альбомы"
           }
         }
       }
@@ -7018,6 +8032,12 @@
             "state": "needs_review",
             "value": "Artisti"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Исполнители"
+          }
         }
       }
     },
@@ -7065,6 +8085,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlist"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Плейлисты"
           }
         }
       }
@@ -7114,6 +8140,12 @@
             "state": "needs_review",
             "value": "Modifica regole playlist intelligente"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Редактировать правила умного плейлиста"
+          }
         }
       }
     },
@@ -7161,6 +8193,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riproduci playlist intelligente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизвести умный плейлист"
           }
         }
       }
@@ -7210,6 +8248,12 @@
             "state": "needs_review",
             "value": "Riproduzione casuale playlist intelligente"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Перемешать умный плейлист"
+          }
         }
       }
     },
@@ -7257,6 +8301,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "PLAYLIST INTELLIGENTE"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "УМНЫЙ ПЛЕЙЛИСТ"
           }
         }
       }
@@ -7306,6 +8356,12 @@
             "state": "needs_review",
             "value": "Aggiungi regola"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Добавить правило"
+          }
         }
       }
     },
@@ -7353,6 +8409,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Campo regola"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Поле правила"
           }
         }
       }
@@ -7402,6 +8464,12 @@
             "state": "needs_review",
             "value": "Modalità corrispondenza"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Режим совпадения"
+          }
         }
       }
     },
@@ -7449,6 +8517,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome playlist intelligente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Название умного плейлиста"
           }
         }
       }
@@ -7498,6 +8572,12 @@
             "state": "needs_review",
             "value": "Operatore regola"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Оператор правила"
+          }
         }
       }
     },
@@ -7545,6 +8625,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Rimuovi regola"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Удалить правило"
           }
         }
       }
@@ -7594,6 +8680,12 @@
             "state": "needs_review",
             "value": "Salva playlist intelligente"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сохранить умный плейлист"
+          }
         }
       }
     },
@@ -7641,6 +8733,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Valore regola"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Значение правила"
           }
         }
       }
@@ -7690,6 +8788,12 @@
             "state": "needs_review",
             "value": "Valore regola in giorni"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Значение правила в днях"
+          }
         }
       }
     },
@@ -7737,6 +8841,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Aggiungi Regola"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Добавить правило"
           }
         }
       }
@@ -7786,6 +8896,12 @@
             "state": "needs_review",
             "value": "no"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "нет"
+          }
         }
       }
     },
@@ -7833,6 +8949,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "sì"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "да"
           }
         }
       }
@@ -7882,6 +9004,12 @@
             "state": "needs_review",
             "value": "Annulla"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Отмена"
+          }
         }
       }
     },
@@ -7929,6 +9057,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Conteggio…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Подсчёт…"
           }
         }
       }
@@ -7978,6 +9112,12 @@
             "state": "needs_review",
             "value": "giorni"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "дней"
+          }
         }
       }
     },
@@ -8025,6 +9165,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlist Intelligente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Умный плейлист"
           }
         }
       }
@@ -8152,6 +9298,36 @@
               }
             }
           }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld совпадение"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld совпадения"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld совпадений"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "needs_review",
+                  "value": "%lld совпадения"
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -8199,6 +9375,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Corrisponde"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Соответствовать"
           }
         }
       }
@@ -8248,6 +9430,12 @@
             "state": "needs_review",
             "value": "delle seguenti regole:"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "из следующих правил:"
+          }
         }
       }
     },
@@ -8295,6 +9483,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "NOME"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "НАЗВАНИЕ"
           }
         }
       }
@@ -8344,6 +9538,12 @@
             "state": "needs_review",
             "value": "Nome Playlist Intelligente"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Название умного плейлиста"
+          }
         }
       }
     },
@@ -8391,6 +9591,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Salva"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сохранить"
           }
         }
       }
@@ -8440,6 +9646,12 @@
             "state": "needs_review",
             "value": "Playlist Intelligente"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Умный плейлист"
+          }
         }
       }
     },
@@ -8487,6 +9699,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "valore"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "значение"
           }
         }
       }
@@ -8536,6 +9754,12 @@
             "state": "needs_review",
             "value": "Modifica Regole"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Редактировать правила"
+          }
         }
       }
     },
@@ -8583,6 +9807,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "%lld brani caricati finora. Prova ad allentare le regole o apri la Libreria per avere più brani in memoria."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Загружено %lld треков. Попробуйте ослабить правила или откройте Библиотеку, чтобы в памяти было больше треков."
           }
         }
       }
@@ -8632,6 +9862,12 @@
             "state": "needs_review",
             "value": "Nessun brano corrisponde a queste regole"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нет треков, соответствующих этим правилам"
+          }
         }
       }
     },
@@ -8679,6 +9915,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Album"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Альбом"
           }
         }
       }
@@ -8728,6 +9970,12 @@
             "state": "needs_review",
             "value": "Artista"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Исполнитель"
+          }
         }
       }
     },
@@ -8775,6 +10023,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Preferito"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Избранное"
           }
         }
       }
@@ -8824,6 +10078,12 @@
             "state": "needs_review",
             "value": "Genere"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Жанр"
+          }
         }
       }
     },
@@ -8871,6 +10131,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Durata (sec)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Длительность (сек)"
           }
         }
       }
@@ -8920,6 +10186,12 @@
             "state": "needs_review",
             "value": "Ultima Riproduzione"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Последнее воспроизведение"
+          }
         }
       }
     },
@@ -8967,6 +10239,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riproduzioni"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Количество воспроизведений"
           }
         }
       }
@@ -9016,6 +10294,12 @@
             "state": "needs_review",
             "value": "Anno"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Год"
+          }
         }
       }
     },
@@ -9063,6 +10347,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Filtra brani"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Фильтровать треки"
           }
         }
       }
@@ -9112,6 +10402,12 @@
             "state": "needs_review",
             "value": "tutte"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "все"
+          }
         }
       }
     },
@@ -9159,6 +10455,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "qualsiasi"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "любое"
           }
         }
       }
@@ -9208,6 +10510,12 @@
             "state": "needs_review",
             "value": "Nessun brano corrisponde a \"%@\""
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нет треков, соответствующих \"%@\""
+          }
         }
       }
     },
@@ -9255,6 +10563,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Playlist intelligente non trovata"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Умный плейлист не найден"
           }
         }
       }
@@ -9304,6 +10618,12 @@
             "state": "needs_review",
             "value": "contiene"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "содержит"
+          }
         }
       }
     },
@@ -9351,6 +10671,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "maggiore di"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "больше чем"
           }
         }
       }
@@ -9400,6 +10726,12 @@
             "state": "needs_review",
             "value": "negli ultimi (giorni)"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "за последние (дни)"
+          }
         }
       }
     },
@@ -9447,6 +10779,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "è"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "равно"
           }
         }
       }
@@ -9496,6 +10834,12 @@
             "state": "needs_review",
             "value": "non è"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "не равно"
+          }
         }
       }
     },
@@ -9544,6 +10888,12 @@
             "state": "needs_review",
             "value": "minore di"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "меньше чем"
+          }
         }
       }
     },
@@ -9588,6 +10938,12 @@
           }
         },
         "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": ", "
+          }
+        },
+        "ru": {
           "stringUnit": {
             "state": "needs_review",
             "value": ", "
@@ -9640,6 +10996,12 @@
             "state": "needs_review",
             "value": "Corrisponde a %1$@ di: %2$@"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Совпадает %1$@ из: %2$@"
+          }
         }
       }
     },
@@ -9687,6 +11049,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Corrisponde a tutti i brani."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Совпадает со всеми треками."
           }
         }
       }
@@ -9736,6 +11104,12 @@
             "state": "needs_review",
             "value": "Riprova il brano che ha avuto un errore"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Повторить воспроизведение неудавшегося трека"
+          }
         }
       }
     },
@@ -9783,6 +11157,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Vai al brano"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Перейти к треку"
           }
         }
       }
@@ -9832,6 +11212,12 @@
             "state": "needs_review",
             "value": "Impossibile riprodurre \"%@\". Salto."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось воспроизвести «%@». Пропускаем."
+          }
         }
       }
     },
@@ -9879,6 +11265,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riprova la connessione di rete"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Повторить подключение к сети"
           }
         }
       }
@@ -9928,6 +11320,12 @@
             "state": "needs_review",
             "value": "Sei offline. Riproduzione solo dai brani scaricati."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Вы не в сети. Воспроизведение только из загруженных треков."
+          }
         }
       }
     },
@@ -9975,6 +11373,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Questa azione eliminerà definitivamente questa playlist. Non è possibile annullare."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Это навсегда удалит плейлист. Это действие нельзя отменить."
           }
         }
       }
@@ -10024,6 +11428,12 @@
             "state": "needs_review",
             "value": "Album"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Альбом"
+          }
         }
       }
     },
@@ -10071,6 +11481,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Disco"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Диск"
           }
         }
       }
@@ -10120,6 +11536,12 @@
             "state": "needs_review",
             "value": "Durata"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Длительность"
+          }
         }
       }
     },
@@ -10167,6 +11589,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Formato"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Формат"
           }
         }
       }
@@ -10216,6 +11644,12 @@
             "state": "needs_review",
             "value": "Riproduzioni"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизведений"
+          }
         }
       }
     },
@@ -10263,6 +11697,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Brano"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Трек"
           }
         }
       }
@@ -10312,6 +11752,12 @@
             "state": "needs_review",
             "value": "Anno"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Год"
+          }
         }
       }
     },
@@ -10359,6 +11805,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Mini Player"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Мини-плеер"
           }
         }
       }
@@ -10408,6 +11860,12 @@
             "state": "needs_review",
             "value": "In Riproduzione"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сейчас играет"
+          }
         }
       }
     },
@@ -10455,6 +11913,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Avanti"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Следующий"
           }
         }
       }
@@ -10504,6 +11968,12 @@
             "state": "needs_review",
             "value": "Apri Lyrebird"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Открыть Lyrebird"
+          }
         }
       }
     },
@@ -10551,6 +12021,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pausa"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Пауза"
           }
         }
       }
@@ -10600,6 +12076,12 @@
             "state": "needs_review",
             "value": "Riproduci"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизвести"
+          }
         }
       }
     },
@@ -10647,6 +12129,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Indietro"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Предыдущий"
           }
         }
       }
@@ -10696,6 +12184,12 @@
             "state": "needs_review",
             "value": "Mini Player"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Мини-плеер"
+          }
         }
       }
     },
@@ -10743,6 +12237,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Mini Player"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Мини-плеер"
           }
         }
       }
@@ -10792,6 +12292,12 @@
             "state": "needs_review",
             "value": "Copertina album. Trascina per spostare il mini player."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Обложка альбома. Перетащите, чтобы переместить мини-плеер."
+          }
         }
       }
     },
@@ -10839,6 +12345,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Opzioni mini player"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Параметры мини-плеера"
           }
         }
       }
@@ -10888,6 +12400,12 @@
             "state": "needs_review",
             "value": "Sempre in Primo Piano"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Всегда поверх"
+          }
         }
       }
     },
@@ -10935,6 +12453,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Torna alla Finestra Completa"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Вернуться к полному окну"
           }
         }
       }
@@ -10984,6 +12508,12 @@
             "state": "needs_review",
             "value": "Trasparente quando Inattivo"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Прозрачный при неактивности"
+          }
         }
       }
     },
@@ -11031,6 +12561,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Chiudi Mini Player"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Закрыть мини-плеер"
           }
         }
       }
@@ -11080,6 +12616,12 @@
             "state": "needs_review",
             "value": "Copertina album. Tocca per aprire l'album; trascina per spostare il mini player."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Обложка альбома. Нажмите, чтобы открыть альбом; перетащите, чтобы переместить мини-плеер."
+          }
         }
       }
     },
@@ -11127,6 +12669,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Apri pagina artista"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Открыть страницу исполнителя"
           }
         }
       }
@@ -11176,6 +12724,12 @@
             "state": "needs_review",
             "value": "Espandi a Finestra Completa"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Развернуть на весь экран"
+          }
         }
       }
     },
@@ -11223,6 +12777,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Preferito"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Избранное"
           }
         }
       }
@@ -11272,6 +12832,12 @@
             "state": "needs_review",
             "value": "Rimuovi dai Preferiti"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Убрать из избранного"
+          }
         }
       }
     },
@@ -11319,6 +12885,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Brano precedente"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Предыдущий трек"
           }
         }
       }
@@ -11368,6 +12940,12 @@
             "state": "needs_review",
             "value": "Riproduci"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизвести"
+          }
         }
       }
     },
@@ -11415,6 +12993,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Pausa"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Пауза"
           }
         }
       }
@@ -11464,6 +13048,12 @@
             "state": "needs_review",
             "value": "Brano successivo"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Следующий трек"
+          }
         }
       }
     },
@@ -11511,6 +13101,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Torna alla finestra completa"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Вернуться к полному окну"
           }
         }
       }
@@ -11560,6 +13156,12 @@
             "state": "needs_review",
             "value": "Volume"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Громкость"
+          }
         }
       }
     },
@@ -11607,6 +13209,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Posizione di riproduzione"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Позиция воспроизведения"
           }
         }
       }
@@ -11656,6 +13264,12 @@
             "state": "needs_review",
             "value": "Esporta Bundle Diagnostica…"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Экспортировать диагностический пакет…"
+          }
         }
       }
     },
@@ -11702,6 +13316,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Scorciatoie da Tastiera"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сочетания клавиш"
           }
         }
       }
@@ -11750,6 +13370,12 @@
             "state": "needs_review",
             "value": "Riproduci / Pausa"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизвести / Пауза"
+          }
         }
       }
     },
@@ -11796,6 +13422,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Cerca scorciatoie da tastiera"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Поиск сочетаний клавиш"
           }
         }
       }
@@ -11844,6 +13476,12 @@
             "state": "needs_review",
             "value": "Cancella ricerca"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Очистить поиск"
+          }
         }
       }
     },
@@ -11890,6 +13528,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nessuna scorciatoia corrisponde alla ricerca"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нет сочетаний клавиш, соответствующих поиску"
           }
         }
       }
@@ -11938,6 +13582,12 @@
             "state": "needs_review",
             "value": "Cerca scorciatoie"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Поиск сочетаний"
+          }
         }
       }
     },
@@ -11984,6 +13634,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Archivio"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Файл"
           }
         }
       }
@@ -12032,6 +13688,12 @@
             "state": "needs_review",
             "value": "Riproduzione"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Воспроизведение"
+          }
         }
       }
     },
@@ -12078,6 +13740,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Visualizza"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Вид"
           }
         }
       }
@@ -12126,6 +13794,12 @@
             "state": "needs_review",
             "value": "Finestra"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Окно"
+          }
         }
       }
     },
@@ -12172,6 +13846,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Scorciatoie da Tastiera"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сочетания клавиш"
           }
         }
       }
@@ -12221,6 +13901,12 @@
             "state": "needs_review",
             "value": "Album"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Альбомы"
+          }
         }
       }
     },
@@ -12268,6 +13954,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Tutto"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Всё"
           }
         }
       }
@@ -12317,6 +14009,12 @@
             "state": "needs_review",
             "value": "Artisti"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Исполнители"
+          }
         }
       }
     },
@@ -12364,6 +14062,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Generi"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Жанры"
           }
         }
       }
@@ -12413,6 +14117,12 @@
             "state": "needs_review",
             "value": "Brani"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Треки"
+          }
         }
       }
     },
@@ -12460,6 +14170,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Chiudi selettore mix istantaneo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Закрыть выбор моментального микса"
           }
         }
       }
@@ -12509,6 +14225,12 @@
             "state": "needs_review",
             "value": "Cerca qualcosa per creare un mix."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Найдите что-нибудь для создания микса."
+          }
         }
       }
     },
@@ -12556,6 +14278,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Genera"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Создать"
           }
         }
       }
@@ -12605,6 +14333,12 @@
             "state": "needs_review",
             "value": "Ultimo mix:"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Последний микс:"
+          }
         }
       }
     },
@@ -12652,6 +14386,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nessun risultato"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нет совпадений"
           }
         }
       }
@@ -12701,6 +14441,12 @@
             "state": "needs_review",
             "value": "Cerca un brano, album, artista o genere"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Найдите трек, альбом, исполнителя или жанр"
+          }
         }
       }
     },
@@ -12748,6 +14494,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Origine:"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Основа:"
           }
         }
       }
@@ -12797,6 +14549,12 @@
             "state": "needs_review",
             "value": "Nuovo Mix Istantaneo"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новый моментальный микс"
+          }
         }
       }
     },
@@ -12844,6 +14602,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nuovo Mix Istantaneo…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Новый моментальный микс…"
           }
         }
       }
@@ -12893,6 +14657,12 @@
             "state": "needs_review",
             "value": "Mostra Tour"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Показать тур"
+          }
         }
       }
     },
@@ -12940,6 +14710,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Tour delle funzionalità"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Тур по функциям"
           }
         }
       }
@@ -12989,6 +14765,12 @@
             "state": "needs_review",
             "value": "Passo %1$lld di %2$lld"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Шаг %1$lld из %2$lld"
+          }
         }
       }
     },
@@ -13036,6 +14818,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Scorciatoia da tastiera %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сочетание клавиш %@"
           }
         }
       }
@@ -13085,6 +14873,12 @@
             "state": "needs_review",
             "value": "Indietro"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Назад"
+          }
         }
       }
     },
@@ -13132,6 +14926,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Fine"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Готово"
           }
         }
       }
@@ -13181,6 +14981,12 @@
             "state": "needs_review",
             "value": "Premi ⌘⌥P per un player compatto, sempre in primo piano, che puoi mettere in un angolo mentre lavori."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нажмите ⌘⌥P, чтобы открыть компактный плеер, всегда поверх других окон, который можно убрать в угол во время работы."
+          }
         }
       }
     },
@@ -13228,6 +15034,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Apri il mini player"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Откройте мини-плеер"
           }
         }
       }
@@ -13277,6 +15089,12 @@
             "state": "needs_review",
             "value": "Avanti"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Далее"
+          }
         }
       }
     },
@@ -13324,6 +15142,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Fai clic destro su qualsiasi brano, album, artista o playlist per azioni rapide — riproduci successivo, aggiungi a playlist, avvia una stazione radio e altro."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Щёлкните правой кнопкой мыши по треку, альбому, исполнителю или плейлисту для быстрых действий — воспроизвести следующим, добавить в плейлист, запустить радиостанцию и многое другое."
           }
         }
       }
@@ -13373,6 +15197,12 @@
             "state": "needs_review",
             "value": "Clic destro per altro"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Правая кнопка мыши для большего"
+          }
         }
       }
     },
@@ -13420,6 +15250,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Premi ⌘F per andare direttamente alla ricerca e trovare qualsiasi canzone, album o artista nella tua libreria."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нажмите ⌘F, чтобы сразу перейти к поиску и найти любую песню, альбом или исполнителя в библиотеке."
           }
         }
       }
@@ -13469,6 +15305,12 @@
             "state": "needs_review",
             "value": "Trova qualsiasi cosa velocemente"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Найдите всё быстро"
+          }
         }
       }
     },
@@ -13516,6 +15358,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Salta"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Пропустить"
           }
         }
       }
@@ -13565,6 +15413,12 @@
             "state": "needs_review",
             "value": "Premi la barra spazio ovunque al di fuori di un campo di testo per riprodurre o mettere in pausa il brano corrente."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Нажмите пробел в любом месте вне текстового поля, чтобы воспроизвести или поставить на паузу текущий трек."
+          }
         }
       }
     },
@@ -13612,6 +15466,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Riproduci e metti in pausa con Spazio"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Пробел для воспроизведения и паузы"
           }
         }
       }
@@ -13661,6 +15521,12 @@
             "state": "needs_review",
             "value": "I dati locali di Lyrebird non possono essere aperti. Di solito si risolve: ripristina i dati locali per ricominciare, o esporta un bundle di diagnostica da allegare a un segnalazione di bug."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Локальные данные Lyrebird не удалось открыть. Обычно это можно исправить: сбросьте локальные данные для нового старта или экспортируйте диагностический пакет для отправки с отчётом об ошибке."
+          }
         }
       }
     },
@@ -13708,6 +15574,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Esporta Diagnostica…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Экспортировать диагностику…"
           }
         }
       }
@@ -13757,6 +15629,12 @@
             "state": "needs_review",
             "value": "Diagnostica esportata."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Диагностика экспортирована."
+          }
         }
       }
     },
@@ -13804,6 +15682,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile esportare la diagnostica: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось экспортировать диагностику: %@"
           }
         }
       }
@@ -13853,6 +15737,12 @@
             "state": "needs_review",
             "value": "Esci"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Выйти"
+          }
         }
       }
     },
@@ -13900,6 +15790,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Ripristina Dati Locali"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сбросить локальные данные"
           }
         }
       }
@@ -13949,6 +15845,12 @@
             "state": "needs_review",
             "value": "I dati locali sono stati spostati in:\n%@\nEsci e riapri Lyrebird."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Локальные данные перемещены в:\n%@\nПожалуйста, выйдите и снова откройте Lyrebird."
+          }
         }
       }
     },
@@ -13996,6 +15898,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Impossibile ripristinare i dati locali: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось сбросить локальные данные: %@"
           }
         }
       }
@@ -14045,6 +15953,12 @@
             "state": "needs_review",
             "value": "Nessun dato locale trovato da ripristinare. Prova a esportare la diagnostica."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Локальных данных для сброса не найдено. Попробуйте экспортировать диагностику."
+          }
         }
       }
     },
@@ -14092,6 +16006,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Lyrebird non ha potuto avviarsi"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Lyrebird не удалось запустить"
           }
         }
       }
@@ -14141,6 +16061,12 @@
             "state": "needs_review",
             "value": "Nome dispositivo"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Имя устройства"
+          }
         }
       }
     },
@@ -14188,6 +16114,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome dispositivo: %@"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Имя устройства: %@"
           }
         }
       }
@@ -14237,6 +16169,12 @@
             "state": "needs_review",
             "value": "Annulla"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Отмена"
+          }
         }
       }
     },
@@ -14284,6 +16222,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Cambia il nome che Jellyfin mostra per questo dispositivo."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Измените имя, которое Jellyfin отображает для этого устройства."
           }
         }
       }
@@ -14333,6 +16277,12 @@
             "state": "needs_review",
             "value": "Il mio Mac"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Мой Mac"
+          }
         }
       }
     },
@@ -14380,6 +16330,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Salva"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сохранить"
           }
         }
       }
@@ -14429,6 +16385,12 @@
             "state": "needs_review",
             "value": "Mostrato nel pannello di questo server e in altri client Jellyfin."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Отображается на панели управления этого сервера и в других клиентах Jellyfin."
+          }
         }
       }
     },
@@ -14476,6 +16438,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Nome dispositivo"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Имя устройства"
           }
         }
       }
@@ -14525,6 +16493,12 @@
             "state": "needs_review",
             "value": "Associa questo dispositivo inserendo un codice in un altro client Jellyfin connesso."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Привяжите это устройство, введя код в другом подключённом клиенте Jellyfin."
+          }
         }
       }
     },
@@ -14572,6 +16546,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Annulla"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Отмена"
           }
         }
       }
@@ -14621,6 +16601,12 @@
             "state": "needs_review",
             "value": "CODICE"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "КОД"
+          }
         }
       }
     },
@@ -14668,6 +16654,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Quick Connect non ha potuto completarsi. Riprova."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Не удалось завершить Quick Connect. Попробуйте снова."
           }
         }
       }
@@ -14717,6 +16709,12 @@
             "state": "needs_review",
             "value": "Usa Jellyfin Quick Connect"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Использовать Jellyfin Quick Connect"
+          }
         }
       }
     },
@@ -14764,6 +16762,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Inserisci l'indirizzo del server nella schermata di accesso prima, poi prova Quick Connect."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Сначала введите адрес сервера на экране входа, затем попробуйте Quick Connect."
           }
         }
       }
@@ -14813,6 +16817,12 @@
             "state": "needs_review",
             "value": "Riprova"
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Повторить"
+          }
         }
       }
     },
@@ -14860,6 +16870,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "Avvio Quick Connect…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Запуск Quick Connect…"
           }
         }
       }
@@ -14909,6 +16925,12 @@
             "state": "needs_review",
             "value": "Inserisci questo codice in un'altra app Jellyfin connessa per associare questo dispositivo."
           }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Введите этот код в другом подключённом приложении Jellyfin для привязки устройства."
+          }
         }
       }
     },
@@ -14953,6 +16975,12 @@
           }
         },
         "it": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Quick Connect"
+          }
+        },
+        "ru": {
           "stringUnit": {
             "state": "needs_review",
             "value": "Quick Connect"
@@ -15004,6 +17032,12 @@
           "stringUnit": {
             "state": "needs_review",
             "value": "In attesa di approvazione…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "needs_review",
+            "value": "Ожидание подтверждения…"
           }
         }
       }
