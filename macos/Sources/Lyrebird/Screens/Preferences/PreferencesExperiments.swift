@@ -24,49 +24,12 @@ struct PreferencesExperiments: View {
         VStack(alignment: .leading, spacing: 24) {
             header
 
-            PreferenceSection(
-                title: "Playback",
-                footnote: "These knobs control experimental audio-engine behaviour. Changes take effect on the next track unless otherwise noted."
-            ) {
-                flagToggle(
-                    label: "Gapless playback",
-                    help: flags.gaplessPlayback
-                        ? "On — tracks play without silence between them."
-                        : "Off — each track ends cleanly before the next begins.",
-                    accessibilityLabel: "Gapless playback",
-                    value: flagBinding(get: { $0.gaplessPlayback }, set: { $0.gaplessPlayback = $1 })
-                )
-
-                Divider()
-                    .background(Theme.border)
-                    .padding(.vertical, 10)
-
-                PreferenceRow(
-                    label: "Crossfade",
-                    help: flags.crossfadeMs == 0
-                        ? "Off — no overlap between tracks."
-                        : "Overlap of \(flags.crossfadeMs) ms (engine support coming soon)."
-                ) {
-                    // Integer stepper: 0 / 500 / 1000 / … / 12 000 ms in steps of 500.
-                    Stepper(
-                        value: Binding(
-                            get: { flags.crossfadeMs },
-                            set: { newValue in
-                                flags.crossfadeMs = newValue
-                                persistFlags()
-                            }
-                        ),
-                        in: 0 ... 12_000,
-                        step: 500
-                    ) {
-                        Text(flags.crossfadeMs == 0 ? "Off" : "\(flags.crossfadeMs) ms")
-                            .font(Theme.font(13, weight: .semibold))
-                            .foregroundStyle(Theme.ink)
-                            .frame(minWidth: 60, alignment: .trailing)
-                    }
-                    .accessibilityLabel("Crossfade duration")
-                }
-            }
+            // Note: this pane used to carry "Gapless playback" and "Crossfade"
+            // flag rows. Both were dead knobs — the flags were never read by
+            // any playback code path — while the *real*, engine-wired controls
+            // live in Preferences ▸ Playback. The rows were removed rather
+            // than rewired so the same setting never has two switches that can
+            // disagree.
 
             PreferenceSection(
                 title: "Library",
@@ -222,11 +185,13 @@ struct PreferencesExperiments: View {
     /// Lyrebird Application Support directory if it doesn't exist yet. Errors
     /// are logged but do not surface to the user — the UI already reflects the
     /// in-memory state, and a disk-write failure is a non-critical edge case.
+    ///
+    /// Retired keys (`gapless_playback`, `crossfade_ms`) are intentionally
+    /// not written; a stale copy in an existing file is harmless — the loader
+    /// ignores unknown keys.
     private func persistFlags() {
         let dict: [String: Any] = [
             "debug_panel_enabled": flags.debugPanelEnabled,
-            "gapless_playback": flags.gaplessPlayback,
-            "crossfade_ms": flags.crossfadeMs,
             "library_delta_sync": flags.libraryDeltaSync,
         ]
 
@@ -273,9 +238,7 @@ struct PreferencesExperiments: View {
             // reveal it rather than just opening the parent folder.
             if !FileManager.default.fileExists(atPath: url.path) {
                 let template: [String: Any] = [
-                    "crossfade_ms": 0,
                     "debug_panel_enabled": true,
-                    "gapless_playback": true,
                     "library_delta_sync": true,
                 ]
                 let data = try JSONSerialization.data(

@@ -3,19 +3,24 @@ import SwiftUI
 
 /// Playback preferences pane.
 ///
-/// Exposes the behavioural knobs covered by issue #116 — gapless joins,
-/// crossfade, ReplayGain normalization, pre-gain, and "stop after current
-/// track". Streaming/download quality and preferred codec used to live here
-/// too, but they share their `@AppStorage` keys with the Audio pane (#117),
-/// which is their canonical home; the duplicates were removed here so each
-/// setting has exactly one editing surface.
+/// Exposes the behavioural knobs covered by issues #116 and the four-group
+/// playback spec — gapless joins, crossfade, Replay Gain (+ pre-gain),
+/// volume normalization, and "stop after current track". Streaming/download
+/// quality and preferred codec used to live here too, but they share their
+/// `@AppStorage` keys with the Audio pane (#117), which is their canonical
+/// home; the duplicates were removed here so each setting has exactly one
+/// editing surface.
 ///
 /// What's live:
-/// - **Gapless** and **Stop after current track** are wired into the engine /
-///   queue (`AppModel.armNextTrackPreload` reads `gaplessEnabled`;
-///   `handleTrackEnded` consumes `stopAfterCurrent`).
-/// - **Normalization** and **Pre-gain** route through `AppModel.setNormalization`
-///   onto the live ReplayGain path (#42).
+/// - **Gapless** routes through `AppModel.setGapless` onto both engine
+///   paths: the AVQueuePlayer pre-load gate and the DSP pipeline's buffered
+///   zero-fade join. **Stop after current track** is consumed by
+///   `handleTrackEnded`.
+/// - **Replay Gain**, **Pre-gain**, and **Volume Normalization** route
+///   through `AppModel.setNormalization` onto the live loudness path (#42):
+///   per-item `AVAudioMix` on the AVQueuePlayer path, per-deck player gain
+///   on the DSP path. Tags come from the stream's own metadata; untagged
+///   tracks play unchanged.
 /// - **Crossfade** (#41) rides the AVAudioEngine DSP pipeline's dual decks,
 ///   so its slider + curve picker gate on `supportsCrossfade` — live only
 ///   while the DSP engine (#39, opted into via the Equalizer pane) is
@@ -29,12 +34,14 @@ import SwiftUI
 /// the display labels.
 ///
 /// Preference keys (user-facing `@AppStorage`):
-/// - `playback.crossfadeSeconds`     — `Double` (0 = off, 1…12)
-/// - `playback.crossfadeCurve`       — `CrossfadeSettings.Curve` raw value
-/// - `playback.gaplessEnabled`       — `Bool` (default true)
-/// - `playback.normalization`        — `NormalizationMode`
-/// - `playback.preGainDb`            — `Double` (±12)
-/// - `playback.stopAfterCurrent`     — `Bool`
+/// - `playback.crossfadeSeconds`             — `Double` (0 = off, 1…12)
+/// - `playback.crossfadeCurve`               — `CrossfadeSettings.Curve` raw value
+/// - `playback.gaplessEnabled`               — `Bool` (default true)
+/// - `playback.normalization`                — `NormalizationMode`
+/// - `playback.preGainDb`                    — `Double` (±12)
+/// - `playback.volumeNormalizationEnabled`   — `Bool` (default false)
+/// - `playback.volumeNormalizationTargetDb`  — `Double` (−23…−14, default −18)
+/// - `playback.stopAfterCurrent`             — `Bool`
 ///
 /// Spec: `research/03-ux-patterns.md` Issue 68 and GitHub issues #260 / #116 / #41.
 struct PreferencesPlayback: View {
@@ -43,13 +50,16 @@ struct PreferencesPlayback: View {
     // #116 gap-fill knobs. Raw types are chosen so the key names survive any
     // later enum/struct refactor — a Double for the slider is portable and
     // the Bool toggles are the obvious shape. The crossfade key literals
-    // match `CrossfadeSettings.DefaultsKey` (#41), which is how the engine
+    // match `CrossfadeSettings.DefaultsKey` (#41) and the loudness literals
+    // match `NormalizationSettings.DefaultsKey`, which is how the engine
     // reads them back.
     @AppStorage("playback.crossfadeSeconds") private var crossfadeSeconds: Double = 0
     @AppStorage("playback.crossfadeCurve") private var crossfadeCurveRaw: String = CrossfadeSettings.Curve.equalPower.rawValue
     @AppStorage("playback.gaplessEnabled") private var gaplessEnabled: Bool = true
     @AppStorage("playback.normalization") private var normalizationRaw: String = NormalizationMode.off.rawValue
     @AppStorage("playback.preGainDb") private var preGainDb: Double = 0
+    @AppStorage("playback.volumeNormalizationEnabled") private var volumeNormalizationEnabled: Bool = false
+    @AppStorage("playback.volumeNormalizationTargetDb") private var volumeNormalizationTargetDb: Double = NormalizationSettings.defaultTargetLoudnessDb
     @AppStorage("playback.stopAfterCurrent") private var stopAfterCurrent: Bool = false
 
     /// Crossfade duration binding. Reads `@AppStorage` for instant UI, and
@@ -88,31 +98,85 @@ struct PreferencesPlayback: View {
         )
     }
 
-    /// Normalization picker binding. Reads `@AppStorage` for instant UI, and
-    /// routes the change through `AppModel` so the live player re-reads the
-    /// current track's ReplayGain tags and re-applies the gain immediately
-    /// rather than only on the next track (#42). Pre-gain rides along so the
-    /// engine always sees a consistent (mode, pre-gain) pair.
+    /// Gapless toggle binding. Writes `@AppStorage` for instant UI and routes
+    /// the change through `AppModel.setGapless` so the live engine reacts on
+    /// the *current* transition: off strips a queued-ahead item (AVQueuePlayer)
+    /// or disarms the DSP pipeline's buffered join; on re-arms the upcoming
+    /// track on whichever path is active.
+    private var gapless: Binding<Bool> {
+        Binding(
+            get: { gaplessEnabled },
+            set: { newValue in
+                gaplessEnabled = newValue
+                model.setGapless(newValue)
+            }
+        )
+    }
+
+    /// Push the full loudness surface — mode, pre-gain, normalization toggle,
+    /// target — through `AppModel.setNormalization` so the engine always sees
+    /// a consistent quadruple (#42). Each binding overrides just its own knob
+    /// and reads the live `@AppStorage` values for the rest.
+    private func pushNormalization(
+        mode: NormalizationMode? = nil,
+        preGain: Double? = nil,
+        volumeNormalization: Bool? = nil,
+        target: Double? = nil
+    ) {
+        model.setNormalization(
+            mode: mode ?? (NormalizationMode(rawValue: normalizationRaw) ?? .off),
+            preGainDb: preGain ?? preGainDb,
+            volumeNormalizationEnabled: volumeNormalization ?? volumeNormalizationEnabled,
+            targetLoudnessDb: target ?? volumeNormalizationTargetDb
+        )
+    }
+
+    /// Replay Gain mode picker binding. Reads `@AppStorage` for instant UI,
+    /// and routes the change through `AppModel` so the live player re-reads
+    /// the current track's ReplayGain tags and re-applies the gain immediately
+    /// rather than only on the next track (#42).
     private var normalization: Binding<NormalizationMode> {
         Binding(
             get: { NormalizationMode(rawValue: normalizationRaw) ?? .off },
             set: { newMode in
                 normalizationRaw = newMode.rawValue
-                model.setNormalization(mode: newMode, preGainDb: preGainDb)
+                pushNormalization(mode: newMode)
             }
         )
     }
 
     /// Pre-gain slider binding. Writes `@AppStorage` for instant UI and pushes
-    /// the new pre-gain onto the engine via `AppModel`, alongside the current
-    /// normalization mode (#42).
+    /// the new pre-gain onto the engine via `AppModel`, alongside the other
+    /// loudness knobs (#42).
     private var preGain: Binding<Double> {
         Binding(
             get: { preGainDb },
             set: { newValue in
                 preGainDb = newValue
-                let mode = NormalizationMode(rawValue: normalizationRaw) ?? .off
-                model.setNormalization(mode: mode, preGainDb: newValue)
+                pushNormalization(preGain: newValue)
+            }
+        )
+    }
+
+    /// Volume-normalization toggle binding — shift loudness to the target
+    /// below instead of the ReplayGain reference.
+    private var volumeNormalization: Binding<Bool> {
+        Binding(
+            get: { volumeNormalizationEnabled },
+            set: { newValue in
+                volumeNormalizationEnabled = newValue
+                pushNormalization(volumeNormalization: newValue)
+            }
+        )
+    }
+
+    /// Target-loudness slider binding (dB LUFS).
+    private var normalizationTarget: Binding<Double> {
+        Binding(
+            get: { volumeNormalizationTargetDb },
+            set: { newValue in
+                volumeNormalizationTargetDb = newValue
+                pushNormalization(target: newValue)
             }
         )
     }
@@ -131,7 +195,7 @@ struct PreferencesPlayback: View {
                         ? "On — tracks on the same album play without a gap."
                         : "Off — each track ends cleanly before the next starts."
                 ) {
-                    Toggle("", isOn: $gaplessEnabled)
+                    Toggle("", isOn: gapless)
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .accessibilityLabel("Gapless playback")
@@ -172,15 +236,15 @@ struct PreferencesPlayback: View {
             }
 
             PreferenceSection(
-                title: "Normalization",
-                footnote: "Reads ReplayGain tags from the source when available. Track matches the loudness of each song individually; Album keeps the relative levels inside an album intact."
+                title: "Replay Gain",
+                footnote: "Reads ReplayGain tags from the source when available. Track matches the loudness of each song individually; Album keeps the relative levels inside an album intact. Untagged tracks play unchanged."
             ) {
                 PreferenceRow(
-                    label: "Volume matching",
+                    label: "Mode",
                     help: normalization.wrappedValue.subtitle
                 ) {
                     NormalizationPicker(selection: normalization)
-                        .accessibilityLabel("Volume normalization")
+                        .accessibilityLabel("Replay Gain mode")
                 }
 
                 Divider()
@@ -193,6 +257,38 @@ struct PreferencesPlayback: View {
                 ) {
                     PreGainSlider(db: preGain)
                 }
+            }
+
+            PreferenceSection(
+                title: "Volume Normalization",
+                footnote: "Shifts overall playback loudness to your target instead of the ReplayGain reference (−18 dB LUFS). Uses each track's loudness tags — with Replay Gain off it falls back to track tags; untagged tracks play unchanged."
+            ) {
+                PreferenceRow(
+                    label: "Normalize volume",
+                    help: volumeNormalizationEnabled
+                        ? "On — playback loudness lands at the target below."
+                        : "Off — tags apply at the standard reference level."
+                ) {
+                    Toggle("", isOn: volumeNormalization)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .accessibilityLabel("Volume normalization")
+                }
+
+                Divider()
+                    .background(Theme.border)
+                    .padding(.vertical, 10)
+
+                PreferenceRow(
+                    label: "Target loudness",
+                    help: targetLoudnessHelp
+                ) {
+                    TargetLoudnessSlider(db: normalizationTarget)
+                        .disabled(!volumeNormalizationEnabled)
+                }
+                // Same gated-row idiom as the crossfade rows: dim while the
+                // toggle above keeps the slider inert.
+                .opacity(volumeNormalizationEnabled ? 1 : 0.55)
             }
 
             PreferenceSection(
@@ -259,6 +355,16 @@ struct PreferencesPlayback: View {
         }
         let sign = rounded > 0 ? "+" : "−"
         return "\(sign)\(abs(rounded)) dB applied before output."
+    }
+
+    /// Subtitle under the target-loudness slider. Calls out the reference
+    /// value so "−18" reads as "no shift" rather than an arbitrary number.
+    private var targetLoudnessHelp: String {
+        let rounded = Int(volumeNormalizationTargetDb.rounded())
+        if Double(rounded) == NormalizationSettings.defaultTargetLoudnessDb {
+            return "−18 dB LUFS — the ReplayGain reference."
+        }
+        return "−\(abs(rounded)) dB LUFS. Higher is louder."
     }
 }
 
@@ -327,12 +433,11 @@ enum PlaybackQuality: String, CaseIterable, Identifiable {
 /// `track` matches each track's individual loudness, `album` uses the
 /// per-album gain so relative dynamics inside an album remain intact.
 ///
-/// TODO(#116): feed these into the audio engine's playback path. The engine
-/// needs to read ReplayGain tags (`REPLAYGAIN_TRACK_GAIN` / `_ALBUM_GAIN`
-/// plus their peak siblings), fall back to scanning when tags are missing,
-/// and apply the selected gain on top of `preGainDb`. Until then the enum
-/// persists the user's choice so the engine can pick it up without a
-/// migration.
+/// Live on both engine paths (#42): the raw values bridge onto the engine's
+/// `ReplayGainMode` via `AppModel.normalizationMode(forStoredValue:)`, the
+/// engine reads `REPLAYGAIN_TRACK_GAIN` / `_ALBUM_GAIN` (plus the `iTunNORM`
+/// fallback) from the stream's own metadata, and applies the selected gain
+/// on top of `preGainDb`. Untagged tracks play unchanged.
 enum NormalizationMode: String, CaseIterable, Identifiable {
     case off
     case track
@@ -490,6 +595,31 @@ private struct PreGainSlider: View {
         if rounded == 0 { return "0 decibels" }
         let direction = rounded > 0 ? "plus" : "minus"
         return "\(direction) \(abs(rounded)) decibels"
+    }
+}
+
+/// Target-loudness slider for volume normalization, −23…−14 dB LUFS in 1 dB
+/// steps (range from `NormalizationSettings.targetRange`). The readout shows
+/// the unicode minus for the same typeset/VoiceOver reasons as `PreGainSlider`.
+private struct TargetLoudnessSlider: View {
+    @Binding var db: Double
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Slider(value: $db, in: NormalizationSettings.targetRange, step: 1)
+                .frame(width: 200)
+                .accessibilityLabel("Target loudness")
+                .accessibilityValue("minus \(abs(Int(db.rounded()))) decibels")
+            Text(readout)
+                .font(Theme.font(12, weight: .semibold))
+                .foregroundStyle(Theme.ink2)
+                .monospacedDigit()
+                .frame(width: 64, alignment: .trailing)
+        }
+    }
+
+    private var readout: String {
+        "−\(abs(Int(db.rounded()))) dB"
     }
 }
 

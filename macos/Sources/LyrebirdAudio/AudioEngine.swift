@@ -233,20 +233,59 @@ public final class AudioEngine: NSObject {
     public var normalizationMode: ReplayGainMode = .off {
         didSet {
             guard normalizationMode != oldValue else { return }
-            reapplyReplayGainToCurrentItem()
+            normalizationDidChange()
         }
     }
 
     /// User pre-gain in dB (`playback.preGainDb`), summed on top of the
     /// resolved ReplayGain value before the linear multiplier is computed. Only
-    /// takes effect while `normalizationMode != .off`; on its own it does not
+    /// takes effect while some gain resolves at all; on its own it does not
     /// turn normalization on (matching the Preferences copy, which frames
     /// pre-gain as an adjustment to the normalization result).
     public var normalizationPreGainDb: Double = 0 {
         didSet {
             guard normalizationPreGainDb != oldValue else { return }
-            reapplyReplayGainToCurrentItem()
+            normalizationDidChange()
         }
+    }
+
+    /// Volume-normalization toggle (`playback.volumeNormalizationEnabled`):
+    /// shift playback loudness to `volumeNormalizationTargetDb` instead of
+    /// the ReplayGain reference. Self-seeded from `UserDefaults` at init —
+    /// the crossfade pattern, where the persisted value is the single source
+    /// of truth — and updated from the Preferences pane via `AppModel`.
+    public var volumeNormalizationEnabled: Bool = false {
+        didSet {
+            guard volumeNormalizationEnabled != oldValue else { return }
+            normalizationDidChange()
+        }
+    }
+
+    /// Volume-normalization target in dB LUFS
+    /// (`playback.volumeNormalizationTargetDb`, −23…−14, −18 = reference).
+    public var volumeNormalizationTargetDb: Double = NormalizationSettings.defaultTargetLoudnessDb {
+        didSet {
+            guard volumeNormalizationTargetDb != oldValue else { return }
+            normalizationDidChange()
+        }
+    }
+
+    /// The four loudness knobs as the value type both engine paths consume.
+    var normalizationSettings: NormalizationSettings {
+        NormalizationSettings(
+            mode: normalizationMode,
+            preGainDb: normalizationPreGainDb,
+            volumeNormalizationEnabled: volumeNormalizationEnabled,
+            targetLoudnessDb: volumeNormalizationTargetDb
+        )
+    }
+
+    /// Re-apply loudness after any knob changes: the AVQueuePlayer path
+    /// re-resolves the current item's tags, the DSP path recomputes both
+    /// decks' gain stages from their cached tags (no re-fetch needed).
+    private func normalizationDidChange() {
+        reapplyReplayGainToCurrentItem()
+        dspPipeline?.applyNormalization(normalizationSettings)
     }
 
     /// Monotonic counter so a slow metadata-driven gain resolve can't clobber a
@@ -277,6 +316,14 @@ public final class AudioEngine: NSObject {
     public init(core: LyrebirdCore) {
         self.core = core
         super.init()
+        // Self-seed the volume-normalization pair so the first track honours
+        // a persisted choice without waiting for the Preferences pane (the
+        // mode / pre-gain pair is seeded by the owner at startup; these two
+        // follow the crossfade pattern instead — `UserDefaults` is the single
+        // source of truth and the engine reads it directly).
+        let stored = NormalizationSettings.load(from: .standard)
+        volumeNormalizationEnabled = stored.volumeNormalizationEnabled
+        volumeNormalizationTargetDb = stored.targetLoudnessDb
     }
 
     deinit {
@@ -546,13 +593,12 @@ public final class AudioEngine: NSObject {
     private func applyReplayGain(to item: AVPlayerItem) {
         replayGainGeneration &+= 1
         let generation = replayGainGeneration
-        let mode = normalizationMode
-        let preGainDb = normalizationPreGainDb
+        let settings = normalizationSettings
 
-        // Off: clear any prior mix synchronously and skip the metadata read
-        // entirely. Cheap, and guarantees flipping the picker to "Off"
+        // All-off: clear any prior mix synchronously and skip the metadata
+        // read entirely. Cheap, and guarantees flipping everything off
         // immediately restores the raw level.
-        guard mode != .off else {
+        guard settings.isActive else {
             item.audioMix = nil
             return
         }
@@ -560,7 +606,7 @@ public final class AudioEngine: NSObject {
         let asset = item.asset
         Task.detached { [weak self] in
             let gains = await ReplayGain.gains(for: asset)
-            guard let volume = ReplayGain.linearVolume(mode: mode, gains: gains, preGainDb: preGainDb) else {
+            guard let volume = settings.linearVolume(gains: gains) else {
                 // No usable tag — leave the level alone (clear any stale mix).
                 await MainActor.run {
                     guard let self, generation == self.replayGainGeneration else { return }
@@ -841,11 +887,11 @@ public final class AudioEngine: NSObject {
     /// is what we want. Existing queued-but-not-yet-playing items are replaced
     /// so rapid skip-next doesn't accumulate stale entries.
     public func preloadNextTrack(_ track: Track) {
-        // DSP path (#39): gapless preload is a listed gap — the pipeline
-        // plays one track at a time and `onTrackEnded` rebuilds the next,
-        // exactly like the `gaplessEnabled == false` behaviour. A queued-
-        // ahead AVPlayerItem would be meaningless here, so bail before the
-        // player guard.
+        // DSP path (#39): the pipeline arms its own buffered join — `dspPlay`
+        // resolves + arms the upcoming track for the crossfade overlap or the
+        // gapless zero-fade handoff (see `dspArmNextTrackForCrossfade`). A
+        // queued-ahead AVPlayerItem would be meaningless here, so bail before
+        // the player guard.
         if dspPipelineEnabled { return }
         guard player != nil else { return }
 
@@ -948,6 +994,44 @@ public final class AudioEngine: NSObject {
                 engineLog.error("preload skipped: failed to resolve track \(track.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    /// Apply a change to the "Gapless playback" preference to the live
+    /// engine, so flipping the toggle affects the *current* transition rather
+    /// than only the next playback session.
+    ///
+    /// - AVQueuePlayer path: turning gapless **off** strips any queued-ahead
+    ///   item so the in-flight transition doesn't ride a stale pre-load;
+    ///   turning it **on** is the owner's job (`AppModel.armNextTrackPreload`
+    ///   re-arms — the queue lookahead lives there, not here).
+    /// - DSP path: the pipeline's arming gate updates; on enable the engine
+    ///   re-arms the upcoming track itself (the DSP arm resolution lives
+    ///   here), on disable the pipeline disarms unless crossfade keeps the
+    ///   standby deck armed for an overlap of its own.
+    public func applyGapless(_ enabled: Bool) {
+        if dspPipelineEnabled {
+            guard let pipeline = dspPipeline else { return }
+            pipeline.applyGapless(enabled)
+            if enabled, let currentKey = pipeline.currentTrackKey {
+                dspArmNextTrackForCrossfade(afterTrackWithKey: currentKey)
+            }
+        } else if !enabled {
+            stripQueuedAheadItems()
+        }
+    }
+
+    /// Remove every queued-but-not-yet-playing item from the AVQueuePlayer —
+    /// the live counterpart of `armNextTrackPreload`'s gapless gate. The
+    /// current item keeps playing; the next transition takes the ordinary
+    /// rebuild path (`onTrackEnded` → `play(track:)`).
+    private func stripQueuedAheadItems() {
+        guard let player else { return }
+        for item in player.items().dropFirst() {
+            player.remove(item)
+        }
+        #if DEBUG
+        lastPreloadedTrackIdForTesting = nil
+        #endif
     }
 
     // MARK: - Observers

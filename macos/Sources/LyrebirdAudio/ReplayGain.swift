@@ -64,6 +64,13 @@ public enum ReplayGain {
     /// gains sit within roughly ±12 dB) while still bounding the worst case.
     public static let maxAbsGainDb: Double = 15.0
 
+    /// The loudness (dB LUFS) ReplayGain 2.0 tag gains are referenced to: a
+    /// tag of `-7.60 dB` means "attenuate by 7.6 dB and the track lands at
+    /// −18 LUFS". Volume normalization shifts that landing point — a target
+    /// of `T` adds `T − (−18)` dB on top of the tag — so the reference is the
+    /// natural "no shift" default for the target slider.
+    public static let referenceLoudnessDb: Double = -18.0
+
     // MARK: - dB ↔ linear
 
     /// Convert a dB gain to a linear amplitude multiplier (`10^(dB/20)`).
@@ -76,22 +83,35 @@ public enum ReplayGain {
     // MARK: - Resolution
 
     /// Resolve the linear volume multiplier to hand to
-    /// `AVAudioMixInputParameters.setVolume` for the given mode, parsed gains,
-    /// and user pre-gain.
+    /// `AVAudioMixInputParameters.setVolume` (AVQueuePlayer path) or a deck's
+    /// player gain stage (DSP path) for the given mode, parsed gains, user
+    /// pre-gain, and volume-normalization target.
     ///
-    /// Returns `nil` when normalization is off, or when the selected mode has
+    /// Returns `nil` when every knob is off, or when the selected mode has
     /// no usable tag — the caller treats `nil` as "leave the level untouched"
     /// so an untagged track plays at its natural volume rather than being
-    /// silently adjusted. The combined dB (ReplayGain + pre-gain) is clamped to
-    /// ±``maxAbsGainDb`` before conversion.
+    /// silently adjusted. The combined dB (ReplayGain + target shift +
+    /// pre-gain) is clamped to ±``maxAbsGainDb`` before conversion.
+    ///
+    /// Volume normalization composes with the mode rather than replacing it:
+    /// - mode picks *which* tag measures the track (track / album);
+    /// - the normalization target shifts *where* the loudness lands —
+    ///   `targetLoudnessDb − referenceLoudnessDb` dB on top of the tag.
+    /// - normalization on with mode `.off` falls back to track gains: a
+    ///   loudness target needs some per-track measurement, and the track tag
+    ///   is the only one the stream carries.
     public static func linearVolume(
         mode: ReplayGainMode,
         gains: Gains,
-        preGainDb: Double = 0
+        preGainDb: Double = 0,
+        volumeNormalizationEnabled: Bool = false,
+        targetLoudnessDb: Double = referenceLoudnessDb
     ) -> Float? {
-        guard mode != .off else { return nil }
-        guard let replayGainDb = replayGainDb(mode: mode, gains: gains) else { return nil }
-        let total = (replayGainDb + preGainDb).clamped(to: -maxAbsGainDb...maxAbsGainDb)
+        let effectiveMode: ReplayGainMode = (mode == .off && volumeNormalizationEnabled) ? .track : mode
+        guard effectiveMode != .off else { return nil }
+        guard let replayGainDb = replayGainDb(mode: effectiveMode, gains: gains) else { return nil }
+        let targetShiftDb = volumeNormalizationEnabled ? targetLoudnessDb - referenceLoudnessDb : 0
+        let total = (replayGainDb + targetShiftDb + preGainDb).clamped(to: -maxAbsGainDb...maxAbsGainDb)
         return linearGain(fromDb: total)
     }
 

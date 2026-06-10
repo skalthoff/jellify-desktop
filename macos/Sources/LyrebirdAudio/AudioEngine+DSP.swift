@@ -23,12 +23,23 @@ private let dspLog = Logger(subsystem: "org.lyrebird.desktop", category: "dsp")
 /// stream was resolved with, and the heartbeat re-keys to the new session.
 ///
 /// Known #39 gaps on this path (cleanly degraded, listed in the PR):
-/// ReplayGain normalization is not applied, stall recovery is skip-on-error
-/// rather than bounded in-place retries, and Ogg containers (which
-/// AudioToolbox cannot parse) skip to the next track. Gapless preload is a
-/// no-op only while crossfade is off — with crossfade on (#41) the armed
-/// next track buffers ahead and transitions overlap (or zero-fade join for
-/// same-album pairs).
+/// stall recovery is skip-on-error rather than bounded in-place retries, and
+/// Ogg containers (which AudioToolbox cannot parse) skip to the next track.
+///
+/// Loudness (ReplayGain / volume normalization) applies through each deck's
+/// player gain stage: `dspPlay` / the crossfade arm resolve the track's tags
+/// via a metadata-only `AVURLAsset` read (the streamer's AudioToolbox parse
+/// never surfaces them) and hand the result to
+/// `EngineDSPPipeline.provideLoudnessGains`. The read is one ranged request
+/// per track start; running it unconditionally keeps the pipeline's cached
+/// tags warm so a settings flip mid-track is pure math, live, with no
+/// re-fetch. An untagged track resolves to unity — never a level change.
+///
+/// Gapless: with crossfade on (#41) the armed next track buffers ahead and
+/// transitions overlap (or zero-fade join for same-album pairs); with
+/// crossfade off and gapless on, the armed track still buffers ahead and the
+/// zero-fade join takes over at the outgoing track's natural end. Both off ⇒
+/// the pre-#41 rebuild transition.
 extension AudioEngine {
     /// `UserDefaults` key for the "Stop after current track" one-shot. The
     /// literal matches `AppModel+PlaybackControls` / `PreferencesPlayback`
@@ -94,6 +105,15 @@ extension AudioEngine {
         // single source of truth (seeded by the Playback pane via
         // `dspApplyCrossfade`), so a fresh pipeline restores it directly.
         pipeline.applyCrossfade(CrossfadeSettings.load(from: .standard))
+        // Gapless ships default-on; the pipeline itself defaults off so a
+        // bare instance preserves the pre-gapless rebuild transitions — the
+        // user preference is applied here, at the seam where the preference
+        // layer meets the engine.
+        pipeline.applyGapless(GaplessPreference.isEnabled())
+        // Loudness knobs (ReplayGain mode / pre-gain / volume normalization):
+        // the engine's vars are the live copy (owner-seeded + self-seeded at
+        // init), so a fresh pipeline mirrors them directly.
+        pipeline.applyNormalization(normalizationSettings)
         dspPipeline = pipeline
         return pipeline
     }
@@ -169,6 +189,10 @@ extension AudioEngine {
             trackKey: track.id,
             albumKey: track.albumId
         )
+        // Resolve the track's loudness tags for the deck's gain stage. Fire-
+        // and-forget alongside the stream — an untagged or unreachable read
+        // degrades to unity gain.
+        dspResolveLoudnessGains(forTrackKey: track.id, url: url, authHeader: authHeader)
 
         // Close out the previous server session before opening the new one
         // (Jellyfin keys sessions by PlaySessionId and leaks a transcode job
@@ -189,7 +213,29 @@ extension AudioEngine {
         )
         core.startHeartbeat(intervalSecs: 5, playSessionId: playSessionId)
 
-        dspArmNextTrackForCrossfade(after: track)
+        dspArmNextTrackForCrossfade(afterTrackWithKey: track.id)
+    }
+
+    /// Load the loudness tags for a DSP-routed track off the main actor and
+    /// hand them to the pipeline's per-deck gain stage. The streamer's
+    /// AudioToolbox parse never surfaces ReplayGain frames, so this is a
+    /// separate metadata-only `AVURLAsset` read against the same URL (one
+    /// ranged request; AVFoundation stops at the header tables). Untagged or
+    /// failed reads provide nothing — the deck stays at unity.
+    private func dspResolveLoudnessGains(forTrackKey trackKey: String, url: URL, authHeader: String?) {
+        Task.detached { [weak self] in
+            var options: [String: Any] = [:]
+            if let authHeader {
+                options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": authHeader]
+            }
+            let asset = AVURLAsset(url: url, options: options)
+            let gains = await ReplayGain.gains(for: asset)
+            guard !gains.isEmpty else { return }
+            await MainActor.run {
+                guard let self, let pipeline = self.dspPipeline else { return }
+                pipeline.provideLoudnessGains(gains, forTrackKey: trackKey)
+            }
+        }
     }
 
     /// The reporting half of a crossfade handoff (#41). The audio swap
@@ -216,14 +262,15 @@ extension AudioEngine {
         )
         core.startHeartbeat(intervalSecs: 5, playSessionId: receipt.playSessionId)
 
-        dspArmNextTrackForCrossfade(after: track)
+        dspArmNextTrackForCrossfade(afterTrackWithKey: track.id)
     }
 
     /// Arm the queue's next track on the pipeline so the upcoming transition
-    /// can crossfade (#41). Resolves the stream exactly like `dspPlay`
-    /// (offline gate, PlaybackInfo session correlation, bitrate ceiling) but
-    /// fire-and-forget: any failure just means this transition falls back to
-    /// the ordinary end-of-track rebuild.
+    /// can join — crossfade overlap (#41) or the gapless zero-fade handoff.
+    /// Resolves the stream exactly like `dspPlay` (offline gate, PlaybackInfo
+    /// session correlation, bitrate ceiling) but fire-and-forget: any failure
+    /// just means this transition falls back to the ordinary end-of-track
+    /// rebuild.
     ///
     /// `core.peekNext()` honours the live queue + repeat mode (the same
     /// lookahead `AppModel.armNextTrackPreload` reads), so the armed track
@@ -231,14 +278,18 @@ extension AudioEngine {
     /// after arming makes the armed track stale — `dspPlay` then sees a key
     /// mismatch and reloads fresh, the same staleness contract as the
     /// AVQueuePlayer path's pre-inserted item.
-    private func dspArmNextTrackForCrossfade(after current: Track) {
-        guard let pipeline = dspPipeline, pipeline.crossfadeIsEnabled else { return }
+    ///
+    /// Internal (not private) so `applyGapless` can re-arm when the user
+    /// turns gapless on mid-track; key-based because that caller only has
+    /// the pipeline's current track key, and the stale guard needs nothing
+    /// more.
+    func dspArmNextTrackForCrossfade(afterTrackWithKey currentKey: String) {
+        guard let pipeline = dspPipeline, pipeline.transitionArmingEnabled else { return }
         guard let next = core.peekNext() else {
             pipeline.disarmNextTrack()
             return
         }
 
-        let currentKey = current.id
         let offlineEnabled = offlinePlaybackEnabled
         let bitrateCap = maxStreamingBitrate
         let core = self.core
@@ -294,6 +345,9 @@ extension AudioEngine {
                 mediaSourceId: mediaSourceId,
                 playSessionId: playSessionId
             )
+            // Rebind the branch-assigned `var` as a `let` so the main-actor
+            // hop below captures an immutable value (Swift 6 Sendable rule).
+            let resolvedAuthHeader = authHeader
             await MainActor.run {
                 guard let self, let pipeline = self.dspPipeline else { return }
                 // Stale guard: only arm if the track we resolved against is
@@ -301,6 +355,11 @@ extension AudioEngine {
                 // this arm — its own dspPlay re-arms).
                 guard pipeline.currentTrackKey == currentKey else { return }
                 pipeline.armNextTrack(armedTrack)
+                // Resolve the armed track's loudness tags now so its deck
+                // gain is in place before the join makes it audible (the
+                // pipeline stashes the result until the prepare window loads
+                // the deck).
+                self.dspResolveLoudnessGains(forTrackKey: next.id, url: url, authHeader: resolvedAuthHeader)
             }
         }
     }

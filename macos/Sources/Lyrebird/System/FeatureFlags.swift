@@ -12,13 +12,15 @@ import os
 /// ## Schema
 /// ```json
 /// {
-///   "crossfade_ms": 0,
-///   "gapless_playback": false,
 ///   "debug_panel_enabled": true,
 ///   "library_delta_sync": true
 /// }
 /// ```
-/// Unknown keys are silently ignored. Missing keys inherit the compiled-in
+/// Unknown keys are silently ignored — which also covers the retired
+/// `gapless_playback` / `crossfade_ms` keys still present in older files;
+/// those knobs were never read by any playback path, and the real controls
+/// live in Preferences ▸ Playback (`playback.gaplessEnabled` /
+/// `playback.crossfadeSeconds`). Missing keys inherit the compiled-in
 /// default. The file is optional — if absent the app runs with all defaults.
 ///
 /// ## Thread safety
@@ -40,15 +42,6 @@ final class FeatureFlags {
     /// "Experiments" pane is hidden from the navigation sidebar, keeping the
     /// in-app toggle surface invisible to non-developer users.
     var debugPanelEnabled: Bool = false
-
-    /// Gapless playback via crossfade-joining the audio graph. Separate from
-    /// `Capabilities.supportsCrossfade`, which gates the slider UI — this flag
-    /// is the runtime knob that would activate the feature once the audio engine
-    /// grows overlapping-playback support.
-    var gaplessPlayback: Bool = true
-
-    /// Crossfade duration in milliseconds. 0 = off.
-    var crossfadeMs: Int = 0
 
     /// Library delta-sync: fetch only items changed since the last sync rather
     /// than doing a full library reload on each launch.
@@ -105,11 +98,10 @@ final class FeatureFlags {
     }
 
     /// Write flag values from a decoded dictionary onto self. Unknown keys are
-    /// silently ignored per the acceptance criteria.
+    /// silently ignored per the acceptance criteria — including the retired
+    /// `gapless_playback` / `crossfade_ms` keys older files may still carry.
     private func apply(dict: [String: Any]) {
         if let v = dict["debug_panel_enabled"] as? Bool { debugPanelEnabled = v }
-        if let v = dict["gapless_playback"] as? Bool { gaplessPlayback = v }
-        if let v = dict["crossfade_ms"] as? Int { crossfadeMs = v }
         if let v = dict["library_delta_sync"] as? Bool { libraryDeltaSync = v }
     }
 
