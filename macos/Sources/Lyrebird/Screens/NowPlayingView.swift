@@ -40,6 +40,15 @@ struct NowPlayingView: View {
     /// `AppModel`, so re-opening the player on the same album is a cache hit.
     @State private var ambientPalette: AmbientPalette?
 
+    /// Drives the entrance slide. Starts `false` so the view renders at its
+    /// resting-offset/transparent state before `.onAppear` fires the animation,
+    /// giving the easing curve a visible start point. Toggled back to `false`
+    /// immediately before pop so the exit runs the same curve in reverse —
+    /// but the NavigationStack removes the destination before the animation
+    /// completes, so the actual exit path is handled by the `.transition()`
+    /// on the `routeDestination` wrapper in `MainShell`.
+    @State private var appeared = false
+
     enum Tab: String, CaseIterable, Identifiable {
         case queue = "Queue"
         case lyrics = "Lyrics"
@@ -78,6 +87,20 @@ struct NowPlayingView: View {
                 )
             }
         }
+        // Entrance animation: slide up 40pt + fade in.
+        //
+        // `appeared` starts `false` so the view renders at offset 40pt /
+        // opacity 0 before `.onAppear` fires the animation. Both the offset
+        // and opacity track the same boolean so they move in lockstep — any
+        // interruption (e.g. immediate close before the entrance finishes)
+        // leaves both at a consistent intermediate value.
+        //
+        // Reduce Motion: skip the translate; the offset collapses to 0 and
+        // only the opacity fades in (crossfade). The exit path mirrors this
+        // via the asymmetric `.transition()` applied in `MainShell`'s
+        // `routeDestination`.
+        .offset(y: (appeared || reduceMotion) ? 0 : 40)
+        .opacity(appeared ? 1 : 0)
         // Re-fetch the People array + lyrics on open and on track change.
         // The polling loop in AppModel already handles mid-session
         // transitions; this keeps the open-from-cold path honest too.
@@ -105,7 +128,18 @@ struct NowPlayingView: View {
         // `requestedNowPlayingTab`. Consume it here so the view lands on the
         // Lyrics tab, then clear it so a later plain open still defaults to
         // Queue.
-        .onAppear { consumeRequestedTab() }
+        .onAppear {
+            consumeRequestedTab()
+            // Spec: 0.4s cubic-bezier(0.22, 1, 0.36, 1) entrance.
+            // Reduce Motion: only the opacity fades — the offset stays at 0
+            // (see modifier above) so no content travels across the screen.
+            // Use a shorter linear fade rather than the spring curve so the
+            // motion-sensitive path feels deliberate, not abrupt.
+            let curve: Animation = reduceMotion
+                ? .linear(duration: 0.2)
+                : .timingCurve(0.22, 1.0, 0.36, 1.0, duration: 0.4)
+            withAnimation(curve) { appeared = true }
+        }
         // Also react while already on-screen: the inline lyrics snippet in
         // the embedded Queue tab can call `openLyrics()` without re-pushing
         // the route, so `.onAppear` wouldn't fire. Watch the request so an
@@ -593,5 +627,23 @@ struct NowPlayingView: View {
             .padding(.top, 6)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - Exit transition helper
+
+/// Drives the exit half of the full-player entrance animation. Applied as the
+/// `active` state of an `AnyTransition.modifier` in `MainShell.routeDestination`
+/// so the NavigationStack pop slides the view down 40pt while fading it out —
+/// the exact reverse of the entrance. `fraction` runs 0 (identity/resting) →
+/// 1 (fully exited) as SwiftUI animates the removal.
+struct NowPlayingExitModifier: ViewModifier {
+    /// 0 = on-screen (no transform); 1 = fully exited (40pt down, invisible).
+    var fraction: Double
+
+    func body(content: Content) -> some View {
+        content
+            .offset(y: fraction * 40)
+            .opacity(1 - fraction)
     }
 }
