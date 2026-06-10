@@ -77,6 +77,12 @@ still blocks the curl, ask the user to add a Bash permission rule to
 their Claude settings — it's a sandbox-config gap, not a missing
 authorization.
 
+`Scripts/smoke-test.sh` exports `LYREBIRD_CREDENTIAL_STORE=memory`, which
+routes core's credential store to a process-local in-memory map in debug
+builds so freshly rebuilt (unsigned) test binaries never trip the macOS
+Keychain ACL password prompt. Release builds ignore the variable entirely —
+the native keyring path is unconditional there.
+
 ## Multi-agent playbook
 
 Lessons from the 46-issue audit sweep + the gap-fix iteration that

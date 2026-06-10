@@ -5,6 +5,7 @@
 //! fixtures live here and reach each submodule via `use super::*`.
 
 mod client;
+mod credential_store;
 mod discovery;
 mod downloads;
 mod errors_enums;
