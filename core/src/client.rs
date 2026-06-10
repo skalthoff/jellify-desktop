@@ -868,6 +868,7 @@ impl JellyfinClient {
                 ItemField::ProductionYear,
                 ItemField::ChildCount,
                 ItemField::PrimaryImageAspectRatio,
+                ItemField::AlbumArtist,
             ])
             .enable_user_data()
             .fetch_albums(self)
