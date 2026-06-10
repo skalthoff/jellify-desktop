@@ -124,21 +124,37 @@ extension AppModel {
         ReplayGainMode(rawValue: raw ?? "") ?? .off
     }
 
-    /// Apply the chosen ReplayGain mode + pre-gain to the live engine (#42).
-    /// Persists both values and pushes them onto `AudioEngine`, which re-reads
-    /// the current item's loudness tags and re-applies (or clears) the gain on
-    /// the playing track immediately — the same eager-apply contract as
-    /// `setOutputDevice`. The Preferences picker routes through here so a change
-    /// takes effect on the current song, not just the next one.
+    /// Apply the chosen loudness knobs — ReplayGain mode + pre-gain (#42)
+    /// and the volume-normalization toggle + target — to the live engine.
+    /// Persists all four values and pushes them onto `AudioEngine`: the
+    /// AVQueuePlayer path re-reads the current item's loudness tags and
+    /// re-applies (or clears) the gain on the playing track immediately, the
+    /// DSP path recomputes both decks' gain stages from their cached tags —
+    /// the same eager-apply contract as `setOutputDevice`. The Preferences
+    /// controls route through here so a change takes effect on the current
+    /// song, not just the next one.
     ///
-    /// Pre-gain only matters while `mode != .off`; passing it through regardless
-    /// keeps the stored value and the engine in sync so flipping normalization
-    /// back on later already reflects the saved pre-gain.
-    func setNormalization(mode: NormalizationMode, preGainDb: Double) {
-        UserDefaults.standard.set(mode.rawValue, forKey: AppModel.normalizationKey)
-        UserDefaults.standard.set(preGainDb, forKey: AppModel.preGainKey)
-        audio.normalizationMode = AppModel.normalizationMode(forStoredValue: mode.rawValue)
-        audio.normalizationPreGainDb = preGainDb
+    /// Pre-gain and the target only matter while some gain resolves at all;
+    /// passing them through regardless keeps the stored values and the
+    /// engine in sync so flipping a knob back on later already reflects the
+    /// saved companions.
+    func setNormalization(
+        mode: NormalizationMode,
+        preGainDb: Double,
+        volumeNormalizationEnabled: Bool,
+        targetLoudnessDb: Double
+    ) {
+        let settings = NormalizationSettings(
+            mode: AppModel.normalizationMode(forStoredValue: mode.rawValue),
+            preGainDb: preGainDb,
+            volumeNormalizationEnabled: volumeNormalizationEnabled,
+            targetLoudnessDb: targetLoudnessDb
+        )
+        settings.save(to: .standard)
+        audio.normalizationMode = settings.mode
+        audio.normalizationPreGainDb = settings.preGainDb
+        audio.volumeNormalizationEnabled = settings.volumeNormalizationEnabled
+        audio.volumeNormalizationTargetDb = settings.targetLoudnessDb
     }
 
     /// Seek the current track by a relative offset (seconds). Negative rewinds,
@@ -256,24 +272,32 @@ extension AppModel {
 
     // MARK: - Playback behaviour preferences (#116)
 
-    /// UserDefaults key for the "Gapless playback" toggle in the Playback
-    /// pane. Kept in sync with `PreferencesPlayback`'s `@AppStorage`.
-    private static let gaplessEnabledKey = "playback.gaplessEnabled"
-
     /// UserDefaults key for the "Stop after current track" toggle in the
     /// Playback pane. Kept in sync with `PreferencesPlayback`'s `@AppStorage`.
     private static let stopAfterCurrentKey = "playback.stopAfterCurrent"
 
-    /// Resolve the persisted gapless flag, defaulting to `true` when the key
-    /// has never been written. `UserDefaults.bool(forKey:)` returns `false`
-    /// for a missing key, which would silently invert this feature's
-    /// "default on" contract (the toggle ships on), so probe for the object
-    /// first — same pattern as `autoplayWhenQueueEndsDefault`.
+    /// The persisted gapless flag, default-on. Delegates to
+    /// `GaplessPreference` (LyrebirdAudio) — the single reader both this
+    /// queue-side gate and the engine's DSP-pipeline seeding share, so the
+    /// default-on contract can never drift between the two paths.
     static var gaplessEnabled: Bool {
-        guard UserDefaults.standard.object(forKey: gaplessEnabledKey) != nil else {
-            return true
+        GaplessPreference.isEnabled()
+    }
+
+    /// Apply a change to the "Gapless playback" toggle: persist it and push
+    /// it onto the live engine so the *current* transition honours the
+    /// choice. Turning it off strips a queued-ahead item (AVQueuePlayer) or
+    /// disarms the pipeline's buffered join (DSP); turning it on re-arms the
+    /// upcoming track on whichever path is active.
+    func setGapless(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: GaplessPreference.defaultsKey)
+        audio.applyGapless(enabled)
+        if enabled {
+            // Re-arm the AVQueuePlayer pre-load (the queue lookahead lives
+            // here, not in the engine). On the DSP path this is a no-op —
+            // `applyGapless` already re-armed the pipeline.
+            armNextTrackPreload()
         }
-        return UserDefaults.standard.bool(forKey: gaplessEnabledKey)
     }
 
     /// Read **and clear** the "Stop after current track" one-shot. Returns

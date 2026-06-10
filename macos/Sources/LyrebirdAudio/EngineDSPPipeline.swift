@@ -16,14 +16,22 @@ private let pipelineLog = Logger(subsystem: "org.lyrebird.desktop", category: "d
 ///     deck B: AVAudioPlayerNode → AVAudioMixerNode ─┘
 ///
 /// Exactly one deck is *active* (the current track) at any time. The second
-/// deck exists for crossfade (#41): the upcoming track is armed + buffered on
+/// deck exists for transitions: the upcoming track is armed + buffered on
 /// it, and at the fade window each deck's per-node `AVAudioMixerNode` ramps
-/// its `outputVolume` along the configured gain envelope — outgoing down,
-/// incoming up — through the shared blend → EQ → main-mixer stage, so the EQ
-/// applies to both sides of the overlap. With crossfade off (the default)
-/// the standby deck is never loaded and both fade mixers sit at unity gain,
-/// which is audibly (float-mix at 1.0) identical to the pre-#41 single-node
-/// graph.
+/// its `outputVolume` along the configured gain envelope (#41) — outgoing
+/// down, incoming up — through the shared blend → EQ → main-mixer stage, so
+/// the EQ applies to both sides of the overlap. With crossfade off but
+/// gapless on, the armed track still buffers ahead and takes over via the
+/// zero-fade join at the outgoing track's natural end — the buffered gapless
+/// transition. With both off the standby deck is never loaded and both fade
+/// mixers sit at unity gain, which is audibly (float-mix at 1.0) identical
+/// to the pre-#41 single-node graph.
+///
+/// Each deck's player node additionally carries the per-track loudness gain
+/// (ReplayGain / volume normalization): `AVAudioPlayerNode` conforms to
+/// `AVAudioMixing`, so `player.volume` is a gain stage at the player → fade
+/// mixer connection that the crossfade envelopes never touch — the fade math
+/// and the normalization math compose without fighting over one knob.
 ///
 /// The EQ ships **flat and bypassed** (`globalGain == 0`, every band
 /// `bypass == true`) so the engine path makes no audible DSP alteration —
@@ -165,6 +173,10 @@ public final class EngineDSPPipeline {
         var trackKey: String?
         /// Opaque album identity — same-album transitions zero-fade (#41).
         var albumKey: String?
+        /// Parsed loudness tags for the loaded track; nil until the owner's
+        /// metadata resolve lands (and again after unload). Cached so a
+        /// settings change mid-track re-applies without a re-fetch.
+        var loudnessGains: ReplayGain.Gains?
         /// Bumped per load/unload so a stale streamer's late callbacks
         /// (format-ready, finished, error, seek) can't cross tracks.
         var generation: Int = 0
@@ -210,6 +222,24 @@ public final class EngineDSPPipeline {
     // MARK: - Crossfade state (#41)
 
     private var crossfade = CrossfadeSettings()
+
+    /// Whether the buffered gapless join runs while crossfade is off. With
+    /// crossfade *on*, transitions already join (overlap, or zero-fade for
+    /// same-album pairs), so this knob only matters for the crossfade-off
+    /// case. Defaults to `false` so a bare pipeline preserves the pre-gapless
+    /// rebuild transitions; the owner seeds it from the user preference
+    /// (default on) at construction.
+    public private(set) var gaplessEnabled = false
+
+    /// Loudness settings driving each deck's per-track gain stage. Defaults
+    /// to all-off (unity gain everywhere).
+    private var normalization = NormalizationSettings()
+
+    /// Loudness tags resolved by the owner before their track was loaded on
+    /// a deck (the armed next track ahead of its prepare window). Consumed by
+    /// `loadTrack`; bounded so stale keys from rapid queue churn can't
+    /// accumulate.
+    private var pendingLoudnessGains: [String: ReplayGain.Gains] = [:]
 
     /// The owner-armed upcoming track, if any. Consumed at handoff.
     private var armed: ArmedNextTrack?
@@ -403,6 +433,7 @@ public final class EngineDSPPipeline {
         disarmNextTrack()
         pendingAdoptKey = nil
         handoffReceipt = nil
+        pendingLoudnessGains.removeAll()
         unload(deck: activeDeck)
         stopPositionTimer()
         engine.stop()
@@ -478,12 +509,51 @@ public final class EngineDSPPipeline {
 
     /// Drive the crossfade scheduler from user settings. Safe to call at any
     /// time; turning crossfade off mid-track disarms any pending next track
-    /// (a fade already in progress completes — it is audibly underway).
+    /// (a fade already in progress completes — it is audibly underway) —
+    /// unless gapless keeps the arm alive for the zero-fade join.
     public func applyCrossfade(_ settings: CrossfadeSettings) {
         crossfade = settings
-        if !settings.isEnabled {
+        if !settings.isEnabled, !gaplessEnabled {
             disarmNextTrack()
         }
+    }
+
+    /// Drive the gapless preference. Turning it off mid-track disarms a
+    /// pending next track only when crossfade isn't keeping it armed for an
+    /// overlap of its own.
+    public func applyGapless(_ enabled: Bool) {
+        gaplessEnabled = enabled
+        if !enabled, !crossfade.isEnabled {
+            disarmNextTrack()
+        }
+    }
+
+    /// Drive each deck's per-track loudness gain stage from user settings.
+    /// Safe to call at any time — both decks re-apply from their cached tags
+    /// immediately, so a mode/target change is audible mid-track without a
+    /// metadata re-fetch.
+    public func applyNormalization(_ settings: NormalizationSettings) {
+        normalization = settings
+        for deck in decks {
+            applyNormalizationGain(to: deck)
+        }
+    }
+
+    /// Hand the pipeline a track's parsed loudness tags. Applied immediately
+    /// when a deck holds the track; stashed for the upcoming `loadTrack`
+    /// otherwise (the armed next track resolves its tags before its prepare
+    /// window opens). Unknown keys are dropped when the stash fills — a lost
+    /// gain degrades to unity, never a wrong level.
+    public func provideLoudnessGains(_ gains: ReplayGain.Gains, forTrackKey key: String) {
+        if let deck = decks.first(where: { $0.trackKey == key }) {
+            deck.loudnessGains = gains
+            applyNormalizationGain(to: deck)
+            return
+        }
+        if pendingLoudnessGains.count >= 4 {
+            pendingLoudnessGains.removeAll()
+        }
+        pendingLoudnessGains[key] = gains
     }
 
     /// Whether the applied settings enable crossfade — the owner's cheap
@@ -492,12 +562,20 @@ public final class EngineDSPPipeline {
         crossfade.isEnabled
     }
 
-    /// Arm the upcoming track for a crossfaded transition. Replaces any
+    /// Whether the owner should resolve + arm the next track at all: either
+    /// transition feature (crossfade overlap, gapless buffered join) wants
+    /// the standby deck loaded ahead of the handoff.
+    public var transitionArmingEnabled: Bool {
+        crossfade.isEnabled || gaplessEnabled
+    }
+
+    /// Arm the upcoming track for a joined transition — crossfade overlap,
+    /// or the zero-fade gapless join when crossfade is off. Replaces any
     /// previously armed track; the streamer doesn't start until the prepare
     /// window opens (`CrossfadeSettings.prepareLeadSeconds` before the fade),
     /// so arming is cheap and re-arming after queue edits costs nothing.
     public func armNextTrack(_ next: ArmedNextTrack) {
-        guard crossfade.isEnabled else { return }
+        guard transitionArmingEnabled else { return }
         if let inFlight = prepStartedForKey, inFlight != next.key {
             // The armed target changed after its stream already started —
             // drop the stale prep so the window math re-prepares the right
@@ -548,6 +626,10 @@ public final class EngineDSPPipeline {
         deck.trackKey = trackKey
         deck.albumKey = albumKey
         deck.fadeMixer.outputVolume = initialGain
+        // Consume a loudness resolve that landed before this load (the armed
+        // next track's tags arrive at arm time, ahead of the prepare window).
+        deck.loudnessGains = trackKey.flatMap { pendingLoudnessGains.removeValue(forKey: $0) }
+        applyNormalizationGain(to: deck)
 
         let streamer = DSPTrackStreamer(
             url: url,
@@ -592,6 +674,19 @@ public final class EngineDSPPipeline {
         deck.durationSeconds = nil
         deck.trackKey = nil
         deck.albumKey = nil
+        // The loudness gain is per-track state: reset the player gain stage
+        // to unity so the next track never inherits the old track's level.
+        deck.loudnessGains = nil
+        deck.player.volume = 1
+    }
+
+    /// Re-derive a deck's player gain stage from its cached loudness tags
+    /// under the current settings. Unity when normalization resolves nothing
+    /// (settings off, tags missing, or no usable tag for the mode) — the
+    /// documented "leave the level untouched" contract.
+    private func applyNormalizationGain(to deck: Deck) {
+        let gain = deck.loudnessGains.flatMap { normalization.linearVolume(gains: $0) } ?? 1
+        deck.player.volume = gain
     }
 
     private func handleFormatReady(_ format: AVAudioFormat, deckIndex: Int) {
@@ -746,11 +841,12 @@ public final class EngineDSPPipeline {
         guard deckIndex == activeDeckIndex else { return }
 
         // Natural end of the active track. If an armed next track is fully
-        // buffered, take the zero-fade join (same-album rule, short tracks,
-        // or a fade window the position never crossed) instead of bouncing
+        // buffered, take the zero-fade join (the gapless transition; with
+        // crossfade on it also covers the same-album rule, short tracks, and
+        // a fade window the position never crossed) instead of bouncing
         // through the owner's rebuild path.
         if let armed,
-           crossfade.isEnabled,
+           transitionArmingEnabled,
            standbyReady,
            prepStartedForKey == armed.key,
            onShouldBeginCrossfade?() ?? true {
@@ -788,11 +884,18 @@ public final class EngineDSPPipeline {
 
     /// Driven by the 1 Hz position tick (playing only — the energy
     /// contract's existing cadence; no new timers while idle).
+    ///
+    /// With crossfade off but gapless on, `effectiveFadeDuration` resolves to
+    /// 0 — the scheduler then only ever opens the prepare window (buffer the
+    /// armed track on the standby deck), and the handoff happens at the
+    /// track's natural end via the zero-fade join. Tracks with no usable
+    /// duration metadata never open the window and degrade to the owner's
+    /// rebuild path.
     private func evaluateCrossfadeWindow() {
         guard state == .playing,
               retiringDeckIndex == nil,
               let armed,
-              crossfade.isEnabled,
+              transitionArmingEnabled,
               let duration = activeDeck.durationSeconds, duration > 0
         else { return }
 
@@ -1187,5 +1290,15 @@ public final class EngineDSPPipeline {
 
     /// Test seam: whether a fade (auto or quick-switch) is in flight.
     var isFadeInFlightForTesting: Bool { retiringDeckIndex != nil }
+
+    /// Test seam: per-deck player gain stages (the normalization knob the
+    /// fade envelopes never touch), deck order (A, B).
+    var deckPlayerGainsForTesting: [Float] {
+        decks.map { $0.player.volume }
+    }
+
+    /// Test seam: number of loudness resolves stashed for tracks not yet
+    /// loaded on a deck.
+    var pendingLoudnessGainsCountForTesting: Int { pendingLoudnessGains.count }
     #endif
 }

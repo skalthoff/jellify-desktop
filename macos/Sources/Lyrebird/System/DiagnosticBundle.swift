@@ -120,6 +120,8 @@ enum DiagnosticBundle {
         "playback.preferredCodec",
         "playback.stopAfterCurrent",
         "playback.streamingQuality",
+        "playback.volumeNormalizationEnabled",
+        "playback.volumeNormalizationTargetDb",
     ]
 
     // MARK: - Redaction
