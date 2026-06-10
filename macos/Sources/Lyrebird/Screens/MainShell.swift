@@ -391,6 +391,13 @@ struct MainShell: View {
         .sheet(isPresented: $model.isShowingInstantMixPicker) {
             InstantMixSheet(model: model)
         }
+        // New Playlist sheet — presents the name field + Public/Private
+        // visibility toggle. Triggered from ⌘N / the sidebar "+" button
+        // via `AppModel.beginNewPlaylist()`.
+        .sheet(isPresented: $model.showingNewPlaylistSheet) {
+            NewPlaylistSheet()
+                .environment(model)
+        }
         // Playlist-delete confirmation — see #98 / #131. Triggered from
         // `PlaylistContextMenu` via `AppModel.confirmDelete(playlist:)`.
         .confirmationDialog(

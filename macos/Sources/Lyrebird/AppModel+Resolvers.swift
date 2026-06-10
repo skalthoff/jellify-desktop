@@ -308,7 +308,10 @@ extension AppModel {
             trackCount: trackCount,
             runtimeTicks: runtimeTicks,
             imageTag: imageTag,
-            userData: nil
+            userData: nil,
+            // Resolver uses fetch_item (GET /Items?Ids=), which does not
+            // return OpenAccess; default to true (Jellyfin's default).
+            isPublic: true
         )
     }
 

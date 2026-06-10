@@ -158,7 +158,7 @@ extension AppModel {
         guard !ids.isEmpty else { return }
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: trimmed, itemIds: ids)
+                try core.createPlaylist(name: trimmed, itemIds: ids, isPublic: true)
             }.value
             // Some older Jellyfin builds ignore the initial `ItemIds` on
             // `create_playlist` and return an empty playlist. Follow up

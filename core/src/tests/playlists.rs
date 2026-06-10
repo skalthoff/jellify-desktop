@@ -302,7 +302,7 @@ async fn create_playlist_posts_pascal_case_body_and_returns_id() {
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
     let id = client
-        .create_playlist("Road Trip", &["t1", "t2", "t3"])
+        .create_playlist("Road Trip", &["t1", "t2", "t3"], true)
         .await
         .unwrap();
     assert_eq!(id, "new-playlist-id");
@@ -388,7 +388,10 @@ async fn create_playlist_with_empty_ids_sends_empty_array() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let id = client.create_playlist("Empty List", &[]).await.unwrap();
+    let id = client
+        .create_playlist("Empty List", &[], true)
+        .await
+        .unwrap();
     assert_eq!(id, "empty-playlist-id");
 
     let requests = server.received_requests().await.unwrap();
@@ -424,7 +427,7 @@ async fn create_playlist_propagates_server_errors() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let err = client.create_playlist("x", &[]).await.unwrap_err();
+    let err = client.create_playlist("x", &[], true).await.unwrap_err();
     match err {
         crate::error::LyrebirdError::Server { status, .. } => assert_eq!(status, 500),
         other => panic!("expected Server 500, got {other:?}"),
@@ -454,7 +457,7 @@ async fn create_playlist_requires_authenticated_session() {
     // a real host.
     let server = MockServer::start().await;
     let client = mock_client(&server.uri());
-    let err = client.create_playlist("x", &[]).await.unwrap_err();
+    let err = client.create_playlist("x", &[], true).await.unwrap_err();
     assert!(
         matches!(err, crate::error::LyrebirdError::NotAuthenticated),
         "expected NotAuthenticated, got {err:?}"
@@ -700,7 +703,10 @@ async fn create_playlist_never_sends_start_index() {
 
     let mut client = mock_client(&server.uri());
     client.authenticate_by_name("n", "pw").await.unwrap();
-    let id = client.create_playlist("Appended", &["t1"]).await.unwrap();
+    let id = client
+        .create_playlist("Appended", &["t1"], true)
+        .await
+        .unwrap();
     assert_eq!(id, "no-pos-pl-id");
 
     let requests = server.received_requests().await.unwrap();
@@ -1338,4 +1344,153 @@ async fn playlists_containing_artist_zero_limit_is_empty() {
         .await
         .unwrap();
     assert!(result.is_empty());
+}
+
+// ============================================================================
+// Playlist visibility — IsPublic in create + set_playlist_visibility
+// ============================================================================
+
+/// `create_playlist` must send `IsPublic` in the POST body.
+#[tokio::test]
+async fn create_playlist_sends_is_public_in_body() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "Id": "vis-pl-id" })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+
+    // Create a private playlist.
+    let id = client
+        .create_playlist("Private Mix", &[], false)
+        .await
+        .unwrap();
+    assert_eq!(id, "vis-pl-id");
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists")
+        .expect("expected POST to /Playlists");
+    let body: serde_json::Value =
+        serde_json::from_slice(&post.body).expect("body should be valid JSON");
+    // IsPublic=false must appear in the body so the server stores the playlist
+    // as private. Without this field the server defaults to public.
+    assert_eq!(
+        body.get("IsPublic").and_then(|v| v.as_bool()),
+        Some(false),
+        "IsPublic must be false in the body when creating a private playlist, got: {body}"
+    );
+}
+
+/// `create_playlist` with `is_public=true` must send `IsPublic: true`.
+#[tokio::test]
+async fn create_playlist_sends_is_public_true_for_public_playlist() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "Id": "pub-pl-id" })))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .create_playlist("Public Mix", &[], true)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists")
+        .expect("expected POST to /Playlists");
+    let body: serde_json::Value =
+        serde_json::from_slice(&post.body).expect("body should be valid JSON");
+    assert_eq!(
+        body.get("IsPublic").and_then(|v| v.as_bool()),
+        Some(true),
+        "IsPublic must be true in the body when creating a public playlist, got: {body}"
+    );
+}
+
+/// `set_playlist_visibility` must POST to `/Playlists/{id}` with `IsPublic`
+/// in the body and `userId` in the query string.
+#[tokio::test]
+async fn set_playlist_visibility_posts_is_public_with_user_id() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/Users/AuthenticateByName"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "AccessToken": "t", "ServerId": "s", "ServerName": "S",
+            "User": { "Id": "u1", "Name": "n", "ServerId": "s", "PrimaryImageTag": null }
+        })))
+        .mount(&server)
+        .await;
+    Mock::given(method("POST"))
+        .and(path("/Playlists/pl-55"))
+        .and(query_param("userId", "u1"))
+        .respond_with(ResponseTemplate::new(204))
+        .mount(&server)
+        .await;
+
+    let mut client = mock_client(&server.uri());
+    client.authenticate_by_name("n", "pw").await.unwrap();
+    client
+        .set_playlist_visibility("pl-55", false)
+        .await
+        .unwrap();
+
+    let requests = server.received_requests().await.unwrap();
+    let post = requests
+        .iter()
+        .find(|r| r.method.as_str() == "POST" && r.url.path() == "/Playlists/pl-55")
+        .expect("expected POST to /Playlists/pl-55");
+
+    // Body must carry IsPublic=false.
+    let body: serde_json::Value =
+        serde_json::from_slice(&post.body).expect("body should be valid JSON");
+    assert_eq!(
+        body.get("IsPublic").and_then(|v| v.as_bool()),
+        Some(false),
+        "IsPublic must be false in the update body, got: {body}"
+    );
+
+    // UserId must appear in the query string.
+    let q = post.url.query().unwrap_or_default();
+    assert!(q.contains("userId=u1"), "userId must be in query: {q}");
+}
+
+/// `set_playlist_visibility` must require an authenticated session.
+#[tokio::test]
+async fn set_playlist_visibility_requires_authenticated_session() {
+    let server = MockServer::start().await;
+    let client = mock_client(&server.uri());
+    let err = client
+        .set_playlist_visibility("pl-1", true)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, crate::error::LyrebirdError::NotAuthenticated),
+        "expected NotAuthenticated, got {err:?}"
+    );
 }

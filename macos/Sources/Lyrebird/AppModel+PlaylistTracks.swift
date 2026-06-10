@@ -137,7 +137,8 @@ extension AppModel {
                 trackCount: UInt32(newCount),
                 runtimeTicks: p.runtimeTicks,
                 imageTag: p.imageTag,
-                userData: p.userData
+                userData: p.userData,
+                isPublic: p.isPublic
             )
         }
         // Capture the optimistic state so we can roll back on server failure.
@@ -174,7 +175,8 @@ extension AppModel {
                         trackCount: p.trackCount + UInt32(removedSnapshot.count),
                         runtimeTicks: p.runtimeTicks,
                         imageTag: p.imageTag,
-                        userData: p.userData
+                        userData: p.userData,
+                        isPublic: p.isPublic
                     )
                 }
                 self.pendingPlaylistRemoval = nil
@@ -214,7 +216,8 @@ extension AppModel {
                 trackCount: p.trackCount + UInt32(reinserted.count),
                 runtimeTicks: p.runtimeTicks,
                 imageTag: p.imageTag,
-                userData: p.userData
+                userData: p.userData,
+                isPublic: p.isPublic
             )
         }
         // Capture the count of optimistically-reinserted tracks so we can
@@ -250,7 +253,8 @@ extension AppModel {
                         trackCount: UInt32(newCount),
                         runtimeTicks: p.runtimeTicks,
                         imageTag: p.imageTag,
-                        userData: p.userData
+                        userData: p.userData,
+                        isPublic: p.isPublic
                     )
                 }
                 self.errorMessage = LyrebirdErrorPresenter.message(
@@ -291,7 +295,8 @@ extension AppModel {
                 trackCount: p.trackCount + UInt32(trackIds.count),
                 runtimeTicks: p.runtimeTicks,
                 imageTag: p.imageTag,
-                userData: p.userData
+                userData: p.userData,
+                isPublic: p.isPublic
             )
         }
         let bumpedCount = trackIds.count
@@ -326,7 +331,8 @@ extension AppModel {
                         trackCount: UInt32(newCount),
                         runtimeTicks: p.runtimeTicks,
                         imageTag: p.imageTag,
-                        userData: p.userData
+                        userData: p.userData,
+                        isPublic: p.isPublic
                     )
                 }
                 self.errorMessage = LyrebirdErrorPresenter.message(

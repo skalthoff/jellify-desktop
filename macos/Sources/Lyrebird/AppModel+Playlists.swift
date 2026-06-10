@@ -329,15 +329,13 @@ extension AppModel {
 
     // MARK: - Sidebar playlist CRUD (BATCH-06b, #71 / #73 / #75)
 
-    /// Drop a placeholder row into edit mode so Cmd+N feels instant. The
-    /// placeholder is identified by `sidebarNewPlaylistSentinel`; the
-    /// sidebar renders a single TextField in its slot. Committing via
-    /// `commitSidebarPlaylistEdit` turns this into a real `create_playlist`
-    /// call; Escape / empty-blur bails out via `cancelSidebarPlaylistEdit`.
-    /// See issue #71.
+    /// Present the New Playlist sheet. The sheet owns the name field and
+    /// the Public / Private visibility toggle; on confirm it calls
+    /// `createPlaylist(name:isPublic:)`. The ⌘N menu item and the sidebar
+    /// "+" button both funnel through this so the toggle is always reachable
+    /// at creation time.
     func beginNewPlaylist() {
-        sidebarEditingPlaylistId = Self.sidebarNewPlaylistSentinel
-        sidebarEditingDraft = ""
+        showingNewPlaylistSheet = true
     }
 
     /// Dismiss the inline TextField without saving. Used for Escape /
@@ -370,16 +368,19 @@ extension AppModel {
     }
 
     /// Create a new (empty) playlist on the server and prepend it to the
+    /// Create a new (empty) playlist on the server and prepend it to the
     /// in-memory `playlists` list so the sidebar surfaces it immediately.
-    /// Backed by `core.createPlaylist(name:, itemIds:)` — see #126.
-    /// A thin optimistic update: if the core call fails we fall back to
-    /// an `errorMessage` and do not insert the row.
-    func createPlaylist(name: String) async {
+    /// Backed by `core.createPlaylist(name:itemIds:isPublic:)` — see #126.
+    /// `isPublic` maps to Jellyfin's `IsPublic` field; `true` makes the
+    /// playlist visible to all server users, `false` restricts it to the
+    /// creating user. A thin optimistic update: if the core call fails we
+    /// fall back to an `errorMessage` and do not insert the row.
+    func createPlaylist(name: String, isPublic: Bool = true) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: trimmed, itemIds: [])
+                try core.createPlaylist(name: trimmed, itemIds: [], isPublic: isPublic)
             }.value
             // The core returns only the id; build a minimal `Playlist`
             // record client-side rather than refetching. An `imageTag` of
@@ -391,11 +392,50 @@ extension AppModel {
                 trackCount: 0,
                 runtimeTicks: 0,
                 imageTag: nil,
-                userData: nil
+                userData: nil,
+                isPublic: isPublic
             )
             playlists.insert(newPlaylist, at: 0)
         } catch {
             errorMessage = "Create playlist failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Set the public / private visibility of an existing playlist. Optimistically
+    /// updates the in-memory record for instant UI feedback, then persists via
+    /// `core.setPlaylistVisibility`. Rolls back and surfaces `errorMessage` on
+    /// failure, matching the rc12 playlist-mutation pattern.
+    func setPlaylistVisibility(playlist: Playlist, isPublic: Bool) {
+        guard let idx = playlists.firstIndex(where: { $0.id == playlist.id }) else { return }
+        let existing = playlists[idx]
+        guard isPublic != existing.isPublic else { return }
+        // Optimistic update.
+        playlists[idx] = Playlist(
+            id: existing.id,
+            name: existing.name,
+            trackCount: existing.trackCount,
+            runtimeTicks: existing.runtimeTicks,
+            imageTag: existing.imageTag,
+            userData: existing.userData,
+            isPublic: isPublic
+        )
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) { [core] in
+                    try core.setPlaylistVisibility(playlistId: playlist.id, isPublic: isPublic)
+                }.value
+                serverReachability.noteSuccess()
+            } catch {
+                if handleAuthError(error) { return }
+                // Rollback the optimistic visibility change on failure.
+                if let rollbackIdx = playlists.firstIndex(where: { $0.id == playlist.id }) {
+                    playlists[rollbackIdx] = existing
+                }
+                errorMessage = "Visibility update failed: \(error.localizedDescription)"
+                if ServerReachability.shouldCount(error: error) {
+                    serverReachability.noteFailure()
+                }
+            }
         }
     }
 
@@ -417,7 +457,8 @@ extension AppModel {
             trackCount: existing.trackCount,
             runtimeTicks: existing.runtimeTicks,
             imageTag: existing.imageTag,
-            userData: existing.userData
+            userData: existing.userData,
+            isPublic: existing.isPublic
         )
         Task {
             do {
@@ -457,9 +498,11 @@ extension AppModel {
         let tracks = await loadAllPlaylistTracks(playlistID: source.id)
         let trackIds = tracks.map(\.id)
         let copyName = "\(source.name) Copy"
+        // Duplicate inherits the source playlist's visibility.
+        let sourceIsPublic = source.isPublic
         do {
             let newId = try await Task.detached(priority: .userInitiated) { [core] in
-                try core.createPlaylist(name: copyName, itemIds: trackIds)
+                try core.createPlaylist(name: copyName, itemIds: trackIds, isPublic: sourceIsPublic)
             }.value
             // Core's `create_playlist` can accept seed items directly; the
             // `itemIds` path above covers the common case. We still build a
@@ -470,7 +513,8 @@ extension AppModel {
                 trackCount: UInt32(trackIds.count),
                 runtimeTicks: source.runtimeTicks,
                 imageTag: nil,
-                userData: nil
+                userData: nil,
+                isPublic: sourceIsPublic
             )
             playlists.insert(newPlaylist, at: 0)
             // Prime the tracks cache so the detail view doesn't have to
