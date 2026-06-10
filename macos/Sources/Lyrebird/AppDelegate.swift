@@ -176,10 +176,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Step 2 (synchronous, main actor): capture queue state to
-        // UserDefaults. Must run before the player is torn down further
-        // (the position is still readable at this point because `stop()`
-        // clears the player items but `status.positionSeconds` is a core
-        // mirror that `core.stop()` zeroes after our call).
+        // UserDefaults. `status.positionSeconds` still holds the last
+        // position tick — player-event delivery re-enters the main actor
+        // asynchronously and cannot land while this method occupies it.
         if steps.contains(.persistQueue) {
             model.persistQueueSnapshot()
         }
