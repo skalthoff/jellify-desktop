@@ -152,6 +152,7 @@ extension AppModel {
         let duration = max(0, status.durationSeconds)
         let target = status.positionSeconds + delta
         let clamped = max(0, duration > 0 ? min(target, duration) : target)
+        applySeekPosition(clamped)
         audio.seek(toSeconds: clamped)
     }
 
@@ -163,7 +164,24 @@ extension AppModel {
         guard status.currentTrack != nil else { return }
         let duration = max(0, status.durationSeconds)
         let clamped = max(0, duration > 0 ? min(target, duration) : target)
+        applySeekPosition(clamped)
         audio.seek(toSeconds: clamped)
+    }
+
+    /// Mirror a just-issued seek target onto the reactive surface and into
+    /// the core's position bookkeeping.
+    ///
+    /// While **playing**, the engine's next 1 Hz time-observer tick would do
+    /// both anyway; while **paused** that tick never fires (`rate == 0`), so
+    /// without this a paused scrub snapped the progress bar back to the
+    /// pre-seek position — and, with the status poll retired (#433), it
+    /// would stay wrong until resume rather than for one tick. Writing the
+    /// core via `markPosition` keeps `status()` snapshots and the 5 s
+    /// heartbeat's progress reports agreeing with what the user sees; it is
+    /// event-silent by design, so no push loops back from this.
+    private func applySeekPosition(_ seconds: Double) {
+        status.positionSeconds = seconds
+        core.markPosition(seconds: seconds)
     }
 
     func togglePlayPause() {
