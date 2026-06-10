@@ -119,6 +119,11 @@ pub struct Playlist {
     /// favorite flag, play count, last-played date, etc. `None` when the
     /// caller did not request `Fields=UserData` or the server omitted it.
     pub user_data: Option<UserItemData>,
+    /// Whether this playlist is publicly visible to other server users.
+    /// Jellyfin reports this as `OpenAccess` on `GET /Playlists/{id}`;
+    /// the create / update body uses `IsPublic`. Defaults to `true` when
+    /// the server omits the field (pre-10.9 behaviour, public by default).
+    pub is_public: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, uniffi::Record)]

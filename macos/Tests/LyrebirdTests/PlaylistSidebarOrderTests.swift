@@ -174,7 +174,8 @@ final class PlaylistSidebarOrderTests: XCTestCase {
             trackCount: 0,
             runtimeTicks: 0,
             imageTag: nil,
-            userData: nil
+            userData: nil,
+            isPublic: true
         )
     }
 }

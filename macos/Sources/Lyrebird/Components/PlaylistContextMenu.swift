@@ -56,6 +56,17 @@ struct PlaylistContextMenu: View {
             model.requestDuplicate(playlist: playlist)
         }
         .disabled(isCopying)
+        // Visibility toggle — flips the playlist between Public (globe) and
+        // Private (lock). Optimistic with server rollback on failure.
+        if playlist.isPublic {
+            Button("Make Private", systemImage: "lock.fill") {
+                model.setPlaylistVisibility(playlist: playlist, isPublic: false)
+            }
+        } else {
+            Button("Make Public", systemImage: "globe") {
+                model.setPlaylistVisibility(playlist: playlist, isPublic: true)
+            }
+        }
         Button("Delete…", systemImage: "trash", role: .destructive) {
             model.confirmDelete(playlist: playlist)
         }

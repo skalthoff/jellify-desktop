@@ -210,7 +210,6 @@ struct Sidebar: View {
 
     @ViewBuilder
     private var playlistsSection: some View {
-        let editingNew = model.sidebarEditingPlaylistId == AppModel.sidebarNewPlaylistSentinel
         // Sort the live playlists by the persisted manual order. New playlists
         // append; deleted ones prune — see `PlaylistSidebarOrder`.
         let orderedPlaylists = PlaylistSidebarOrder.order(
@@ -247,6 +246,7 @@ struct Sidebar: View {
                 .accessibilityAddTraits(.isButton)
 
                 Spacer()
+                // "+" opens the New Playlist sheet (name + Public/Private toggle).
                 Button { model.beginNewPlaylist() } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 11, weight: .bold))
@@ -268,13 +268,6 @@ struct Sidebar: View {
                 // match the rest of the sidebar: plain rows, no separators, a
                 // clear background so the sidebar material shows through.
                 List {
-                    // In-progress new-playlist row, shown at the top so the
-                    // user sees where the new item will land. Not movable.
-                    if editingNew {
-                        newPlaylistEditRow
-                            .listRowSidebarStyling()
-                            .moveDisabled(true)
-                    }
                     ForEach(orderedPlaylists, id: \.id) { playlist in
                         playlistRow(playlist)
                             .listRowSidebarStyling()
@@ -296,8 +289,8 @@ struct Sidebar: View {
                 .frame(maxHeight: 280)
             }
         }
-        // #585: Allow space-bar input in the inline rename / new-playlist
-        // TextField even while the global Play/Pause ⎵ shortcut is active.
+        // #585: Allow space-bar input in the inline rename TextField even
+        // while the global Play/Pause ⎵ shortcut is active.
         .spaceKeyGuardForTextField()
     }
 
@@ -454,6 +447,15 @@ struct Sidebar: View {
                     .progressViewStyle(.circular)
                     .controlSize(.mini)
                     .tint(Theme.ink3)
+            } else if !playlist.isPublic {
+                // Lock icon — signals that this playlist is private (not
+                // visible to other server users). Hidden while a duplicate
+                // round trip is in flight to avoid icon overlap.
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(Theme.ink3)
+                    .accessibilityLabel("Private playlist")
+                    .help("Private — only visible to you")
             }
         }
         .padding(.horizontal, 10)
@@ -479,7 +481,7 @@ struct Sidebar: View {
             model.goToPlaylist(playlist)
         }
         .contextMenu { PlaylistContextMenu(playlist: playlist) }
-        .accessibilityLabel(playlist.name)
+        .accessibilityLabel(playlist.isPublic ? playlist.name : "\(playlist.name), Private")
         .accessibilityAddTraits(isActiveScreen ? .isSelected : [])
     }
 

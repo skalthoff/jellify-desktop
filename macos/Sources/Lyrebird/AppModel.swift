@@ -691,6 +691,13 @@ final class AppModel {
     /// this set. Cleared on success or error. See `duplicatePlaylist`.
     var sidebarCopyingPlaylistIds: Set<String> = []
 
+    // MARK: - New Playlist sheet
+
+    /// When `true` the New Playlist sheet is presented. The sheet owns the
+    /// name field + Public/Private toggle; on confirm it calls
+    /// `createPlaylist(name:isPublic:)` and dismisses.
+    var showingNewPlaylistSheet: Bool = false
+
     // MARK: - Mini Player (⌘⌥P)
 
     /// UserDefaults key for the persisted always-on-top preference. AppModel is

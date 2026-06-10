@@ -2261,7 +2261,12 @@ impl JellyfinClient {
     ///
     /// Requires an authenticated session; returns
     /// [`LyrebirdError::NotAuthenticated`] if no `user_id` is set.
-    pub async fn create_playlist(&self, name: &str, item_ids: &[&str]) -> Result<String> {
+    pub async fn create_playlist(
+        &self,
+        name: &str,
+        item_ids: &[&str],
+        is_public: bool,
+    ) -> Result<String> {
         let user_id = self
             .user_id
             .as_ref()
@@ -2272,6 +2277,7 @@ impl JellyfinClient {
             ids: item_ids.iter().map(|s| s.to_string()).collect(),
             user_id: user_id.clone(),
             media_type: "Audio".to_string(),
+            is_public,
         };
         let resp = self
             .send_mutation_no_retry(|| {
@@ -2284,6 +2290,34 @@ impl JellyfinClient {
             .await?;
         let result: CreatePlaylistResult = resp.json().await?;
         Ok(result.id)
+    }
+
+    /// Update a playlist's `IsPublic` visibility flag via
+    /// `POST /Playlists/{id}?userId={userId}`.
+    ///
+    /// Jellyfin's dedicated Playlists endpoint accepts a lightweight body
+    /// with just `IsPublic`; it does NOT require the full item round-trip
+    /// that `rename_playlist` uses. Responds 204 on success.
+    ///
+    /// Requires an authenticated session; returns
+    /// [`LyrebirdError::NotAuthenticated`] if no token is set.
+    pub async fn set_playlist_visibility(&self, playlist_id: &str, is_public: bool) -> Result<()> {
+        let user_id = self
+            .user_id
+            .as_ref()
+            .ok_or(LyrebirdError::NotAuthenticated)?;
+        let mut url = self.endpoint(&format!("Playlists/{playlist_id}"))?;
+        url.query_pairs_mut().append_pair("userId", user_id);
+        let body = UpdatePlaylistBody { is_public };
+        self.send_with_retry(|| {
+            Ok(self
+                .http
+                .post(url.clone())
+                .headers(self.build_headers()?)
+                .json(&body))
+        })
+        .await?;
+        Ok(())
     }
 
     /// Report current playback progress to Jellyfin. Jellify calls this
@@ -3093,6 +3127,18 @@ struct CreatePlaylistBody {
     user_id: String,
     #[serde(rename = "MediaType")]
     media_type: String,
+    #[serde(rename = "IsPublic")]
+    is_public: bool,
+}
+
+/// Body for `POST /Playlists/{id}` (update visibility / name via the
+/// Playlists-specific endpoint). Only `IsPublic` is exposed here; name
+/// changes still go through the heavier `POST /Items/{id}` rename path
+/// so existing metadata is preserved in the round-trip.
+#[derive(Serialize)]
+struct UpdatePlaylistBody {
+    #[serde(rename = "IsPublic")]
+    is_public: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3375,6 +3421,11 @@ impl From<RawItem> for Playlist {
             runtime_ticks: r.runtime_ticks,
             image_tag: r.image_tags.get("Primary").cloned(),
             user_data,
+            // The standard Items list endpoint does not return OpenAccess;
+            // default to true (Jellyfin's server default) until the caller
+            // explicitly fetches the single-playlist detail via
+            // `GET /Playlists/{id}`.
+            is_public: true,
         }
     }
 }

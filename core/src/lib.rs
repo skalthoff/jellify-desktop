@@ -1020,6 +1020,11 @@ impl LyrebirdCore {
     /// `item_ids` may be empty to create an empty playlist. Errors with
     /// [`LyrebirdError::NotAuthenticated`] if no session is active.
     ///
+    /// `is_public` maps to Jellyfin's `IsPublic` field in `POST /Playlists`;
+    /// pass `true` for a playlist visible to all server users, `false` to
+    /// restrict it to the creating user. Defaults to `true` on older server
+    /// versions that ignore the field.
+    ///
     /// There is no positional-insert parameter: `POST /Playlists` has no
     /// server-side `StartIndex` semantics, so the seed `item_ids` are
     /// appended in order. Positional insert is deferred to a dedicated
@@ -1028,10 +1033,27 @@ impl LyrebirdCore {
         &self,
         name: String,
         item_ids: Vec<String>,
+        is_public: bool,
     ) -> std::result::Result<String, LyrebirdError> {
         self.with_client(|c| {
             let id_refs: Vec<&str> = item_ids.iter().map(String::as_str).collect();
-            self.runtime.block_on(c.create_playlist(&name, &id_refs))
+            self.runtime
+                .block_on(c.create_playlist(&name, &id_refs, is_public))
+        })
+    }
+
+    /// Update a playlist's public / private visibility flag. Uses
+    /// `POST /Playlists/{id}?userId={userId}` with `{"IsPublic": bool}`.
+    /// Callers should update their local `Playlist.is_public` on success.
+    /// Errors with [`LyrebirdError::NotAuthenticated`] if no session is active.
+    pub fn set_playlist_visibility(
+        &self,
+        playlist_id: String,
+        is_public: bool,
+    ) -> std::result::Result<(), LyrebirdError> {
+        self.with_client(|c| {
+            self.runtime
+                .block_on(c.set_playlist_visibility(&playlist_id, is_public))
         })
     }
 
