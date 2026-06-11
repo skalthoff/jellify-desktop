@@ -233,6 +233,16 @@ final class CrashReporterDecisionTests: XCTestCase {
         XCTAssertNil(result, "breadcrumbs carrying a url data field must be dropped")
     }
 
+    func testAllowlistIsExactlyTheDocumentedSet() {
+        // Pin the set so adding or dropping a key is a conscious test edit —
+        // silently dropping `backtrace` would gut Rust panic reports, and a
+        // new key widens what can leave the process.
+        XCTAssertEqual(
+            CrashReporter.allowedBreadcrumbDataKeys,
+            ["action", "screen", "duration_ms", "error_category", "backtrace"]
+        )
+    }
+
     func testKeptBreadcrumbDataIsScrubbedToAllowlist() {
         // A populated payload mixing whitelisted bookkeeping with smuggled
         // library metadata: only the allowlisted keys may survive.

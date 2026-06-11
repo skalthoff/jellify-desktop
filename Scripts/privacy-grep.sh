@@ -16,8 +16,10 @@ if grep -rnE 'tracing::(trace|debug|info|warn|error)!\([^)]*\b(track|album|artis
   fail=1
 fi
 
-# Swift: breadcrumb payload lines carrying the same fields.
-if grep -rnE '(Breadcrumb\(|addBreadcrumb|crumb\.data)[^"]*\b(track|album|artist|user)\.name' macos/Sources --include='*.swift'; then
+# Swift: breadcrumb payload lines carrying the same fields. Tests are in
+# scope too — a fixture that interpolates a real name field would
+# normalize the pattern the gate exists to keep out.
+if grep -rnE '(Breadcrumb\(|addBreadcrumb|crumb\.data)[^"]*\b(track|album|artist|user)\.name' macos/Sources macos/Tests --include='*.swift'; then
   fail=1
 fi
 

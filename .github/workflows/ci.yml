@@ -268,7 +268,7 @@ jobs:
   ci:
     name: CI
     if: always()
-    needs: [fmt, clippy, test, docs, msrv, macos-app, windows]
+    needs: [fmt, privacy, clippy, test, docs, msrv, macos-app, windows]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job failed or was cancelled
