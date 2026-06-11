@@ -296,7 +296,12 @@ jobs:
             exit 0
           fi
 
-          mapfile -t delta_files < "$DELTA_MANIFEST"
+          # Read the manifest line-by-line; `mapfile` is bash-4-only and the
+          # macOS runners ship /bin/bash 3.2, where it exit-127s the job.
+          delta_files=()
+          while IFS= read -r line; do
+            [[ -n "$line" ]] && delta_files+=("$line")
+          done < "$DELTA_MANIFEST"
           if [[ ${#delta_files[@]} -eq 0 ]]; then
             echo "Delta manifest is empty — no delta files to upload."
             exit 0
