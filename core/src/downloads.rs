@@ -272,6 +272,22 @@ pub fn delete(db: &Database, track_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Delete every download: truncate the `downloads` table and unlink each
+/// row's on-disk file. Logout / server-switch cleanup — rows are keyed on
+/// server-specific track ids, so an entry surviving into a session against a
+/// different server would list the old server's items and report the old ids
+/// on offline playback.
+///
+/// File unlinks are best-effort, matching [`delete`]; a row whose fetch never
+/// completed has no `local_path` and only its `.part` leftover is attempted.
+pub fn clear_all(db: &Database) -> Result<()> {
+    for path in db.downloads_clear()? {
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(Path::new(&path).with_extension("part"));
+    }
+    Ok(())
+}
+
 /// Record an enqueue: snapshot the track into the `downloads` table in the
 /// `queued` state. Does not fetch bytes — [`fetch`] does that. Separated so the
 /// UI can optimistically show a queued badge the instant the user taps,
