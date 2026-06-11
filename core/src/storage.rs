@@ -21,6 +21,37 @@ impl Database {
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         conn.pragma_update(None, "synchronous", "NORMAL")?;
+        // Large-library tuning (#430). The page cache default (~2 MB) thrashes
+        // on a 20k-album cache walk; -20000 = ~20 MB, sized so a full
+        // `cache_list` page read stays in memory. `temp_store = MEMORY` keeps
+        // ORDER BY spill sorts off disk, and the 256 MB read-only mmap turns
+        // sequential cache scans into page-cache reads. `analysis_limit`
+        // bounds every `PRAGMA optimize` pass (run after bulk cache writes)
+        // so it never degrades into a full-table ANALYZE on the UI's watch —
+        // the four values together are SQLite's documented recipe for
+        // long-lived desktop connections.
+        conn.pragma_update(None, "cache_size", -20000)?;
+        conn.pragma_update(None, "temp_store", "MEMORY")?;
+        conn.pragma_update(None, "mmap_size", 268_435_456_i64)?;
+        conn.pragma_update(None, "analysis_limit", 400)?;
+        let db = Database {
+            conn: Mutex::new(conn),
+        };
+        db.migrate()?;
+        // Seed planner statistics for any table still missing them (cheap
+        // no-op when `sqlite_stat1` is already populated, bounded by
+        // `analysis_limit` otherwise).
+        db.optimize()?;
+        Ok(db)
+    }
+
+    pub fn in_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        conn.pragma_update(None, "foreign_keys", "ON")?;
+        // Match the on-disk connection's bounded-ANALYZE setting so the
+        // `optimize()` calls sprinkled through the write paths behave the
+        // same under test as in the app.
+        conn.pragma_update(None, "analysis_limit", 400)?;
         let db = Database {
             conn: Mutex::new(conn),
         };
@@ -28,14 +59,27 @@ impl Database {
         Ok(db)
     }
 
-    pub fn in_memory() -> Result<Self> {
-        let conn = Connection::open_in_memory()?;
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        let db = Database {
-            conn: Mutex::new(conn),
-        };
-        db.migrate()?;
-        Ok(db)
+    /// Run `PRAGMA optimize` — SQLite's self-tuning hook that re-ANALYZEs
+    /// exactly the tables whose statistics are missing or stale. Bounded by
+    /// the `analysis_limit` set at open, so a pass over the 20k-row caches
+    /// costs microseconds when there's nothing to do and a bounded sample
+    /// scan when there is.
+    ///
+    /// Called at open (seeds stats on first launch) and after bulk
+    /// `cache_upsert` batches (the only writes big enough to skew the
+    /// planner). The process-lifetime connection never closes cleanly on
+    /// quit, so the usual run-at-close advice doesn't apply here.
+    pub fn optimize(&self) -> Result<()> {
+        self.conn.lock().execute_batch("PRAGMA optimize;")?;
+        Ok(())
+    }
+
+    /// Test seam: run `f` against the raw connection. Lets the pragma and
+    /// `EXPLAIN QUERY PLAN` regression tests inspect connection state without
+    /// growing the public surface.
+    #[cfg(test)]
+    pub(crate) fn with_conn<T>(&self, f: impl FnOnce(&Connection) -> T) -> T {
+        f(&self.conn.lock())
     }
 
     fn migrate(&self) -> Result<()> {
@@ -258,6 +302,14 @@ impl Database {
             }
         }
         tx.commit()?;
+        if !changed.is_empty() {
+            // Refresh planner statistics after a bulk write batch. Inlined on
+            // the held connection (`optimize()` would re-lock); bounded by the
+            // `analysis_limit` pragma and a no-op while stats are still
+            // representative, so per-page cost during a full library dump is
+            // negligible.
+            conn.execute_batch("PRAGMA optimize;")?;
+        }
         Ok(changed)
     }
 

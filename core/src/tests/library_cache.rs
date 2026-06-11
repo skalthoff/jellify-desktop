@@ -822,3 +822,73 @@ async fn revalidation_noop_delta_is_two_cheap_album_requests() {
     assert_eq!(core.list_cached_artists(10).unwrap().len(), 1);
     drop_core(core).await;
 }
+
+// ---------------------------------------------------------------------------
+// Large-library SQLite tuning (#430)
+// ---------------------------------------------------------------------------
+
+/// The on-disk connection must carry the large-library pragma set: WAL (from
+/// the original open path) plus the #430 additions — ~20 MB page cache,
+/// in-memory temp store, 256 MB read-only mmap, and the bounded
+/// `analysis_limit` that keeps every `PRAGMA optimize` pass cheap.
+#[test]
+fn open_applies_large_library_pragmas() {
+    let tmp = tempfile::tempdir().unwrap();
+    let db = crate::storage::Database::open(tmp.path().join("pragmas.sqlite")).unwrap();
+    db.with_conn(|c| {
+        let journal: String = c
+            .pragma_query_value(None, "journal_mode", |r| r.get(0))
+            .unwrap();
+        assert_eq!(journal.to_lowercase(), "wal");
+        let cache_size: i64 = c
+            .pragma_query_value(None, "cache_size", |r| r.get(0))
+            .unwrap();
+        assert_eq!(cache_size, -20000);
+        let temp_store: i64 = c
+            .pragma_query_value(None, "temp_store", |r| r.get(0))
+            .unwrap();
+        assert_eq!(temp_store, 2, "temp_store should resolve to MEMORY (2)");
+        let mmap: i64 = c
+            .pragma_query_value(None, "mmap_size", |r| r.get(0))
+            .unwrap();
+        assert_eq!(mmap, 268_435_456);
+        let analysis_limit: i64 = c
+            .pragma_query_value(None, "analysis_limit", |r| r.get(0))
+            .unwrap();
+        assert_eq!(analysis_limit, 400);
+    });
+}
+
+/// Regression guard for the warm-launch read path: the `cache_list` page
+/// query must walk `idx_album_cache_sort` rather than scanning + sorting the
+/// whole table — on a 20k-row cache the difference is an index walk touching
+/// `limit` rows vs. a full-table temp-B-tree sort.
+#[test]
+fn cache_page_query_uses_sort_key_index() {
+    let db = Database::in_memory().unwrap();
+    let writes: Vec<CacheWrite> = (0..25)
+        .map(|i| CacheWrite {
+            id: format!("a{i:02}"),
+            data: format!("{{\"id\":\"a{i:02}\"}}"),
+            sort_key: format!("k{i:02}"),
+        })
+        .collect();
+    db.cache_upsert(CacheKind::Album, &writes, 1).unwrap();
+
+    let plan: Vec<String> = db.with_conn(|c| {
+        let mut stmt = c
+            .prepare(
+                "EXPLAIN QUERY PLAN \
+                 SELECT data FROM album_cache ORDER BY sort_key ASC, id ASC LIMIT 100",
+            )
+            .unwrap();
+        stmt.query_map([], |r| r.get::<_, String>(3))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    });
+    assert!(
+        plan.iter().any(|d| d.contains("idx_album_cache_sort")),
+        "page query should use the sort_key index; plan was: {plan:?}"
+    );
+}
